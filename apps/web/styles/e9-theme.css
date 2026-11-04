@@ -1,0 +1,49 @@
+/**
+ * Copyright (c) 2023-present Plane Software, Inc. and contributors
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * See the LICENSE file for details.
+ */
+
+/*
+ * E9 Creative brand colours.
+ *
+ * Plane colours every accent (primary buttons, links, focus rings, selected
+ * items) from one "brand" ramp. Replacing that ramp here turns the whole app
+ * E9 red without touching Plane's components. To change the brand colour,
+ * edit the values below (hue 27 = E9 red). Users who pick a custom theme in
+ * their profile settings keep their own colours.
+ */
+
+:root:not([data-custom-theme="true"]) {
+  --brand-50: oklch(0.99 0.005 25);
+  --brand-100: oklch(0.98 0.01 25);
+  --brand-200: oklch(0.965 0.02 25);
+  --brand-300: oklch(0.935 0.04 25);
+  --brand-400: oklch(0.89 0.07 25);
+  --brand-500: oklch(0.82 0.11 25);
+  --brand-600: oklch(0.73 0.16 25);
+  --brand-700: oklch(0.64 0.21 27);
+  --brand-800: oklch(0.56 0.21 27);
+  --brand-900: oklch(0.47 0.18 27);
+  --brand-1000: oklch(0.39 0.15 27);
+  --brand-1100: oklch(0.31 0.11 27);
+  --brand-1200: oklch(0.24 0.08 27);
+  --brand-default: oklch(0.55 0.215 27);
+}
+
+:root[data-theme*="dark"]:not([data-custom-theme="true"]) {
+  --brand-50: oklch(0.18 0.03 25);
+  --brand-100: oklch(0.21 0.04 25);
+  --brand-200: oklch(0.26 0.06 25);
+  --brand-300: oklch(0.32 0.09 25);
+  --brand-400: oklch(0.4 0.12 25);
+  --brand-500: oklch(0.45 0.14 26);
+  --brand-600: oklch(0.56 0.17 26);
+  --brand-700: oklch(0.66 0.18 25);
+  --brand-800: oklch(0.72 0.15 25);
+  --brand-900: oklch(0.88 0.06 25);
+  --brand-1000: oklch(0.93 0.035 25);
+  --brand-1100: oklch(0.965 0.018 25);
+  --brand-1200: oklch(0.985 0.008 25);
+  --brand-default: oklch(0.63 0.2 26);
+}

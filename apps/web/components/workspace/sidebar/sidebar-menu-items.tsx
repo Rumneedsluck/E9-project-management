@@ -26,6 +26,7 @@ import {
   usePersonalNavigationPreferences,
   useWorkspaceNavigationPreferences,
 } from "@/hooks/use-navigation-preferences";
+import { E9SidebarSection } from "@/components/e9/sidebar-section";
 import { SidebarItemBase } from "./sidebar-item";
 
 export const SidebarMenuItems = observer(function SidebarMenuItems() {
@@ -95,6 +96,8 @@ export const SidebarMenuItems = observer(function SidebarMenuItems() {
 
   return (
     <>
+      {/* E9 Creative: Dashboard + Projects */}
+      <E9SidebarSection />
       <div className="flex w-full flex-col gap-px">
         {filteredStaticNavigationItems.map((item, _index) => (
           // oxlint-disable-next-line react/no-array-index-key
