@@ -178,3 +178,7 @@ class TestE9DemoSetup:
         owner = User.objects.get(email="owner@example.com")
         assert owner.check_password("Demo-pass-123")
         assert WorkspaceMember.objects.get(workspace=workspace, member=owner).role == 20
+        # E9 is invitation-only: public sign-up is switched off
+        from plane.license.models import InstanceConfiguration
+
+        assert InstanceConfiguration.objects.get(key="ENABLE_SIGNUP").value == "0"

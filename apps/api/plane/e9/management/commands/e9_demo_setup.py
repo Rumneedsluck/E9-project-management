@@ -80,6 +80,7 @@ PROJECTS = [
     {
         "name": "Northwind Tech Park Fitout",
         "identifier": "NWT",
+        "emoji": "127970",
         "client_name": "Northwind Technologies",
         "city": "Bengaluru",
         "site_address": "Tower B, Outer Ring Road, Bengaluru",
@@ -94,6 +95,7 @@ PROJECTS = [
     {
         "name": "Aster Health Head Office",
         "identifier": "AHO",
+        "emoji": "127973",
         "client_name": "Aster Health Pvt. Ltd.",
         "city": "Pune",
         "site_address": "Baner Road, Pune",
@@ -108,6 +110,7 @@ PROJECTS = [
     {
         "name": "Bluefin Bank Branch Rollout",
         "identifier": "BFB",
+        "emoji": "127974",
         "client_name": "Bluefin Bank",
         "city": "Mumbai",
         "site_address": "6 branches, Mumbai suburbs",
@@ -122,6 +125,7 @@ PROJECTS = [
     {
         "name": "Orbit Logistics Warehouse",
         "identifier": "ORB",
+        "emoji": "128230",
         "client_name": "Orbit Logistics",
         "city": "Chennai",
         "site_address": "Sriperumbudur Industrial Area, Chennai",
@@ -136,6 +140,7 @@ PROJECTS = [
     {
         "name": "Cedar Consulting Office Refresh",
         "identifier": "CDR",
+        "emoji": "127912",
         "client_name": "Cedar & Co. Consulting",
         "city": "Hyderabad",
         "site_address": "HITEC City, Hyderabad",
@@ -150,6 +155,7 @@ PROJECTS = [
     {
         "name": "Lumen Studios Reception",
         "identifier": "LUM",
+        "emoji": "10024",
         "client_name": "Lumen Studios",
         "city": "Bengaluru",
         "site_address": "Indiranagar, Bengaluru",
@@ -164,6 +170,7 @@ PROJECTS = [
     {
         "name": "Harbor Retail Flagship Store",
         "identifier": "HRS",
+        "emoji": "127980",
         "client_name": "Harbor Retail",
         "city": "Kochi",
         "site_address": "MG Road, Kochi",
@@ -191,6 +198,9 @@ class Command(BaseCommand):
 
         if not InstanceConfiguration.objects.exists():
             call_command("configure_instance")
+        # E9 is an internal system: people join by invitation, not public sign-up.
+        # An admin can switch this back on in the admin panel (God mode > Authentication).
+        InstanceConfiguration.objects.filter(key="ENABLE_SIGNUP").update(value="0")
 
         with transaction.atomic():
             admin = self._user(email, "E9", "Admin", password)
@@ -283,6 +293,7 @@ class Command(BaseCommand):
                 "description": spec["description"],
                 "project_lead": str(lead.id),
                 "network": 2,
+                "logo_props": {"in_use": "emoji", "emoji": {"value": spec["emoji"]}},
             },
             context={"workspace_id": workspace.id},
         )
