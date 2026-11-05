@@ -219,6 +219,25 @@ FIELD_LABELS.update(
         "wcc_number": "WCC no.",
         "wcc_date": "WCC date",
         "wcc_acknowledged_on": "WCC acknowledged",
+        "production_height_in": "Production height",
+        "production_width_in": "Production width",
+        "production_qty": "Production qty",
+        "dc_qty": "DC qty",
+        "certified_height_in": "Certified height",
+        "certified_width_in": "Certified width",
+        "certified_qty": "Certified qty",
+        "kind": "Type",
+        "pieces": "Pieces",
+        "reprint_height_in": "Reprint height",
+        "reprint_width_in": "Reprint width",
+        "approved": "Approved by client",
+        "raised_on": "Date raised",
+        "details": "Snag details",
+        "priority": "Priority",
+        "raised_by": "Raised by",
+        "assigned_to": "Assigned to",
+        "closed_on": "Date closed",
+        "client_signatory": "Client signatory",
     }
 )
 
@@ -230,6 +249,9 @@ ENTITY_FIELD_LABELS = {
     ("scope", "prefix"): "Code prefix",
     ("boq", "qty"): "BOQ qty",
     ("reprint", "qty"): "Reprint qty",
+    ("snag", "status"): "Snag status",
+    ("snag", "reason"): "Snag reason",
+    ("dc", "status"): "DC status",
     ("po", "title"): "PO name",
 }
 

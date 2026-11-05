@@ -181,6 +181,17 @@ def _can_update_items(user, slug, project_id):
 MAX_ROWS_PER_ADD = 100
 
 
+def _resent_counts(project):
+    """{item id: {"reprint": n, "extra": m}} for the tracker's 'Re-sent' column."""
+    from .models import E9Reprint
+
+    counts = {}
+    for item_id, kind in E9Reprint.objects.filter(project=project, item__isnull=False).values_list("item_id", "kind"):
+        bucket = counts.setdefault(str(item_id), {})
+        bucket[kind] = bucket.get(kind, 0) + 1
+    return counts
+
+
 class E9ScopeItemListEndpoint(BaseAPIView):
     """List a project's tracker items, or add new rows to a scope sheet."""
 
@@ -197,7 +208,9 @@ class E9ScopeItemListEndpoint(BaseAPIView):
         return Response(
             {
                 "can_edit": _can_update_items(request.user, slug, project.id),
-                "items": E9ScopeItemSerializer(items, many=True, context={"scopes": scopes}).data,
+                "items": E9ScopeItemSerializer(
+                    items, many=True, context={"scopes": scopes, "resent": _resent_counts(project)}
+                ).data,
             },
             status=status.HTTP_200_OK,
         )

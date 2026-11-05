@@ -38,6 +38,8 @@ from .views_boq import (
     E9SummaryEndpoint,
 )
 
+from .views_snags import E9SnagDetailEndpoint, E9SnagListEndpoint
+
 P = "workspaces/<str:slug>/e9/projects/<uuid:project_id>"
 
 urlpatterns = [
@@ -91,6 +93,9 @@ urlpatterns = [
     ),
     path(f"{P}/reprints/", E9ReprintListEndpoint.as_view(), name="e9-reprints"),
     path(f"{P}/reprints/<uuid:reprint_id>/", E9ReprintDetailEndpoint.as_view(), name="e9-reprint-detail"),
+    # Snag list
+    path(f"{P}/snags/", E9SnagListEndpoint.as_view(), name="e9-snags"),
+    path(f"{P}/snags/<uuid:snag_id>/", E9SnagDetailEndpoint.as_view(), name="e9-snag-detail"),
     # JC & DC logs
     path(f"{P}/logs/", E9LogsEndpoint.as_view(), name="e9-logs"),
     path(f"{P}/logs/<str:kind>/", E9LogEntryEndpoint.as_view(), name="e9-log-entry"),

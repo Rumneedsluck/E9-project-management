@@ -115,6 +115,10 @@ class E9ScopeItem(BaseModel):
     # 2 · Pre-press
     pre_press = models.CharField(max_length=60, choices=_choices(tracker.PRE_PRESS), default="Not Started")
     jc_no = models.CharField(max_length=60, blank=True, default="")
+    # Production size (what we send) – blank = same as the measured size
+    production_height_in = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    production_width_in = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    production_qty = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     # 3 · Production & material
     production_status = models.CharField(
         max_length=40, choices=_choices(tracker.PRODUCTION_STATUS), default="Not Started"
@@ -124,6 +128,9 @@ class E9ScopeItem(BaseModel):
     quality_check = models.CharField(max_length=40, choices=_choices(tracker.QUALITY_CHECK), default="Pending")
     qc_done_by = models.CharField(max_length=120, blank=True, default="")
     dc_nos = models.CharField(max_length=255, blank=True, default="", help_text="Comma-separated DC numbers")
+    dc_qty = models.CharField(
+        max_length=255, blank=True, default="", help_text="Quantity sent on each DC, same order as DC numbers"
+    )
     dispatch_status = models.CharField(
         max_length=40, choices=_choices(tracker.DISPATCH_STATUS), default="Not Dispatched"
     )
@@ -133,6 +140,10 @@ class E9ScopeItem(BaseModel):
     )
     installation_date = models.DateField(null=True, blank=True)
     installed_by = models.CharField(max_length=255, blank=True, default="")
+    # Certified (joint measurement)
+    certified_height_in = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    certified_width_in = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    certified_qty = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     # 6 · Handover
     client_sign_off = models.CharField(max_length=40, choices=_choices(tracker.CLIENT_SIGN_OFF), default="Pending")
     remarks = models.TextField(blank=True, default="")
@@ -256,6 +267,7 @@ class E9AttachmentKind(models.TextChoices):
     CERTIFICATE = "certificate", "Signed certification sheet"
     PI = "pi", "Proforma invoice"
     WCC = "wcc", "Work completion certificate"
+    SNAG = "snag", "Snag photo"
 
 
 class E9Attachment(BaseModel):
@@ -430,8 +442,14 @@ class E9AmendmentChange(BaseModel):
 
 
 class E9ReprintCause(models.TextChoices):
-    INTERNAL = "internal", "Our mistake (reprint, not billable)"
-    CLIENT = "client", "Client change (billable)"
+    E9 = "e9", "E9"
+    CLIENT = "client", "Client"
+    SITE = "site", "Site"
+
+
+class E9ReprintKind(models.TextChoices):
+    REPRINT = "reprint", "Reprint"
+    EXTRA = "extra", "Extra (Amended PO)"
 
 
 class E9Reprint(BaseModel):
@@ -441,10 +459,19 @@ class E9Reprint(BaseModel):
     workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_reprints")
     boq_line = models.ForeignKey(E9BoqLine, on_delete=models.SET_NULL, related_name="reprints", null=True, blank=True)
     item = models.ForeignKey(E9ScopeItem, on_delete=models.SET_NULL, related_name="reprints", null=True, blank=True)
-    cause = models.CharField(max_length=10, choices=E9ReprintCause.choices, default=E9ReprintCause.INTERNAL)
+    kind = models.CharField(max_length=10, choices=E9ReprintKind.choices, default=E9ReprintKind.REPRINT)
+    cause = models.CharField(max_length=10, choices=E9ReprintCause.choices, default=E9ReprintCause.E9)
     qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="In the BOQ line's unit")
     reason = models.TextField(blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    pieces = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    reprint_height_in = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    reprint_width_in = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
     jc_no = models.CharField(max_length=60, blank=True, default="")
+    approved = models.CharField(
+        max_length=10, blank=True, default="", help_text="Approved by client? Yes / Pending / No"
+    )
+    remarks = models.TextField(blank=True, default="")
     reprint_date = models.DateField(null=True, blank=True)
 
     class Meta:
@@ -494,6 +521,10 @@ class E9Challan(BaseModel):
     invoice_date = models.DateField(null=True, blank=True)
     e9_signoff = models.CharField(max_length=10, blank=True, default="Pending")
     client_signoff = models.CharField(max_length=10, blank=True, default="Pending")
+    client_signatory = models.CharField(max_length=120, blank=True, default="")
+    status = models.CharField(
+        max_length=20, blank=True, default="Dispatched", help_text="Dispatched / Delivered / Returned"
+    )
     notes = models.TextField(blank=True, default="")
 
     class Meta:
@@ -556,3 +587,35 @@ class E9BillLine(BaseModel):
         verbose_name_plural = "E9 Bill Lines"
         db_table = "e9_bill_lines"
         ordering = ("created_at",)
+
+
+class E9SnagStatus(models.TextChoices):
+    OPEN = "Open", "Open"
+    IN_PROGRESS = "In Progress", "In Progress"
+    FIXED = "Fixed - Awaiting Client", "Fixed - Awaiting Client"
+    CLOSED = "Closed", "Closed"
+
+
+class E9Snag(BaseModel):
+    """A defect found at handover (the template's Snag List)."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_snags")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_snags")
+    item = models.ForeignKey(E9ScopeItem, on_delete=models.SET_NULL, related_name="snags", null=True, blank=True)
+    raised_on = models.DateField(null=True, blank=True)
+    reason = models.CharField(max_length=80, blank=True, default="")
+    details = models.TextField(blank=True, default="")
+    priority = models.CharField(max_length=10, blank=True, default="Medium")
+    raised_by = models.CharField(max_length=120, blank=True, default="")
+    assigned_to = models.CharField(max_length=120, blank=True, default="")
+    target_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=30, choices=E9SnagStatus.choices, default=E9SnagStatus.OPEN)
+    closed_on = models.DateField(null=True, blank=True)
+    remarks = models.TextField(blank=True, default="")
+    sort_order = models.FloatField(default=65535)
+
+    class Meta:
+        verbose_name = "E9 Snag"
+        verbose_name_plural = "E9 Snags"
+        db_table = "e9_snags"
+        ordering = ("sort_order", "created_at")
