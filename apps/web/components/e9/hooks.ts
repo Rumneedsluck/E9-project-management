@@ -26,6 +26,16 @@ export const useE9Project = (workspaceSlug: string | undefined, projectId: strin
     { revalidateOnFocus: false }
   );
 
+export const e9ItemsKey = (workspaceSlug: string, projectId: string) => `E9_ITEMS_${workspaceSlug}_${projectId}`;
+
+/** All tracker rows of one project. */
+export const useE9Items = (workspaceSlug: string | undefined, projectId: string | undefined) =>
+  useSWR(
+    workspaceSlug && projectId ? e9ItemsKey(workspaceSlug, projectId) : null,
+    () => e9ProjectService.listItems(workspaceSlug!, projectId!),
+    { revalidateOnFocus: false }
+  );
+
 /** Refresh the cached E9 data after a change. */
 export const refreshE9Projects = async (workspaceSlug: string, projectId?: string) => {
   await mutate(e9ProjectsKey(workspaceSlug));

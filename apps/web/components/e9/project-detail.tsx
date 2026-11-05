@@ -7,10 +7,11 @@
 import type { ReactNode } from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeftOutline, EditOutline, NewTabArrowOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { Logo } from "@plane/blocks/emoji-icon-picker";
-import { renderFormattedDate } from "@plane/utils";
+import { cn, renderFormattedDate } from "@plane/utils";
 // hooks
 import { useAppRouter } from "@/hooks/use-app-router";
 // local
@@ -18,6 +19,8 @@ import { getStatusMeta } from "./constants";
 import { getProgressPercent } from "./helpers";
 import { useE9Project } from "./hooks";
 import { E9ErrorState, E9LoadingState } from "./states";
+import { E9TrackerDashboard } from "./tracker/tracker-dashboard";
+import { E9TrackerSheet } from "./tracker/tracker-sheet";
 import {
   E9DeadlineText,
   E9MemberAvatar,
@@ -42,8 +45,19 @@ const empty = <span className="text-placeholder">Not set</span>;
 
 type Props = { workspaceSlug: string; projectId: string };
 
+type TView = "overview" | "tracker" | "dashboard";
+const VIEWS: { key: TView; label: string }[] = [
+  { key: "tracker", label: "Tracker" },
+  { key: "dashboard", label: "Dashboard" },
+  { key: "overview", label: "Project info" },
+];
+
 export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug, projectId }: Props) {
   const router = useAppRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const view: TView = (VIEWS.find((entry) => entry.key === searchParams.get("view"))?.key ?? "tracker") as TView;
+  const setView = (next: TView) => router.replace(`${pathname}?view=${next}`);
   const { data: project, error, isLoading, mutate } = useE9Project(workspaceSlug, projectId);
 
   if (isLoading && !project)
@@ -64,7 +78,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
   const team = project.member_ids.filter((id) => id !== project.project_lead);
 
   return (
-    <E9PageBody>
+    <E9PageBody wide={view === "tracker"}>
       <Link
         href={`/${workspaceSlug}/e9/projects`}
         className="inline-flex w-fit items-center gap-1.5 text-body-xs-medium text-tertiary hover:text-primary"
@@ -111,85 +125,120 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
         </div>
       </div>
 
-      {/* Status strip */}
-      <section className="flex flex-col gap-5 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 sm:p-6">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-body-xs-medium text-tertiary">Current stage</span>
-            <E9StatusBadge status={e9.status} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-body-xs-medium text-tertiary">Priority</span>
-            <E9PriorityBadge priority={e9.priority} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-body-xs-medium text-tertiary">Handover</span>
-            <span className="flex items-baseline gap-2">
-              <span className="text-body-sm-semibold text-primary">{renderFormattedDate(e9.deadline) ?? "—"}</span>
-              <E9DeadlineText project={project} />
-            </span>
-          </div>
-          <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5 sm:max-w-xs sm:items-end sm:text-right">
-            <span className="text-body-xs-medium text-tertiary">
-              Progress
-              {project.work_items.total > 0 &&
-                ` · ${project.work_items.completed}/${project.work_items.total} work items done`}
-            </span>
-            <span className="flex w-full items-center gap-3">
-              <E9ProgressBar value={progress} />
-              <span className="text-body-sm-semibold text-primary tabular-nums">{progress}%</span>
-            </span>
-          </div>
-        </div>
-        {e9.status === "on_hold" ? (
-          <p className="rounded-lg bg-danger-subtle px-4 py-3 text-body-sm-medium text-danger-primary">
-            {getStatusMeta("on_hold").hint}.
-          </p>
-        ) : (
-          <E9StageTrack status={e9.status} />
-        )}
-      </section>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <E9Panel title="Project details" className="lg:col-span-2">
-          <dl className="grid grid-cols-1 gap-x-8 gap-y-5 p-5 sm:grid-cols-2">
-            <Detail label="Client">{e9.client_name || empty}</Detail>
-            <Detail label="City">{e9.city || empty}</Detail>
-            <Detail label="Site address">{e9.site_address || empty}</Detail>
-            <Detail label="Work order / PO no.">{e9.work_order_number || empty}</Detail>
-            <Detail label="Start date">{renderFormattedDate(e9.start_date) ?? empty}</Detail>
-            <Detail label="Handover deadline">{renderFormattedDate(e9.deadline) ?? empty}</Detail>
-            <div className="sm:col-span-2">
-              <Detail label="Scope & notes">
-                {project.description ? <span className="whitespace-pre-line">{project.description}</span> : empty}
-              </Detail>
-            </div>
-          </dl>
-        </E9Panel>
-
-        <E9Panel title="Team">
-          <div className="flex flex-col gap-4 p-5">
-            <div className="flex flex-col gap-2">
-              <span className="text-body-xs-medium text-tertiary">Project coordinator</span>
-              {project.project_lead ? <E9MemberAvatar userId={project.project_lead} size="md" showName /> : empty}
-            </div>
-            <div className="flex flex-col gap-2">
-              <span className="text-body-xs-medium text-tertiary">Team members · {team.length}</span>
-              {team.length === 0 ? (
-                empty
-              ) : (
-                <ul className="flex flex-col gap-2.5">
-                  {team.map((id) => (
-                    <li key={id}>
-                      <E9MemberAvatar userId={id} size="md" showName />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </E9Panel>
+      {/* Tabs */}
+      <div className="-mb-2 flex gap-1 border-b border-subtle" role="tablist" aria-label="Project views">
+        {VIEWS.map((entry) => (
+          <button
+            key={entry.key}
+            type="button"
+            role="tab"
+            aria-selected={view === entry.key}
+            onClick={() => setView(entry.key)}
+            className={cn(
+              "-mb-px border-b-2 px-4 py-2.5 text-body-sm-semibold transition-colors",
+              view === entry.key
+                ? "border-[var(--brand-default)] text-primary"
+                : "border-transparent text-tertiary hover:text-secondary"
+            )}
+          >
+            {entry.label}
+          </button>
+        ))}
       </div>
+
+      {view === "tracker" && <E9TrackerSheet workspaceSlug={workspaceSlug} project={project} />}
+      {view === "dashboard" && (
+        <E9TrackerDashboard workspaceSlug={workspaceSlug} project={project} onOpenSheet={() => setView("tracker")} />
+      )}
+      {view === "overview" && (
+        <>
+          {/* Status strip */}
+          <section className="flex flex-col gap-5 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 sm:p-6">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-body-xs-medium text-tertiary">Current stage</span>
+                <E9StatusBadge status={e9.status} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-body-xs-medium text-tertiary">Priority</span>
+                <E9PriorityBadge priority={e9.priority} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-body-xs-medium text-tertiary">Handover</span>
+                <span className="flex items-baseline gap-2">
+                  <span className="text-body-sm-semibold text-primary">{renderFormattedDate(e9.deadline) ?? "—"}</span>
+                  <E9DeadlineText project={project} />
+                </span>
+              </div>
+              <div className="flex min-w-[12rem] flex-1 flex-col gap-1.5 sm:max-w-xs sm:items-end sm:text-right">
+                <span className="text-body-xs-medium text-tertiary">
+                  Progress
+                  {project.work_items.total > 0 &&
+                    ` · ${project.work_items.completed}/${project.work_items.total} work items done`}
+                </span>
+                <span className="flex w-full items-center gap-3">
+                  <E9ProgressBar value={progress} />
+                  <span className="text-body-sm-semibold text-primary tabular-nums">{progress}%</span>
+                </span>
+              </div>
+            </div>
+            {e9.status === "on_hold" ? (
+              <p className="rounded-lg bg-danger-subtle px-4 py-3 text-body-sm-medium text-danger-primary">
+                {getStatusMeta("on_hold").hint}.
+              </p>
+            ) : (
+              <E9StageTrack status={e9.status} />
+            )}
+          </section>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <E9Panel title="Project details" className="lg:col-span-2">
+              <dl className="grid grid-cols-1 gap-x-8 gap-y-5 p-5 sm:grid-cols-2">
+                <Detail label="Client">{e9.client_name || empty}</Detail>
+                <Detail label="City">{e9.city || empty}</Detail>
+                <Detail label="Site address">{e9.site_address || empty}</Detail>
+                <Detail label="Work order / PO no.">{e9.work_order_number || empty}</Detail>
+                <Detail label="Client contact">{e9.client_contact || empty}</Detail>
+                <Detail label="Site / facility contact">{e9.site_contact || empty}</Detail>
+                <Detail label="Work order date">{renderFormattedDate(e9.work_order_date) ?? empty}</Detail>
+                <Detail label="Start date">{renderFormattedDate(e9.start_date) ?? empty}</Detail>
+                <Detail label="Handover deadline">{renderFormattedDate(e9.deadline) ?? empty}</Detail>
+                <Detail label="Site timings / restrictions">
+                  {e9.site_timings ? <span className="whitespace-pre-line">{e9.site_timings}</span> : empty}
+                </Detail>
+                <div className="sm:col-span-2">
+                  <Detail label="Scope & notes">
+                    {project.description ? <span className="whitespace-pre-line">{project.description}</span> : empty}
+                  </Detail>
+                </div>
+              </dl>
+            </E9Panel>
+
+            <E9Panel title="Team">
+              <div className="flex flex-col gap-4 p-5">
+                <div className="flex flex-col gap-2">
+                  <span className="text-body-xs-medium text-tertiary">Project coordinator</span>
+                  {project.project_lead ? <E9MemberAvatar userId={project.project_lead} size="md" showName /> : empty}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <span className="text-body-xs-medium text-tertiary">Team members · {team.length}</span>
+                  {team.length === 0 ? (
+                    empty
+                  ) : (
+                    <ul className="flex flex-col gap-2.5">
+                      {team.map((id) => (
+                        <li key={id}>
+                          <E9MemberAvatar userId={id} size="md" showName />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </E9Panel>
+          </div>
+        </>
+      )}
     </E9PageBody>
   );
 });

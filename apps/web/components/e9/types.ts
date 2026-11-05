@@ -29,6 +29,16 @@ export type TE9ProjectProfile = {
   priority: TE9ProjectPriority;
   start_date: string | null;
   deadline: string | null;
+  client_contact: string;
+  site_contact: string;
+  work_order_date: string | null;
+  site_timings: string;
+  target_site_audit: string | null;
+  target_pre_press: string | null;
+  target_material: string | null;
+  target_delivered: string | null;
+  target_installation: string | null;
+  target_sign_off: string | null;
   updated_at: string | null;
 };
 
