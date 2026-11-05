@@ -570,6 +570,11 @@ export function E9ImportModal({ open, onClose, workspaceSlug, project }: TProps)
               ))}
               {report.floors.length > 0 && <li>New floors: {report.floors.join(", ")}</li>}
               {report.site_visits > 0 && <li>Site visits / audit reports: {report.site_visits}</li>}
+              {!!report.boq_lines && <li>BOQ lines: {report.boq_lines}</li>}
+              {!!report.reprints && <li>Reprints &amp; extras: {report.reprints}</li>}
+              {!!report.snags && <li>Snags: {report.snags}</li>}
+              {!!report.job_cards && <li>JC log details: {report.job_cards}</li>}
+              {!!report.challans && <li>DC log details: {report.challans}</li>}
               {report.project_fields.length > 0 && <li>Project details filled: {report.project_fields.length}</li>}
             </ul>
             {report.coordinator && (

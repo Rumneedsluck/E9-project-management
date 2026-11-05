@@ -430,3 +430,162 @@ class TestExcelImport:
         upload = SimpleUploadedFile("photo.xlsx", b"not a workbook")
         response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
         assert response.status_code == 400
+
+
+def build_full_workbook():
+    """A workbook laid out like the template, with the extra columns and log sheets filled in."""
+    workbook = openpyxl.load_workbook(io.BytesIO(build_tracker_workbook()))
+    walls = workbook["Wall Graphics"]
+    headers = [cell.value for cell in walls[6]]
+    extra = [
+        "Production\nHeight (in)",
+        "Production\nWidth (in)",
+        "DC No(s).\n(comma-separated)",
+        "DC Qty\n(comma-separated)",
+        "Certified\nHeight (in)",
+        "Certified\nWidth (in)",
+    ]
+    start = len([h for h in headers if h]) + 1
+    for offset, header in enumerate(extra):
+        walls.cell(6, start + offset, header)
+    for offset, value in enumerate([116, 118, "3500, 3501", "60, 32.23", 114, 116.5]):
+        walls.cell(7, start + offset, value)
+
+    reprints = workbook.create_sheet("Reprints & Extras")
+    for column, header in enumerate(
+        [
+            "#",
+            "Date",
+            "Item Code",
+            "Scope",
+            "Item Code",
+            "Item Description",
+            "BOQ Item No.",
+            "Type",
+            "Caused by",
+            "Reason",
+            "Description",
+            "Pieces",
+            "Original Height (in)",
+            "Original Width (in)",
+            "Reprint Height (in)\n(tile)",
+            "Reprint Width (in)\n(tile)",
+        ],
+        start=1,
+    ):
+        reprints.cell(4, column, header)
+    reprints.append(
+        [
+            "=1",
+            date(2026, 11, 20),
+            "W1",
+            None,
+            None,
+            None,
+            None,
+            "Reprint",
+            "E9",
+            "Print defect",
+            "One tile",
+            1,
+            None,
+            None,
+            None,
+            48,
+        ]
+    )
+    reprints.append(["=2", None, "W99", None, None, None, None, "Reprint", "Client", "Design change"])
+
+    snags = workbook.create_sheet("Snag List")
+    for column, header in enumerate(
+        [
+            "#",
+            "Date Raised",
+            "Item Code",
+            "Scope",
+            "Item Description",
+            "Floor / Area",
+            "Snag Reason",
+            "Snag Details",
+            "Photo",
+            "Priority",
+            "Raised By",
+            "Assigned To",
+            "Target Date",
+            "Status",
+        ],
+        start=1,
+    ):
+        snags.cell(4, column, header)
+    snags.append(
+        [
+            "=1",
+            date(2026, 11, 22),
+            "W2",
+            None,
+            None,
+            None,
+            "Peeling / bubbles",
+            "Corner lifting",
+            None,
+            "High",
+            "Site team",
+            "Team A",
+            date(2026, 11, 25),
+            "Open",
+        ]
+    )
+    snags.append(["=2", None, None, None, None, None, None, None, None, "Medium", None, None, None, "Open"])
+
+    dc_log = workbook.create_sheet("DC Log")
+    for column, header in enumerate(
+        [
+            "#",
+            "DC No.\n(auto)",
+            "DC Date",
+            "Items sent (auto)",
+            "No. of\nLines",
+            "Sq Ft\n(auto)",
+            "Nos\n(auto)",
+            "Dispatched From",
+            "Sent By",
+            "Vehicle / Transporter",
+            "Invoice No.",
+        ],
+        start=1,
+    ):
+        dc_log.cell(4, column, header)
+    # in a saved Excel / Google Sheets file the DC No. formula has its value; here it is typed
+    dc_log.append([1, 3500, date(2026, 11, 18), None, None, None, None, "I Media", "Ravi", "KA-01-1234", "INV-9"])
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+@pytest.mark.contract
+class TestFullTemplateImport:
+    @pytest.mark.django_db
+    def test_imports_new_columns_reprints_snags_and_dc_details(self, session_client, workspace, project):
+        upload = SimpleUploadedFile("full.xlsx", build_full_workbook())
+        response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
+        assert response.status_code == 201, response.data
+        report = response.data
+        assert report["reprints"] == 1 and report["snags"] == 1 and report["challans"] == 1
+        assert any("W99" in warning for warning in report["warnings"])
+
+        w1 = next(
+            i for i in session_client.get(url(workspace, project, "items/")).data["items"] if i["item_code"] == "W1"
+        )
+        assert w1["production_measure"] == "95.06"  # 116 x 118 / 144
+        assert w1["dc_list"] == [{"dc": "3500", "qty": "60.00"}, {"dc": "3501", "qty": "32.23"}]
+        assert w1["certified_measure"] == "92.23" and w1["resent"] == "Reprint x1"
+
+        reprint = session_client.get(url(workspace, project, "boq/")).data["reprints"][0]
+        assert reprint["item_code"] == "W1" and reprint["qty"] == "38.00"  # 114 x 48 / 144
+        snag = session_client.get(url(workspace, project, "snags/")).data["snags"][0]
+        assert snag["item_code"] == "W2" and snag["priority"] == "High" and snag["assigned_to"] == "Team A"
+        dc = next(
+            d for d in session_client.get(url(workspace, project, "logs/")).data["challans"] if d["number"] == "3500"
+        )
+        assert dc["dispatched_from"] == "I Media" and dc["vehicle"] == "KA-01-1234" and dc["dc_date"] == "2026-11-18"

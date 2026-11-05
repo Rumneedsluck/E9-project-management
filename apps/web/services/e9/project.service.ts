@@ -172,6 +172,11 @@ export class E9ProjectService extends APIService {
     floors: string[];
     project_fields: string[];
     site_visits: number;
+    boq_lines?: number;
+    reprints?: number;
+    snags?: number;
+    job_cards?: number;
+    challans?: number;
     coordinator: string;
     warnings: string[];
   }> {
