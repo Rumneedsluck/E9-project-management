@@ -196,9 +196,14 @@ export function E9Panel({
 }
 
 /** Content container used by every E9 page: generous padding on desktop, tighter on phones. */
-export function E9PageBody({ children }: { children: ReactNode }) {
+export function E9PageBody({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div
+      className={cn(
+        "mx-auto flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
+        wide ? "max-w-none" : "max-w-[1280px]"
+      )}
+    >
       {children}
     </div>
   );

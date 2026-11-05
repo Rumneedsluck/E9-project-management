@@ -22,6 +22,16 @@ export type TE9FormValues = {
   priority: TE9ProjectPriority;
   start_date: string;
   deadline: string;
+  client_contact: string;
+  site_contact: string;
+  work_order_date: string;
+  site_timings: string;
+  target_site_audit: string;
+  target_pre_press: string;
+  target_material: string;
+  target_delivered: string;
+  target_installation: string;
+  target_sign_off: string;
   project_lead: string;
   team: string[];
 };

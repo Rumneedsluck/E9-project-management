@@ -24,6 +24,7 @@ import { useAppRouter } from "@/hooks/use-app-router";
 import { e9ProjectService } from "@/services/e9/project.service";
 // local
 import { E9_PRIORITIES, E9_STATUSES } from "./constants";
+import { E9_TRACKER_STAGES } from "./tracker/constants";
 import { validateE9Form } from "./form-validation";
 import type { TE9FormErrors, TE9FormValues } from "./form-validation";
 import { getInitials, suggestIdentifier } from "./helpers";
@@ -43,6 +44,16 @@ const fromProject = (project: TE9Project | undefined, currentUserId: string | un
   priority: project?.e9.priority ?? "medium",
   start_date: project?.e9.start_date ?? "",
   deadline: project?.e9.deadline ?? "",
+  client_contact: project?.e9.client_contact ?? "",
+  site_contact: project?.e9.site_contact ?? "",
+  work_order_date: project?.e9.work_order_date ?? "",
+  site_timings: project?.e9.site_timings ?? "",
+  target_site_audit: project?.e9.target_site_audit ?? "",
+  target_pre_press: project?.e9.target_pre_press ?? "",
+  target_material: project?.e9.target_material ?? "",
+  target_delivered: project?.e9.target_delivered ?? "",
+  target_installation: project?.e9.target_installation ?? "",
+  target_sign_off: project?.e9.target_sign_off ?? "",
   project_lead: project?.project_lead ?? currentUserId ?? "",
   team: project ? project.member_ids.filter((id) => id !== project.project_lead) : [],
 });
@@ -176,6 +187,16 @@ export const E9ProjectForm = observer(function E9ProjectForm({ workspaceSlug, pr
       priority: values.priority,
       start_date: values.start_date || null,
       deadline: values.deadline || null,
+      client_contact: values.client_contact.trim(),
+      site_contact: values.site_contact.trim(),
+      work_order_date: values.work_order_date || null,
+      site_timings: values.site_timings.trim(),
+      target_site_audit: values.target_site_audit || null,
+      target_pre_press: values.target_pre_press || null,
+      target_material: values.target_material || null,
+      target_delivered: values.target_delivered || null,
+      target_installation: values.target_installation || null,
+      target_sign_off: values.target_sign_off || null,
     };
     try {
       let projectId = project?.id;
@@ -299,6 +320,42 @@ export const E9ProjectForm = observer(function E9ProjectForm({ workspaceSlug, pr
                   value={values.work_order_number}
                   onChange={(e) => set("work_order_number", e.target.value)}
                   placeholder="Optional"
+                />
+              </Field>
+              <Field label="Work order date" htmlFor="e9-wo-date">
+                <input
+                  id="e9-wo-date"
+                  type="date"
+                  className={inputClass()}
+                  value={values.work_order_date}
+                  onChange={(e) => set("work_order_date", e.target.value)}
+                />
+              </Field>
+              <Field label="Client contact (name & phone)" htmlFor="e9-client-contact" className="sm:col-span-2">
+                <input
+                  id="e9-client-contact"
+                  className={inputClass()}
+                  value={values.client_contact}
+                  onChange={(e) => set("client_contact", e.target.value)}
+                  placeholder="Optional"
+                />
+              </Field>
+              <Field label="Site / facility contact (name & phone)" htmlFor="e9-site-contact" className="sm:col-span-2">
+                <input
+                  id="e9-site-contact"
+                  className={inputClass()}
+                  value={values.site_contact}
+                  onChange={(e) => set("site_contact", e.target.value)}
+                  placeholder="Optional"
+                />
+              </Field>
+              <Field label="Site timings / restrictions" htmlFor="e9-timings" className="sm:col-span-2">
+                <input
+                  id="e9-timings"
+                  className={inputClass()}
+                  value={values.site_timings}
+                  onChange={(e) => set("site_timings", e.target.value)}
+                  placeholder="e.g. Work only after 7 pm, weekends allowed"
                 />
               </Field>
               <Field label="Scope & notes" htmlFor="e9-notes" className="sm:col-span-2">
@@ -448,6 +505,25 @@ export const E9ProjectForm = observer(function E9ProjectForm({ workspaceSlug, pr
                   onChange={(e) => set("deadline", e.target.value)}
                 />
               </Field>
+            </div>
+          </E9Panel>
+
+          <E9Panel title="Stage target dates">
+            <div className="flex flex-col gap-4 p-5">
+              <p className="text-body-xs-regular text-tertiary">
+                Items that miss these dates turn red on the Tracker sheet.
+              </p>
+              {E9_TRACKER_STAGES.map((stage) => (
+                <Field key={stage.key} label={stage.label} htmlFor={`e9-${stage.targetField}`}>
+                  <input
+                    id={`e9-${stage.targetField}`}
+                    type="date"
+                    className={inputClass()}
+                    value={values[stage.targetField]}
+                    onChange={(e) => set(stage.targetField, e.target.value)}
+                  />
+                </Field>
+              ))}
             </div>
           </E9Panel>
 
