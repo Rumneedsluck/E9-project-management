@@ -1,0 +1,414 @@
+# Copyright (c) 2023-present Plane Software, Inc. and contributors
+# SPDX-License-Identifier: AGPL-3.0-only
+# See the LICENSE file for details.
+
+import io
+from datetime import date
+
+import openpyxl
+import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from rest_framework.test import APIClient
+
+from plane.db.models import Project, ProjectMember, User, WorkspaceMember
+from plane.e9.models import E9Attachment, E9ChangeLog, E9Floor, E9ProjectProfile, E9ScopeItem
+
+
+@pytest.fixture(autouse=True)
+def upload_root(settings, tmp_path):
+    settings.E9_UPLOAD_ROOT = str(tmp_path / "uploads")
+
+
+@pytest.fixture
+def project(workspace, create_user):
+    project = Project.objects.create(name="Fictional Tower", identifier="FT", workspace=workspace)
+    ProjectMember.objects.create(project=project, member=create_user, role=20)
+    return project
+
+
+def url(workspace, project, path=""):
+    return f"/api/workspaces/{workspace.slug}/e9/projects/{project.id}/{path}"
+
+
+def guest_client(workspace, project):
+    user = User.objects.create(email="guest@example.com", username="guest")
+    WorkspaceMember.objects.create(workspace=workspace, member=user, role=5)
+    ProjectMember.objects.create(project=project, member=user, role=5)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
+
+
+def scopes_payload(client, workspace, project):
+    return [
+        {key: row[key] for key in ("key", "label", "prefix", "unit_mode", "enabled")}
+        for row in client.get(url(workspace, project, "scopes/")).data
+    ]
+
+
+@pytest.mark.contract
+class TestScopes:
+    @pytest.mark.django_db
+    def test_existing_project_starts_with_nine_standard_scopes(self, session_client, workspace, project):
+        rows = session_client.get(url(workspace, project, "scopes/")).data
+        assert [row["prefix"] for row in rows] == ["W", "GF", "IS", "ES", "3D", "FR", "HP", "NT", "OT"]
+        assert all(row["enabled"] for row in rows)
+
+    @pytest.mark.django_db
+    def test_switch_off_add_custom_and_change_unit(self, session_client, workspace, project):
+        rows = scopes_payload(session_client, workspace, project)
+        for row in rows:
+            row["enabled"] = row["key"] in ("wall_graphics", "internal_signages")
+            if row["key"] == "wall_graphics":
+                row["unit_mode"] = "nos"  # this site counts walls by number
+        rows.append({"label": "Acrylic Letters", "prefix": "al", "unit_mode": "sqft", "enabled": True})
+        response = session_client.put(url(workspace, project, "scopes/"), {"scopes": rows}, format="json")
+        assert response.status_code == 200, response.data
+        enabled = [row["label"] for row in response.data if row["enabled"]]
+        assert enabled == ["Wall Graphics", "Internal Signages", "Acrylic Letters"]
+        custom = next(row for row in response.data if row["label"] == "Acrylic Letters")
+        assert custom["prefix"] == "AL" and custom["key"].startswith("custom_")
+
+        # a switched-off scope cannot get new rows
+        items_url = url(workspace, project, "items/")
+        assert session_client.post(items_url, {"scope": "glass_film"}, format="json").status_code == 400
+        # the custom scope gets its own codes and unit
+        row = session_client.post(items_url, {"scope": custom["key"], "count": 2}, format="json").data
+        assert [item["item_code"] for item in row] == ["AL1", "AL2"]
+        patched = session_client.patch(
+            items_url + f"{row[0]['id']}/", {"height_in": "24", "width_in": "36"}, format="json"
+        ).data
+        assert patched["unit"] == "sqft" and patched["area_sqft"] == "6.00"
+        # walls now count in Nos even with a size
+        wall = session_client.post(
+            items_url, {"scope": "wall_graphics", "height_in": "120", "width_in": "120"}, format="json"
+        )
+        assert wall.data[0]["unit"] == "nos"
+
+    @pytest.mark.django_db
+    def test_scope_with_items_cannot_be_removed_or_recoded(self, session_client, workspace, project):
+        rows = scopes_payload(session_client, workspace, project)
+        rows.append({"label": "Vinyl Stickers", "prefix": "VS", "unit_mode": "either", "enabled": True})
+        rows = session_client.put(url(workspace, project, "scopes/"), {"scopes": rows}, format="json").data
+        custom = next(row for row in rows if row["label"] == "Vinyl Stickers")
+        session_client.post(url(workspace, project, "items/"), {"scope": custom["key"]}, format="json")
+
+        payload = [{k: row[k] for k in ("key", "label", "prefix", "unit_mode", "enabled")} for row in rows]
+        without_custom = [row for row in payload if row["key"] != custom["key"]]
+        assert (
+            session_client.put(
+                url(workspace, project, "scopes/"), {"scopes": without_custom}, format="json"
+            ).status_code
+            == 400
+        )
+        recoded = [dict(row, prefix="VX") if row["key"] == custom["key"] else row for row in payload]
+        assert (
+            session_client.put(url(workspace, project, "scopes/"), {"scopes": recoded}, format="json").status_code
+            == 400
+        )
+        duplicate = [dict(row, prefix="W") if row["key"] == custom["key"] else row for row in payload]
+        assert (
+            session_client.put(url(workspace, project, "scopes/"), {"scopes": duplicate}, format="json").status_code
+            == 400
+        )
+
+    @pytest.mark.django_db
+    def test_guest_cannot_change_scopes(self, session_client, workspace, project):
+        rows = scopes_payload(session_client, workspace, project)
+        guest = guest_client(workspace, project)
+        assert guest.put(url(workspace, project, "scopes/"), {"scopes": rows}, format="json").status_code == 403
+
+
+@pytest.mark.contract
+class TestFloors:
+    @pytest.mark.django_db
+    def test_add_many_floors_rename_and_mark(self, session_client, workspace, project):
+        names = ["Ground"] + [f"Floor {n}" for n in range(1, 18)]
+        response = session_client.post(url(workspace, project, "floors/"), {"names": names}, format="json")
+        assert response.status_code == 201 and len(response.data) == 18
+
+        item = session_client.post(
+            url(workspace, project, "items/"), {"scope": "wall_graphics", "floor_area": "Floor 17"}, format="json"
+        ).data[0]
+        floor = E9Floor.objects.get(project=project, name="Floor 17")
+        response = session_client.patch(
+            url(workspace, project, f"floors/{floor.id}/"),
+            {"name": "17th Floor", "status": "Handed Over", "target_date": "2026-12-01"},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert E9ScopeItem.objects.get(pk=item["id"]).floor_area == "17th Floor"
+        # floors with items cannot be deleted
+        assert session_client.delete(url(workspace, project, f"floors/{floor.id}/")).status_code == 400
+
+    @pytest.mark.django_db
+    def test_typing_a_new_floor_on_an_item_creates_it(self, session_client, workspace, project):
+        item = session_client.post(url(workspace, project, "items/"), {"scope": "frames"}, format="json").data[0]
+        session_client.patch(url(workspace, project, f"items/{item['id']}/"), {"floor_area": "Terrace"}, format="json")
+        assert E9Floor.objects.filter(project=project, name="Terrace").exists()
+
+
+def tiny_png():
+    return (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+
+@pytest.mark.contract
+class TestAttachments:
+    @pytest.mark.django_db
+    def test_upload_view_and_delete_item_photos(self, session_client, workspace, project):
+        item = session_client.post(url(workspace, project, "items/"), {"scope": "wall_graphics"}, format="json").data[0]
+        files = [
+            SimpleUploadedFile("wall-01.png", tiny_png(), content_type="image/png"),
+            SimpleUploadedFile("wall-01b.png", tiny_png(), content_type="image/png"),
+        ]
+        response = session_client.post(
+            url(workspace, project, "attachments/"),
+            {"kind": "photo", "item": item["id"], "files": files},
+            format="multipart",
+        )
+        assert response.status_code == 201, response.data
+        assert len(response.data) == 2 and response.data[0]["has_file"]
+
+        photo_id = response.data[0]["id"]
+        content = session_client.get(url(workspace, project, f"attachments/{photo_id}/file/"))
+        assert content.status_code == 200
+        assert b"".join(content.streaming_content) == tiny_png()
+
+        listing = session_client.get(url(workspace, project, f"attachments/?item={item['id']}")).data
+        assert len(listing) == 2
+        assert session_client.delete(url(workspace, project, f"attachments/{photo_id}/")).status_code == 204
+        assert E9Attachment.objects.filter(item_id=item["id"]).count() == 1
+
+    @pytest.mark.django_db
+    def test_site_audit_pdf_with_version(self, session_client, workspace, project):
+        pdf = SimpleUploadedFile("audit.pdf", b"%PDF-1.4 test", content_type="application/pdf")
+        response = session_client.post(
+            url(workspace, project, "attachments/"),
+            {
+                "kind": "site_audit",
+                "label": "Visit 1 - 12 Nov",
+                "version": "Final",
+                "sent_on": "2026-11-13",
+                "files": [pdf],
+            },
+            format="multipart",
+        )
+        assert response.status_code == 201
+        assert response.data[0]["version"] == "Final" and response.data[0]["label"] == "Visit 1 - 12 Nov"
+
+    @pytest.mark.django_db
+    def test_rejects_other_file_types_and_guests(self, session_client, workspace, project):
+        bad = SimpleUploadedFile("notes.exe", b"MZ", content_type="application/octet-stream")
+        response = session_client.post(
+            url(workspace, project, "attachments/"), {"kind": "document", "files": [bad]}, format="multipart"
+        )
+        assert response.status_code == 400
+        guest = guest_client(workspace, project)
+        photo = SimpleUploadedFile("a.png", tiny_png(), content_type="image/png")
+        assert (
+            guest.post(url(workspace, project, "attachments/"), {"files": [photo]}, format="multipart").status_code
+            == 403
+        )
+
+
+@pytest.mark.contract
+class TestHistory:
+    @pytest.mark.django_db
+    def test_records_who_changed_what(self, session_client, workspace, project, create_user):
+        item = session_client.post(url(workspace, project, "items/"), {"scope": "wall_graphics"}, format="json").data[0]
+        session_client.patch(
+            url(workspace, project, f"items/{item['id']}/"),
+            {"installation_status": "In Progress", "remarks": "Night shift"},
+            format="json",
+        )
+        session_client.patch(
+            url(workspace, project, f"items/{item['id']}/"), {"installation_status": "In Progress"}, format="json"
+        )
+        changes = session_client.get(url(workspace, project, f"history/?entity_id={item['id']}")).data
+        install = [change for change in changes if change["field"] == "installation_status"]
+        assert len(install) == 1  # saving the same value again is not a change
+        assert install[0]["old_value"] == "Not Started" and install[0]["new_value"] == "In Progress"
+        assert install[0]["entity_label"] == "W1"
+        assert install[0]["actor"]["id"] == str(create_user.id)
+
+        session_client.delete(url(workspace, project, f"items/{item['id']}/"))
+        assert E9ChangeLog.objects.filter(project=project, action="deleted", entity_label="W1").exists()
+
+        # project info changes are recorded too, and guests can read the history
+        session_client.patch(url(workspace, project), {"client_name": "Example Co"}, format="json")
+        session_client.patch(url(workspace, project), {"client_name": "Example Co Ltd"}, format="json")
+        guest = guest_client(workspace, project)
+        history = guest.get(url(workspace, project, "history/")).data
+        assert any(change["field"] == "client_name" and change["new_value"] == "Example Co Ltd" for change in history)
+
+
+def build_tracker_workbook():
+    """A small workbook laid out like the E9 tracker template (made-up data)."""
+    workbook = openpyxl.Workbook()
+    info = workbook.active
+    info.title = "Project Info"
+    info["B4"], info["C4"] = "Project / Site Name", "Fictional Tower"
+    info["B5"], info["C5"] = "Client (Company)", "Fictional Co"
+    info["B7"], info["C7"] = "City", "Pune"
+    info["B10"], info["C10"] = "E9 Project Owner / Coordinator", "A. Person"
+    info["B14"], info["C14"] = "Final Handover Deadline", date(2026, 12, 20)
+    info["B19"], info["C19"] = "1 · Site audit complete", date(2026, 11, 10)
+    info["B27"], info["C27"] = "Visit (e.g. Visit 1 – 12 Nov)", "Site audit report PDF link (Drive / URL)"
+    info["B28"], info["C28"], info["D28"] = "Visit 1", "audit-visit-1.pdf", "Final"
+
+    headers = [
+        "#",
+        "Item Code",
+        "BOQ Item No.",
+        "Current Stage\n(auto)",
+        "Floor / Area",
+        "Floor Plan\n(link / ref)",
+        "Description",
+        "Site Audit\nStatus",
+        "Height\n(in)",
+        "Width\n(in)",
+        "Qty\n(Nos.)",
+        "Total Area\n(sq ft) (auto)",
+        "Photo\n(paste image)",
+        "Site Issue",
+        "Issue\nResolved?",
+        "Pre-Press",
+        "JC No.",
+        "Installation\nStatus",
+    ]
+    walls = workbook.create_sheet("Wall Graphics")
+    for column, header in enumerate(headers, start=1):
+        walls.cell(6, column, header)
+    rows = [
+        [
+            1,
+            None,
+            "BO1",
+            None,
+            "4th Floor",
+            None,
+            "Wall 01",
+            "Measured",
+            114,
+            116.5,
+            1,
+            None,
+            None,
+            "No issues",
+            "N/A",
+            "Not Started",
+            None,
+            "Not Started",
+        ],
+        [
+            2,
+            None,
+            "BO1",
+            None,
+            "5th Floor",
+            None,
+            "Wall 02",
+            "Measured",
+            122,
+            444,
+            1,
+            None,
+            None,
+            "Needs oil primer",
+            None,
+            "Sent for Production",
+            7377,
+            "Bogus status",
+        ],
+        [
+            3,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "Not Started",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "No issues",
+            "N/A",
+            "Not Started",
+            None,
+            "Not Started",
+        ],
+    ]
+    for row_index, row in enumerate(rows, start=7):
+        for column, value in enumerate(row, start=1):
+            walls.cell(row_index, column, value)
+    frames = workbook.create_sheet("Frames")
+    for column, header in enumerate(headers, start=1):
+        frames.cell(6, column, header)
+    frames.cell(7, 1, 1)
+    frames.cell(7, 5, "Reception")
+    frames.cell(7, 7, "A3 frames")
+    frames.cell(7, 11, 6)
+    workbook.create_sheet("Glass Film").cell(6, 2, "Item Code")
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+@pytest.mark.contract
+class TestExcelImport:
+    @pytest.mark.django_db
+    def test_imports_template_layout(self, session_client, workspace, project):
+        upload = SimpleUploadedFile("Fictional_Tower.xlsx", build_tracker_workbook())
+        response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
+        assert response.status_code == 201, response.data
+        report = response.data
+        assert report["items"] == {"Wall Graphics": 2, "Frames": 1}
+        assert report["floors"] == ["4th Floor", "5th Floor", "Reception"]
+        assert report["coordinator"] == "A. Person"
+        assert report["site_visits"] == 1
+        assert any("Bogus status" in warning for warning in report["warnings"])
+
+        listing = session_client.get(url(workspace, project, "items/")).data["items"]
+        codes = sorted(item["item_code"] for item in listing)
+        assert codes == ["FR1", "W1", "W2"]
+        w1 = next(item for item in listing if item["item_code"] == "W1")
+        assert w1["area_sqft"] == "92.23" and w1["current_stage"] == "Measured"
+        w2 = next(item for item in listing if item["item_code"] == "W2")
+        assert w2["jc_no"] == "7377" and w2["issue_resolved"] == "No" and w2["current_stage"] == "Sent for Production"
+        frame = next(item for item in listing if item["item_code"] == "FR1")
+        assert frame["unit"] == "nos" and frame["qty"] == "6.00"
+
+        profile = E9ProjectProfile.objects.get(project=project)
+        assert profile.client_name == "Fictional Co" and profile.deadline == date(2026, 12, 20)
+        assert profile.target_site_audit == date(2026, 11, 10)
+        # only scopes with rows are switched on
+        enabled = [
+            row["label"] for row in session_client.get(url(workspace, project, "scopes/")).data if row["enabled"]
+        ]
+        assert enabled == ["Wall Graphics", "Frames"]
+        assert E9ChangeLog.objects.filter(project=project, action="imported").exists()
+
+    @pytest.mark.django_db
+    def test_importing_twice_does_not_clash_codes(self, session_client, workspace, project):
+        for _ in range(2):
+            upload = SimpleUploadedFile("t.xlsx", build_tracker_workbook())
+            assert (
+                session_client.post(
+                    url(workspace, project, "import/"), {"file": upload}, format="multipart"
+                ).status_code
+                == 201
+            )
+        codes = sorted(item.item_number for item in E9ScopeItem.objects.filter(project=project, scope="wall_graphics"))
+        assert codes == [1, 2, 3, 4]
+
+    @pytest.mark.django_db
+    def test_rejects_non_excel(self, session_client, workspace, project):
+        upload = SimpleUploadedFile("photo.xlsx", b"not a workbook")
+        response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
+        assert response.status_code == 400

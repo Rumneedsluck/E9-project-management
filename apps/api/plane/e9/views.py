@@ -11,9 +11,15 @@ from plane.app.permissions import ROLE, allow_permission
 from plane.app.views.base import BaseAPIView
 from plane.db.models import Issue, Project, ProjectMember, StateGroup, WorkspaceMember
 
-from . import tracker
 from .models import E9ProjectProfile, E9ScopeItem
-from .serializers import E9ProjectProfileSerializer, E9ScopeItemSerializer, default_profile_data
+from .serializers import (
+    ITEM_EDITABLE_FIELDS,
+    PROFILE_FIELDS,
+    E9ProjectProfileSerializer,
+    E9ScopeItemSerializer,
+    default_profile_data,
+)
+from .services import ensure_floors, item_code, record, record_changes, scope_map, snapshot
 
 
 def _is_workspace_admin(user, slug):
@@ -141,11 +147,16 @@ class E9ProjectDetailEndpoint(BaseAPIView):
             profile = E9ProjectProfile.all_objects.select_for_update().filter(project=project).first()
             if profile is None:
                 profile = E9ProjectProfile(project=project, workspace_id=project.workspace_id)
+            is_new = profile._state.adding
+            before = {} if is_new else snapshot(profile, PROFILE_FIELDS)
             profile.deleted_at = None
             serializer = E9ProjectProfileSerializer(profile, data=request.data, partial=True)
             if not serializer.is_valid():
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             serializer.save()
+            if not is_new:
+                changed = {field: getattr(profile, field) for field in serializer.validated_data}
+                record_changes(project, request.user, "project", project.id, project.name, before, changed)
 
         data = _serialize_projects(Project.objects.filter(pk=project.id), request.user, slug)
         return Response(data[0], status=status.HTTP_200_OK)
@@ -182,10 +193,11 @@ class E9ScopeItemListEndpoint(BaseAPIView):
         if project is None:
             return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
         items = E9ScopeItem.objects.filter(project=project)
+        scopes = scope_map(project)
         return Response(
             {
                 "can_edit": _can_update_items(request.user, slug, project.id),
-                "items": E9ScopeItemSerializer(items, many=True).data,
+                "items": E9ScopeItemSerializer(items, many=True, context={"scopes": scopes}).data,
             },
             status=status.HTTP_200_OK,
         )
@@ -199,8 +211,9 @@ class E9ScopeItemListEndpoint(BaseAPIView):
             return Response({"error": "Guests can view the tracker but not change it."}, status=403)
 
         scope = request.data.get("scope")
-        if scope not in tracker.SCOPES:
-            return Response({"scope": "Pick a valid scope."}, status=status.HTTP_400_BAD_REQUEST)
+        scopes = scope_map(project)
+        if scope not in scopes or not scopes[scope].enabled:
+            return Response({"scope": "Pick a scope that is switched on for this project."}, status=400)
         try:
             count = int(request.data.get("count", 1))
         except (TypeError, ValueError):
@@ -230,7 +243,20 @@ class E9ScopeItemListEndpoint(BaseAPIView):
                 )
                 for index in range(1, count + 1)
             ]
-        return Response(E9ScopeItemSerializer(created, many=True).data, status=status.HTTP_201_CREATED)
+            codes = [item_code(item, scopes) for item in created]
+            record(
+                project,
+                request.user,
+                "item",
+                "created",
+                created[0].id if len(created) == 1 else None,
+                codes[0] if len(codes) == 1 else f"{codes[0]}–{codes[-1]}",
+                new=f"{len(created)} row(s) added to {scopes[scope].label}",
+            )
+            if serializer.validated_data.get("floor_area"):
+                ensure_floors(project, [serializer.validated_data["floor_area"]], request.user)
+        data = E9ScopeItemSerializer(created, many=True, context={"scopes": scopes}).data
+        return Response(data, status=status.HTTP_201_CREATED)
 
 
 class E9ScopeItemDetailEndpoint(BaseAPIView):
@@ -249,10 +275,17 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
             return Response({"error": "Item not found."}, status=status.HTTP_404_NOT_FOUND)
         if not _can_update_items(request.user, slug, project_id):
             return Response({"error": "Guests can view the tracker but not change it."}, status=403)
-        serializer = E9ScopeItemSerializer(item, data=request.data, partial=True)
+        scopes = scope_map(item.project)
+        before = snapshot(item, ITEM_EDITABLE_FIELDS)
+        serializer = E9ScopeItemSerializer(item, data=request.data, partial=True, context={"scopes": scopes})
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        serializer.save()
+        with transaction.atomic():
+            serializer.save()
+            changed = {field: getattr(item, field) for field in serializer.validated_data if field != "sort_order"}
+            record_changes(item.project, request.user, "item", item.id, item_code(item, scopes), before, changed)
+            if "floor_area" in serializer.validated_data:
+                ensure_floors(item.project, [item.floor_area], request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
@@ -262,5 +295,9 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
             return Response({"error": "Item not found."}, status=status.HTTP_404_NOT_FOUND)
         if not _can_update_items(request.user, slug, project_id):
             return Response({"error": "Guests can view the tracker but not change it."}, status=403)
-        item.delete()
+        code = item_code(item, scope_map(item.project))
+        details = " – ".join(part for part in (item.floor_area, item.description) if part)
+        with transaction.atomic():
+            item.delete()
+            record(item.project, request.user, "item", "deleted", item.id, code, old=details or code)
         return Response(status=status.HTTP_204_NO_CONTENT)

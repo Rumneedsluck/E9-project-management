@@ -85,6 +85,15 @@ SITE_ISSUES = {
 for _scope in ("3d_items", "non_tender", "others"):
     SITE_ISSUES[_scope] = SITE_ISSUES["internal_signages"]
 ALL_SITE_ISSUES = sorted({issue for issues in SITE_ISSUES.values() for issue in issues})
+# Scopes the team adds themselves use the general list
+GENERIC_SITE_ISSUES = SITE_ISSUES["internal_signages"]
+
+
+def site_issues_for(scope_key):
+    return SITE_ISSUES.get(scope_key, GENERIC_SITE_ISSUES)
+
+
+FLOOR_STATUS = ["Not Started", "In Progress", "Handed Over"]
 
 SITE_AUDIT_STATUS = ["Not Started", "Visit Scheduled", "Measured", "Re-measure Needed"]
 ISSUE_RESOLVED = ["Yes", "No", "N/A"]
@@ -98,9 +107,9 @@ CLIENT_SIGN_OFF = ["Pending", "Signed Off", "Rework Required"]
 UNIT_OVERRIDE = ["", "sqft", "nos"]
 
 
-def item_unit(scope, height, width, unit_override=""):
-    """'sqft' or 'nos' for an item, following the template's unit rules."""
-    rule = SCOPES[scope][2]
+def item_unit(unit_mode, height, width, unit_override=""):
+    """'sqft' or 'nos' for an item. unit_mode is the scope's setting: sqft, nos or either."""
+    rule = unit_mode if unit_mode in ("sqft", "nos", "either") else "either"
     if rule != "either":
         return rule
     if unit_override in ("sqft", "nos"):
