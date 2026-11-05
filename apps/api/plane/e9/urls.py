@@ -21,6 +21,23 @@ from .views_setup import (
     E9ScopeListEndpoint,
 )
 
+from .views_boq import (
+    E9AmendmentDetailEndpoint,
+    E9AmendmentListEndpoint,
+    E9BillDetailEndpoint,
+    E9BillListEndpoint,
+    E9BoqEndpoint,
+    E9BoqLineDetailEndpoint,
+    E9BoqLineListEndpoint,
+    E9LogEntryEndpoint,
+    E9LogsEndpoint,
+    E9PODetailEndpoint,
+    E9POListEndpoint,
+    E9ReprintDetailEndpoint,
+    E9ReprintListEndpoint,
+    E9SummaryEndpoint,
+)
+
 P = "workspaces/<str:slug>/e9/projects/<uuid:project_id>"
 
 urlpatterns = [
@@ -60,4 +77,26 @@ urlpatterns = [
     ),
     path(f"{P}/history/", E9HistoryEndpoint.as_view(), name="e9-history"),
     path(f"{P}/import/", E9ImportEndpoint.as_view(), name="e9-import"),
+    # BOQ, POs, amendments, reprints
+    path(f"{P}/boq/", E9BoqEndpoint.as_view(), name="e9-boq"),
+    path(f"{P}/boq/pos/", E9POListEndpoint.as_view(), name="e9-pos"),
+    path(f"{P}/boq/pos/<uuid:po_id>/", E9PODetailEndpoint.as_view(), name="e9-po-detail"),
+    path(f"{P}/boq/lines/", E9BoqLineListEndpoint.as_view(), name="e9-boq-lines"),
+    path(f"{P}/boq/lines/<uuid:line_id>/", E9BoqLineDetailEndpoint.as_view(), name="e9-boq-line-detail"),
+    path(f"{P}/boq/amendments/", E9AmendmentListEndpoint.as_view(), name="e9-amendments"),
+    path(
+        f"{P}/boq/amendments/<uuid:amendment_id>/",
+        E9AmendmentDetailEndpoint.as_view(),
+        name="e9-amendment-detail",
+    ),
+    path(f"{P}/reprints/", E9ReprintListEndpoint.as_view(), name="e9-reprints"),
+    path(f"{P}/reprints/<uuid:reprint_id>/", E9ReprintDetailEndpoint.as_view(), name="e9-reprint-detail"),
+    # JC & DC logs
+    path(f"{P}/logs/", E9LogsEndpoint.as_view(), name="e9-logs"),
+    path(f"{P}/logs/<str:kind>/", E9LogEntryEndpoint.as_view(), name="e9-log-entry"),
+    # Billing
+    path(f"{P}/bills/", E9BillListEndpoint.as_view(), name="e9-bills"),
+    path(f"{P}/bills/<uuid:bill_id>/", E9BillDetailEndpoint.as_view(), name="e9-bill-detail"),
+    # Company summary
+    path("workspaces/<str:slug>/e9/summary/", E9SummaryEndpoint.as_view(), name="e9-summary"),
 ]

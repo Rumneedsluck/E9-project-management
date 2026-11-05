@@ -251,6 +251,11 @@ class E9AttachmentKind(models.TextChoices):
     SITE_AUDIT = "site_audit", "Site audit report"
     DC_SCAN = "dc_scan", "Signed DC"
     DOCUMENT = "document", "Document"
+    PO = "po", "PO / BOQ document"
+    MAIL = "mail", "Client mail / approval"
+    CERTIFICATE = "certificate", "Signed certification sheet"
+    PI = "pi", "Proforma invoice"
+    WCC = "wcc", "Work completion certificate"
 
 
 class E9Attachment(BaseModel):
@@ -269,6 +274,8 @@ class E9Attachment(BaseModel):
     label = models.CharField(max_length=120, blank=True, default="", help_text="e.g. Visit 1 - 12 Nov")
     version = models.CharField(max_length=10, blank=True, default="", help_text="Draft or Final")
     sent_on = models.DateField(null=True, blank=True, help_text="Sent to pre-press on")
+    # the PO, amendment, bill or DC this file belongs to (kind says which)
+    ref_id = models.UUIDField(null=True, blank=True)
 
     class Meta:
         verbose_name = "E9 Attachment"
@@ -303,3 +310,249 @@ class E9ChangeLog(BaseModel):
 
     def __str__(self):
         return f"{self.entity_label} {self.action} {self.field}"
+
+
+# ---------------------------------------------------------------------------
+# BOQ, POs, amendments, reprints, JC / DC logs and billing
+# ---------------------------------------------------------------------------
+
+
+class E9POKind(models.TextChoices):
+    ORIGINAL = "original", "Original BOQ / PO"
+    NEW = "new", "New PO"
+
+
+class E9PurchaseOrder(BaseModel):
+    """The client's BOQ / PO. A project starts with the original one; a new PO for other work is another row."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_pos")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_pos")
+    kind = models.CharField(max_length=10, choices=E9POKind.choices, default=E9POKind.ORIGINAL)
+    number = models.CharField(max_length=80, blank=True, default="", help_text="PO / work order number")
+    title = models.CharField(max_length=160, blank=True, default="")
+    po_date = models.DateField(null=True, blank=True)
+    link = models.CharField(max_length=1000, blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+    sort_order = models.FloatField(default=65535)
+
+    class Meta:
+        verbose_name = "E9 Purchase Order"
+        verbose_name_plural = "E9 Purchase Orders"
+        db_table = "e9_purchase_orders"
+        ordering = ("sort_order", "created_at")
+
+    def __str__(self):
+        return self.title or self.number or "PO"
+
+
+class E9AmendmentStatus(models.TextChoices):
+    REQUESTED = "requested", "Mail received - waiting for confirmation"
+    CONFIRMED = "confirmed", "Confirmed (amended BOQ / PO)"
+    REJECTED = "rejected", "Not going ahead"
+
+
+class E9Amendment(BaseModel):
+    """Extra quantity or new lines asked for by mail. Counts only once it is confirmed."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_amendments")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_amendments")
+    po = models.ForeignKey(E9PurchaseOrder, on_delete=models.CASCADE, related_name="amendments")
+    reference = models.CharField(max_length=160, blank=True, default="", help_text="Amended PO no. / mail subject")
+    requested_on = models.DateField(null=True, blank=True)
+    confirmed_on = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=E9AmendmentStatus.choices, default=E9AmendmentStatus.REQUESTED)
+    mail_link = models.CharField(max_length=1000, blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 BOQ Amendment"
+        verbose_name_plural = "E9 BOQ Amendments"
+        db_table = "e9_boq_amendments"
+        ordering = ("created_at",)
+
+    def __str__(self):
+        return self.reference or "Amendment"
+
+
+class E9BoqUnit(models.TextChoices):
+    SQFT = "sqft", "Sq Ft"
+    NOS = "nos", "Nos"
+
+
+class E9BoqLine(BaseModel):
+    """One BOQ line, e.g. BO1 Wall Graphics 1,200 sq ft. Tracker rows point at it through their BOQ No."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_boq_lines")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_boq_lines")
+    po = models.ForeignKey(E9PurchaseOrder, on_delete=models.CASCADE, related_name="lines")
+    # set when the line was added by an amendment (then it counts only once that amendment is confirmed)
+    amendment = models.ForeignKey(
+        E9Amendment, on_delete=models.CASCADE, related_name="new_lines", null=True, blank=True
+    )
+    line_no = models.CharField(max_length=60, help_text="BOQ Item No., e.g. BO1")
+    scope = models.CharField(max_length=40, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    unit = models.CharField(max_length=6, choices=E9BoqUnit.choices, default=E9BoqUnit.NOS)
+    qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    remarks = models.TextField(blank=True, default="")
+    sort_order = models.FloatField(default=65535)
+
+    class Meta:
+        verbose_name = "E9 BOQ Line"
+        verbose_name_plural = "E9 BOQ Lines"
+        db_table = "e9_boq_lines"
+        ordering = ("sort_order", "created_at")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "line_no"], condition=Q(deleted_at__isnull=True), name="e9_boq_unique_line_no"
+            )
+        ]
+
+    def __str__(self):
+        return self.line_no
+
+
+class E9AmendmentChange(BaseModel):
+    """'+5 on BO3' inside an amendment."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_amendment_changes")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_amendment_changes")
+    amendment = models.ForeignKey(E9Amendment, on_delete=models.CASCADE, related_name="changes")
+    boq_line = models.ForeignKey(E9BoqLine, on_delete=models.CASCADE, related_name="amendment_changes")
+    qty_change = models.DecimalField(max_digits=12, decimal_places=2)
+
+    class Meta:
+        verbose_name = "E9 BOQ Amendment Change"
+        verbose_name_plural = "E9 BOQ Amendment Changes"
+        db_table = "e9_boq_amendment_changes"
+        ordering = ("created_at",)
+
+
+class E9ReprintCause(models.TextChoices):
+    INTERNAL = "internal", "Our mistake (reprint, not billable)"
+    CLIENT = "client", "Client change (billable)"
+
+
+class E9Reprint(BaseModel):
+    """A reprint. Our own mistakes are only reprints; client changes are billed."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_reprints")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_reprints")
+    boq_line = models.ForeignKey(E9BoqLine, on_delete=models.SET_NULL, related_name="reprints", null=True, blank=True)
+    item = models.ForeignKey(E9ScopeItem, on_delete=models.SET_NULL, related_name="reprints", null=True, blank=True)
+    cause = models.CharField(max_length=10, choices=E9ReprintCause.choices, default=E9ReprintCause.INTERNAL)
+    qty = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="In the BOQ line's unit")
+    reason = models.TextField(blank=True, default="")
+    jc_no = models.CharField(max_length=60, blank=True, default="")
+    reprint_date = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "E9 Reprint"
+        verbose_name_plural = "E9 Reprints"
+        db_table = "e9_reprints"
+        ordering = ("-created_at",)
+
+
+class E9JobCard(BaseModel):
+    """Details typed on the JC log. The JC numbers and their items come from the tracker rows."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_job_cards")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_job_cards")
+    number = models.CharField(max_length=60)
+    jc_date = models.DateField(null=True, blank=True)
+    vendor = models.CharField(max_length=120, blank=True, default="")
+    expected_date = models.DateField(null=True, blank=True)
+    received = models.CharField(max_length=10, blank=True, default="Pending")
+    received_date = models.DateField(null=True, blank=True)
+    eproof_sent_on = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 Job Card"
+        verbose_name_plural = "E9 Job Cards"
+        db_table = "e9_job_cards"
+        ordering = ("created_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "number"], condition=Q(deleted_at__isnull=True), name="e9_jc_unique_number"
+            )
+        ]
+
+
+class E9Challan(BaseModel):
+    """Details typed on the DC log. The DC numbers and their items come from the tracker rows."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_challans")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_challans")
+    number = models.CharField(max_length=60)
+    dc_date = models.DateField(null=True, blank=True)
+    dispatched_from = models.CharField(max_length=120, blank=True, default="")
+    sent_by = models.CharField(max_length=120, blank=True, default="")
+    vehicle = models.CharField(max_length=120, blank=True, default="")
+    invoice_no = models.CharField(max_length=80, blank=True, default="")
+    invoice_date = models.DateField(null=True, blank=True)
+    e9_signoff = models.CharField(max_length=10, blank=True, default="Pending")
+    client_signoff = models.CharField(max_length=10, blank=True, default="Pending")
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 Delivery Challan"
+        verbose_name_plural = "E9 Delivery Challans"
+        db_table = "e9_challans"
+        ordering = ("created_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "number"], condition=Q(deleted_at__isnull=True), name="e9_dc_unique_number"
+            )
+        ]
+
+
+class E9Bill(BaseModel):
+    """Billing for one PO, in 4 stages: certification -> proforma invoice -> PI signed & submitted -> WCC."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_bills")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_bills")
+    po = models.ForeignKey(E9PurchaseOrder, on_delete=models.CASCADE, related_name="bills")
+    title = models.CharField(max_length=160, blank=True, default="")
+    # 1 · Certification
+    cert_number = models.CharField(max_length=80, blank=True, default="")
+    cert_signed_on = models.DateField(null=True, blank=True, help_text="Client signed the certification sheet")
+    cert_to_accounts_on = models.DateField(null=True, blank=True, help_text="Given to Accounts")
+    # 2 · Proforma invoice
+    pi_number = models.CharField(max_length=80, blank=True, default="")
+    pi_date = models.DateField(null=True, blank=True)
+    pi_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    # 3 · PI signed & submitted
+    pi_signed_on = models.DateField(null=True, blank=True)
+    pi_submitted_on = models.DateField(null=True, blank=True)
+    # 4 · Work completion certificate
+    wcc_number = models.CharField(max_length=80, blank=True, default="")
+    wcc_date = models.DateField(null=True, blank=True)
+    wcc_acknowledged_on = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 Bill"
+        verbose_name_plural = "E9 Bills"
+        db_table = "e9_bills"
+        ordering = ("created_at",)
+
+    def __str__(self):
+        return self.title or "Bill"
+
+
+class E9BillLine(BaseModel):
+    """Certified quantity of one BOQ line on a bill."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_bill_lines")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_bill_lines")
+    bill = models.ForeignKey(E9Bill, on_delete=models.CASCADE, related_name="lines")
+    boq_line = models.ForeignKey(E9BoqLine, on_delete=models.CASCADE, related_name="bill_lines")
+    certified_qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        verbose_name = "E9 Bill Line"
+        verbose_name_plural = "E9 Bill Lines"
+        db_table = "e9_bill_lines"
+        ordering = ("created_at",)

@@ -178,12 +178,59 @@ def as_text(value):
     return str(value)
 
 
+FIELD_LABELS.update(
+    {
+        "line_no": "BOQ Item No.",
+        "unit": "Unit",
+        "rate": "Rate",
+        "number": "Number",
+        "po_date": "PO date",
+        "link": "Link",
+        "reference": "Reference",
+        "requested_on": "Mail received on",
+        "confirmed_on": "Confirmed on",
+        "mail_link": "Mail link",
+        "changes": "Quantity changes",
+        "cause": "Caused by",
+        "reason": "Reason",
+        "reprint_date": "Reprint date",
+        "jc_date": "JC date",
+        "vendor": "Vendor",
+        "expected_date": "Expected date",
+        "received": "Received?",
+        "received_date": "Received date",
+        "eproof_sent_on": "E-proof sent on",
+        "dc_date": "DC date",
+        "dispatched_from": "Dispatched from",
+        "sent_by": "Sent by",
+        "vehicle": "Vehicle / transporter",
+        "invoice_no": "Invoice no.",
+        "invoice_date": "Invoice date",
+        "e9_signoff": "E9 sign-off",
+        "client_signoff": "Client sign-off",
+        "cert_number": "Certification no.",
+        "cert_signed_on": "Certification signed by client",
+        "cert_to_accounts_on": "Given to Accounts",
+        "pi_number": "PI no.",
+        "pi_date": "PI date",
+        "pi_amount": "PI amount",
+        "pi_signed_on": "PI signed",
+        "pi_submitted_on": "PI submitted",
+        "wcc_number": "WCC no.",
+        "wcc_date": "WCC date",
+        "wcc_acknowledged_on": "WCC acknowledged",
+    }
+)
+
 # The same field name means something else on a floor / a scope
 ENTITY_FIELD_LABELS = {
     ("floor", "status"): "Floor status",
     ("floor", "name"): "Floor name",
     ("scope", "label"): "Scope name",
     ("scope", "prefix"): "Code prefix",
+    ("boq", "qty"): "BOQ qty",
+    ("reprint", "qty"): "Reprint qty",
+    ("po", "title"): "PO name",
 }
 
 

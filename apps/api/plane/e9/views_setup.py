@@ -5,6 +5,7 @@
 """Project set-up endpoints: scopes, floors, photos & PDFs, history and Excel import."""
 
 import mimetypes
+import uuid
 
 from django.db import models, transaction
 from django.http import FileResponse
@@ -16,7 +17,7 @@ from plane.app.permissions import ROLE, allow_permission
 from plane.app.views.base import BaseAPIView
 
 from . import importer
-from .models import E9Attachment, E9ChangeLog, E9Floor, E9ProjectScope, E9ScopeItem, E9UnitMode
+from .models import E9Attachment, E9AttachmentKind, E9ChangeLog, E9Floor, E9ProjectScope, E9ScopeItem, E9UnitMode
 from .serializers import (
     E9AttachmentSerializer,
     E9ChangeLogSerializer,
@@ -271,6 +272,8 @@ class E9AttachmentListEndpoint(BaseAPIView):
             attachments = attachments.filter(kind=request.query_params["kind"])
         if request.query_params.get("item"):
             attachments = attachments.filter(item_id=request.query_params["item"])
+        if request.query_params.get("ref"):
+            attachments = attachments.filter(ref_id=request.query_params["ref"])
         return Response(E9AttachmentSerializer(attachments, many=True).data)
 
     @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
@@ -282,8 +285,14 @@ class E9AttachmentListEndpoint(BaseAPIView):
         if not _can_update_items(request.user, slug, project.id):
             return _forbidden()
         kind = request.data.get("kind", "photo")
-        if kind not in ("photo", "site_audit", "dc_scan", "document"):
+        if kind not in E9AttachmentKind.values:
             return Response({"kind": "Unknown kind."}, status=400)
+        ref_id = request.data.get("ref_id") or None
+        if ref_id:
+            try:
+                ref_id = uuid.UUID(str(ref_id))
+            except ValueError:
+                return Response({"ref_id": "Not a valid id."}, status=400)
         item = None
         if request.data.get("item"):
             item = E9ScopeItem.objects.filter(project=project, pk=request.data["item"]).first()
@@ -315,7 +324,12 @@ class E9AttachmentListEndpoint(BaseAPIView):
         with transaction.atomic():
             for upload in files or [None]:
                 attachment = E9Attachment(
-                    project=project, workspace_id=project.workspace_id, item=item, kind=kind, **meta.validated_data
+                    project=project,
+                    workspace_id=project.workspace_id,
+                    item=item,
+                    kind=kind,
+                    ref_id=ref_id,
+                    **meta.validated_data,
                 )
                 if upload is not None:
                     attachment.name = attachment.name or upload.name[:255]
