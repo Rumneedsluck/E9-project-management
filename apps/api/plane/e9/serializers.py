@@ -188,6 +188,7 @@ class E9AttachmentSerializer(serializers.ModelSerializer):
             "id",
             "item",
             "kind",
+            "ref_id",
             "name",
             "size",
             "content_type",
@@ -199,7 +200,17 @@ class E9AttachmentSerializer(serializers.ModelSerializer):
             "created_at",
             "created_by",
         ]
-        read_only_fields = ["id", "item", "kind", "size", "content_type", "has_file", "created_at", "created_by"]
+        read_only_fields = [
+            "id",
+            "item",
+            "kind",
+            "ref_id",
+            "size",
+            "content_type",
+            "has_file",
+            "created_at",
+            "created_by",
+        ]
 
     def get_has_file(self, attachment):
         return bool(attachment.file)

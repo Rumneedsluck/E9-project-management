@@ -356,6 +356,13 @@ def build_tracker_workbook():
     frames.cell(7, 11, 6)
     workbook.create_sheet("Glass Film").cell(6, 2, "Item Code")
     buffer = io.BytesIO()
+    boq = workbook.create_sheet("BOQ", 0)
+    boq["A1"] = "BOQ"
+    for column, header in enumerate(["#", "BOQ Item No.", "Scope", "Description", "Unit", "BOQ Qty", "Remarks"], 1):
+        boq.cell(4, column, header)
+    boq.append(["=ROW()-4", "BO1", "Wall Graphics", "Wall graphics", "Sq Ft", 1200, None])
+    boq.append(["=ROW()-4", "BO2", "Frames", "A3 frames", "Nos", 10, "Black frame"])
+    boq.append(["=ROW()-4", None, None, None, None, None, None])
     workbook.save(buffer)
     return buffer.getvalue()
 
@@ -393,6 +400,17 @@ class TestExcelImport:
         ]
         assert enabled == ["Wall Graphics", "Frames"]
         assert E9ChangeLog.objects.filter(project=project, action="imported").exists()
+        # the BOQ sheet lands on the original PO, and the tracker rows count against it
+        assert report["boq_lines"] == 2
+        boq = session_client.get(url(workspace, project, "boq/")).data
+        assert [po["title"] for po in boq["pos"]] == ["Original BOQ / PO"]
+        lines = {line["line_no"]: line for line in boq["lines"]}
+        assert (
+            lines["BO1"]["unit"] == "sqft"
+            and lines["BO1"]["qty"] == "1200.00"
+            and lines["BO1"]["scope"] == "wall_graphics"
+        )
+        assert lines["BO2"]["unit"] == "nos" and lines["BO2"]["remarks"] == "Black frame"
 
     @pytest.mark.django_db
     def test_importing_twice_does_not_clash_codes(self, session_client, workspace, project):

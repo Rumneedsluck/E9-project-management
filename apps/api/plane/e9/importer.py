@@ -244,6 +244,96 @@ def _clean_item(values, scope_key, sheet_title, warnings):
     return item
 
 
+BOQ_COLUMNS = {
+    "boq item no.": "line_no",
+    "boq item no": "line_no",
+    "scope": "scope",
+    "description": "description",
+    "unit": "unit",
+    "boq qty": "qty",
+    "remarks": "remarks",
+    "rate": "rate",
+}
+
+
+def _read_boq_sheet(workbook, warnings):
+    sheet = next((ws for ws in workbook.worksheets if ws.title.strip().lower() == "boq"), None)
+    if sheet is None:
+        return []
+    columns = None
+    header_row = None
+    for index, row in enumerate(sheet.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
+        headers = [_header(cell) for cell in row]
+        if "boq item no." in headers or "boq item no" in headers:
+            columns = {position: BOQ_COLUMNS.get(header) for position, header in enumerate(headers)}
+            header_row = index
+            break
+    if columns is None:
+        warnings.append("'BOQ': header row not found, sheet skipped.")
+        return []
+    lines = []
+    for row in sheet.iter_rows(min_row=header_row + 1, max_row=sheet.max_row, values_only=True):
+        values = {columns.get(position): cell for position, cell in enumerate(row) if columns.get(position)}
+        line_no = _text(values.get("line_no"))[:60]
+        if not line_no or line_no.startswith("="):
+            continue
+        unit_text = _text(values.get("unit")).lower()
+        unit = "sqft" if "sq" in unit_text else "nos"
+        if unit_text and "sq" not in unit_text and not unit_text.startswith("no"):
+            warnings.append(f"BOQ {line_no}: unit '{values.get('unit')}' is counted as Nos.")
+        lines.append(
+            {
+                "line_no": line_no,
+                "scope_label": _text(values.get("scope")),
+                "description": _text(values.get("description")),
+                "unit": unit,
+                "qty": _number(values.get("qty")) or Decimal("0"),
+                "rate": _number(values.get("rate")),
+                "remarks": _text(values.get("remarks")),
+            }
+        )
+    return lines
+
+
+def _save_boq(project, lines, scopes, user):
+    """Put the BOQ sheet's lines on the project's original PO. Lines already there are left alone."""
+    if not lines:
+        return 0
+    from .models import E9BoqLine, E9POKind, E9PurchaseOrder
+
+    po = E9PurchaseOrder.objects.filter(project=project, kind=E9POKind.ORIGINAL).order_by("created_at").first()
+    if po is None:
+        po = E9PurchaseOrder(
+            project=project, workspace_id=project.workspace_id, kind=E9POKind.ORIGINAL, title="Original BOQ / PO"
+        )
+        po.save(created_by_id=user.id)
+    by_label = {scope.label.lower(): key for key, scope in scopes.items()}
+    taken = E9BoqLine.objects.filter(project=project).values_list("line_no", flat=True)
+    existing = {line_no.upper() for line_no in taken}
+    order = E9BoqLine.objects.filter(project=project).count() * 1000
+    added = 0
+    for line in lines:
+        if line["line_no"].upper() in existing:
+            continue
+        existing.add(line["line_no"].upper())
+        order += 1000
+        E9BoqLine(
+            project=project,
+            workspace_id=project.workspace_id,
+            po=po,
+            line_no=line["line_no"],
+            scope=by_label.get(line["scope_label"].lower(), ""),
+            description=line["description"] or line["scope_label"],
+            unit=line["unit"],
+            qty=line["qty"],
+            rate=line["rate"],
+            remarks=line["remarks"],
+            sort_order=order,
+        ).save(created_by_id=user.id)
+        added += 1
+    return added
+
+
 def import_tracker(project, upload, user):
     try:
         workbook = openpyxl.load_workbook(upload, data_only=True, read_only=False)
@@ -252,6 +342,7 @@ def import_tracker(project, upload, user):
 
     warnings = []
     info, visits, coordinator = _read_project_info(workbook, warnings)
+    boq_lines = _read_boq_sheet(workbook, warnings)
     sheets = {}
     for sheet in workbook.worksheets:
         scope_key = SHEET_TO_SCOPE.get(sheet.title.strip().lower())
@@ -332,6 +423,8 @@ def import_tracker(project, upload, user):
             ).save(created_by_id=user.id)
             report["site_visits"] += 1
 
+        report["boq_lines"] = _save_boq(project, boq_lines, scopes, user)
+
         total = sum(report["items"].values())
         record(
             project,
@@ -340,7 +433,10 @@ def import_tracker(project, upload, user):
             "imported",
             None,
             getattr(upload, "name", "Excel tracker"),
-            new=f"{total} item(s), {len(report['floors'])} floor(s), {report['site_visits']} site visit(s)",
+            new=(
+                f"{total} item(s), {len(report['floors'])} floor(s), {report['site_visits']} site visit(s), "
+                f"{report['boq_lines']} BOQ line(s)"
+            ),
         )
     report["warnings"] = warnings[:50]
     return report
