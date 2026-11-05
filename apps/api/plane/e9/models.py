@@ -2,7 +2,13 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # See the LICENSE file for details.
 
+import os
+import uuid
+
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.db import models
+from django.db.models import Q
 
 from plane.db.models.base import BaseModel
 
@@ -63,6 +69,8 @@ class E9ProjectProfile(BaseModel):
     target_delivered = models.DateField(null=True, blank=True)
     target_installation = models.DateField(null=True, blank=True)
     target_sign_off = models.DateField(null=True, blank=True)
+    # Tracker columns this project does not use (their data is kept)
+    hidden_columns = models.JSONField(default=list, blank=True)
 
     class Meta:
         verbose_name = "E9 Project Profile"
@@ -83,7 +91,8 @@ class E9ScopeItem(BaseModel):
 
     project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_scope_items")
     workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_scope_items")
-    scope = models.CharField(max_length=32, choices=tracker.SCOPE_CHOICES)
+    # key of one of the project's E9ProjectScope rows (standard like "wall_graphics", or a custom one)
+    scope = models.CharField(max_length=40)
     item_number = models.PositiveIntegerField(help_text="W1 -> 1. Never reused within a project and scope.")
     sort_order = models.FloatField(default=65535)
 
@@ -139,15 +148,7 @@ class E9ScopeItem(BaseModel):
         ]
 
     def __str__(self):
-        return self.item_code
-
-    @property
-    def item_code(self):
-        return f"{tracker.SCOPES[self.scope][1]}{self.item_number}"
-
-    @property
-    def unit(self):
-        return tracker.item_unit(self.scope, self.height_in, self.width_in, self.unit_override)
+        return f"{self.scope} #{self.item_number}"
 
     @property
     def area_sqft(self):
@@ -156,3 +157,149 @@ class E9ScopeItem(BaseModel):
     @property
     def current_stage(self):
         return tracker.current_stage(self)
+
+
+class E9UnitMode(models.TextChoices):
+    SQFT = "sqft", "Size (H x W -> sq ft)"
+    NOS = "nos", "Numbers only (Nos)"
+    EITHER = "either", "Either (sq ft if a size is typed, else Nos)"
+
+
+class E9ProjectScope(BaseModel):
+    """A scope sheet that a project uses: one of the 9 standard ones, or one the team added."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_scopes")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_scopes")
+    key = models.CharField(max_length=40)
+    label = models.CharField(max_length=80)
+    prefix = models.CharField(max_length=6, help_text="Item code prefix, e.g. W -> W1, W2")
+    unit_mode = models.CharField(max_length=8, choices=E9UnitMode.choices, default=E9UnitMode.SQFT)
+    is_standard = models.BooleanField(default=False)
+    enabled = models.BooleanField(default=True)
+    sort_order = models.FloatField(default=65535)
+
+    class Meta:
+        verbose_name = "E9 Project Scope"
+        verbose_name_plural = "E9 Project Scopes"
+        db_table = "e9_project_scopes"
+        ordering = ("sort_order", "created_at")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "key"], condition=Q(deleted_at__isnull=True), name="e9_scope_unique_key"
+            ),
+            models.UniqueConstraint(
+                fields=["project", "prefix"], condition=Q(deleted_at__isnull=True), name="e9_scope_unique_prefix"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.label} <{self.project_id}>"
+
+
+class E9FloorStatus(models.TextChoices):
+    NOT_STARTED = "Not Started", "Not Started"
+    IN_PROGRESS = "In Progress", "In Progress"
+    HANDED_OVER = "Handed Over", "Handed Over"
+
+
+class E9Floor(BaseModel):
+    """A floor / area of the site. Items are grouped by it for floor-wise totals."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_floors")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_floors")
+    name = models.CharField(max_length=255)
+    sort_order = models.FloatField(default=65535)
+    status = models.CharField(max_length=20, choices=E9FloorStatus.choices, default=E9FloorStatus.NOT_STARTED)
+    target_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 Floor"
+        verbose_name_plural = "E9 Floors"
+        db_table = "e9_floors"
+        ordering = ("sort_order", "created_at")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "name"], condition=Q(deleted_at__isnull=True), name="e9_floor_unique_name"
+            )
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+def e9_upload_root():
+    """Where uploaded photos and PDFs are kept (outside the code, never committed to git)."""
+    return getattr(
+        settings,
+        "E9_UPLOAD_ROOT",
+        os.environ.get("E9_UPLOAD_ROOT") or os.path.join(os.path.dirname(settings.BASE_DIR), "e9_uploads"),
+    )
+
+
+def e9_storage():
+    return FileSystemStorage(location=e9_upload_root())
+
+
+def e9_upload_path(instance, filename):
+    extension = os.path.splitext(filename)[1].lower()[:10]
+    return f"{instance.project_id}/{uuid.uuid4().hex}{extension}"
+
+
+class E9AttachmentKind(models.TextChoices):
+    PHOTO = "photo", "Photo"
+    SITE_AUDIT = "site_audit", "Site audit report"
+    DC_SCAN = "dc_scan", "Signed DC"
+    DOCUMENT = "document", "Document"
+
+
+class E9Attachment(BaseModel):
+    """A photo or PDF: item photos, site audit reports, signed DCs. Either a stored file or an outside link."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_attachments")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_attachments")
+    item = models.ForeignKey(E9ScopeItem, on_delete=models.CASCADE, related_name="attachments", null=True, blank=True)
+    kind = models.CharField(max_length=20, choices=E9AttachmentKind.choices, default=E9AttachmentKind.PHOTO)
+    file = models.FileField(storage=e9_storage, upload_to=e9_upload_path, max_length=255, blank=True)
+    name = models.CharField(max_length=255, blank=True, default="")
+    size = models.PositiveIntegerField(default=0)
+    content_type = models.CharField(max_length=120, blank=True, default="")
+    link = models.CharField(max_length=1000, blank=True, default="")
+    # site audit reports
+    label = models.CharField(max_length=120, blank=True, default="", help_text="e.g. Visit 1 - 12 Nov")
+    version = models.CharField(max_length=10, blank=True, default="", help_text="Draft or Final")
+    sent_on = models.DateField(null=True, blank=True, help_text="Sent to pre-press on")
+
+    class Meta:
+        verbose_name = "E9 Attachment"
+        verbose_name_plural = "E9 Attachments"
+        db_table = "e9_attachments"
+        ordering = ("created_at",)
+
+    def __str__(self):
+        return self.name or str(self.id)
+
+
+class E9ChangeLog(BaseModel):
+    """History: who changed what, and when (created_by / created_at come from BaseModel)."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_changes")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_changes")
+    entity = models.CharField(max_length=20, help_text="item, project, scope, floor, attachment, import")
+    entity_id = models.UUIDField(null=True, blank=True)
+    entity_label = models.CharField(max_length=255, blank=True, default="")
+    action = models.CharField(max_length=20, help_text="created, updated, deleted, uploaded, imported")
+    field = models.CharField(max_length=60, blank=True, default="")
+    field_label = models.CharField(max_length=80, blank=True, default="")
+    old_value = models.TextField(blank=True, default="")
+    new_value = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 Change Log"
+        verbose_name_plural = "E9 Change Log"
+        db_table = "e9_change_log"
+        ordering = ("-created_at",)
+        indexes = [models.Index(fields=["project", "-created_at"], name="e9_change_project_idx")]
+
+    def __str__(self):
+        return f"{self.entity_label} {self.action} {self.field}"

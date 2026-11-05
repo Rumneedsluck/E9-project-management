@@ -5,7 +5,8 @@
 from rest_framework import serializers
 
 from . import tracker
-from .models import E9ProjectProfile, E9ScopeItem
+from .models import E9Attachment, E9ChangeLog, E9Floor, E9ProjectProfile, E9ProjectScope, E9ScopeItem
+from .services import item_code
 
 PROFILE_FIELDS = [
     "client_name",
@@ -26,6 +27,33 @@ PROFILE_FIELDS = [
     "target_delivered",
     "target_installation",
     "target_sign_off",
+    "hidden_columns",
+]
+
+# Tracker columns that can be hidden on a project (the item code is always shown)
+HIDEABLE_COLUMNS = [
+    "boq_item_no",
+    "current_stage",
+    "floor_area",
+    "floor_plan_ref",
+    "description",
+    "site_audit_status",
+    "size",
+    "photos",
+    "site_issue",
+    "pre_press",
+    "jc_no",
+    "production_status",
+    "material_status",
+    "quality_check",
+    "qc_done_by",
+    "dc_nos",
+    "dispatch_status",
+    "installation_status",
+    "installation_date",
+    "installed_by",
+    "client_sign_off",
+    "remarks",
 ]
 
 
@@ -34,6 +62,11 @@ class E9ProjectProfileSerializer(serializers.ModelSerializer):
         model = E9ProjectProfile
         fields = [*PROFILE_FIELDS, "updated_at"]
         read_only_fields = ["updated_at"]
+
+    def validate_hidden_columns(self, value):
+        if not isinstance(value, list) or any(column not in HIDEABLE_COLUMNS for column in value):
+            raise serializers.ValidationError("Unknown column.")
+        return list(dict.fromkeys(value))
 
     def validate(self, attrs):
         start_date = attrs.get("start_date", getattr(self.instance, "start_date", None))
@@ -81,8 +114,10 @@ ITEM_EDITABLE_FIELDS = [
 
 
 class E9ScopeItemSerializer(serializers.ModelSerializer):
-    item_code = serializers.CharField(read_only=True)
-    unit = serializers.CharField(read_only=True)
+    """Needs context["scopes"] = {key: E9ProjectScope} to work out codes and units."""
+
+    item_code = serializers.SerializerMethodField()
+    unit = serializers.SerializerMethodField()
     area_sqft = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, allow_null=True)
     current_stage = serializers.CharField(read_only=True)
 
@@ -101,13 +136,102 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "scope", "item_number", "updated_at"]
 
+    def _scopes(self):
+        return self.context.get("scopes", {})
+
+    def get_item_code(self, item):
+        return item_code(item, self._scopes())
+
+    def get_unit(self, item):
+        scope = self._scopes().get(item.scope)
+        mode = scope.unit_mode if scope else tracker.SCOPES.get(item.scope, ("", "", "either"))[2]
+        return tracker.item_unit(mode, item.height_in, item.width_in, item.unit_override)
+
     def validate(self, attrs):
         scope = self.instance.scope if self.instance else self.context.get("scope")
         issue = attrs.get("site_issue")
-        if scope and issue and issue not in tracker.SITE_ISSUES[scope]:
+        if scope and issue and issue not in tracker.site_issues_for(scope):
             raise serializers.ValidationError({"site_issue": f"'{issue}' is not a site issue for this scope."})
         for field in ("height_in", "width_in", "qty"):
             value = attrs.get(field)
             if value is not None and value < 0:
                 raise serializers.ValidationError({field: "Cannot be negative."})
         return attrs
+
+
+class E9ProjectScopeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = E9ProjectScope
+        fields = ["key", "label", "prefix", "unit_mode", "is_standard", "enabled", "sort_order"]
+        read_only_fields = ["key", "is_standard"]
+
+
+class E9FloorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = E9Floor
+        fields = ["id", "name", "sort_order", "status", "target_date", "notes"]
+        read_only_fields = ["id"]
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Give the floor a name.")
+        return value
+
+
+class E9AttachmentSerializer(serializers.ModelSerializer):
+    has_file = serializers.SerializerMethodField()
+
+    class Meta:
+        model = E9Attachment
+        fields = [
+            "id",
+            "item",
+            "kind",
+            "name",
+            "size",
+            "content_type",
+            "link",
+            "label",
+            "version",
+            "sent_on",
+            "has_file",
+            "created_at",
+            "created_by",
+        ]
+        read_only_fields = ["id", "item", "kind", "size", "content_type", "has_file", "created_at", "created_by"]
+
+    def get_has_file(self, attachment):
+        return bool(attachment.file)
+
+    def validate_version(self, value):
+        if value not in ("", "Draft", "Final"):
+            raise serializers.ValidationError("Use Draft or Final.")
+        return value
+
+
+class E9ChangeLogSerializer(serializers.ModelSerializer):
+    actor = serializers.SerializerMethodField()
+
+    class Meta:
+        model = E9ChangeLog
+        fields = [
+            "id",
+            "entity",
+            "entity_id",
+            "entity_label",
+            "action",
+            "field",
+            "field_label",
+            "old_value",
+            "new_value",
+            "created_at",
+            "actor",
+        ]
+
+    def get_actor(self, change):
+        user = change.created_by
+        if user is None:
+            return None
+        name = f"{user.first_name} {user.last_name}".strip() or user.display_name or user.email
+        return {"id": str(user.id), "name": name}

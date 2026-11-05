@@ -62,11 +62,11 @@ class TestTrackerRules:
         assert tracker.item_area_sqft(None, Decimal("240"), None) is None
 
     def test_units(self):
-        assert tracker.item_unit("wall_graphics", None, None) == "sqft"
-        assert tracker.item_unit("frames", Decimal("10"), Decimal("10")) == "nos"
-        assert tracker.item_unit("non_tender", Decimal("10"), Decimal("10")) == "sqft"
-        assert tracker.item_unit("non_tender", None, None) == "nos"
-        assert tracker.item_unit("others", Decimal("10"), Decimal("10"), "nos") == "nos"
+        assert tracker.item_unit("sqft", None, None) == "sqft"
+        assert tracker.item_unit("nos", Decimal("10"), Decimal("10")) == "nos"
+        assert tracker.item_unit("either", Decimal("10"), Decimal("10")) == "sqft"
+        assert tracker.item_unit("either", None, None) == "nos"
+        assert tracker.item_unit("either", Decimal("10"), Decimal("10"), "nos") == "nos"
 
     @pytest.mark.parametrize(
         "values,expected",
