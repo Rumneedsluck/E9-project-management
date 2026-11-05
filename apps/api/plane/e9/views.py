@@ -19,7 +19,7 @@ from .serializers import (
     E9ScopeItemSerializer,
     default_profile_data,
 )
-from .services import ensure_floors, item_code, record, record_changes, scope_map, snapshot
+from .services import ensure_floors, item_code, record, record_changes, renumber_scope, scope_map, snapshot
 
 
 def _is_workspace_admin(user, slug):
@@ -298,6 +298,21 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
         code = item_code(item, scope_map(item.project))
         details = " – ".join(part for part in (item.floor_area, item.description) if part)
         with transaction.atomic():
-            item.delete()
-            record(item.project, request.user, "item", "deleted", item.id, code, old=details or code)
+            # lock the project so two people deleting at once renumber one after the other
+            Project.objects.select_for_update().filter(pk=item.project_id).first()
+            scope_key, project, deleted_id = item.scope, item.project, item.id
+            item.delete(soft=False)
+            record(project, request.user, "item", "deleted", deleted_id, code, old=details or code)
+            moved = renumber_scope(project, scope_key, request.user)
+            if moved:
+                record(
+                    project,
+                    request.user,
+                    "item",
+                    "updated",
+                    None,
+                    code,
+                    field="item_code",
+                    new=f"{moved} code(s) moved up to close the gap after {code}",
+                )
         return Response(status=status.HTTP_204_NO_CONTENT)

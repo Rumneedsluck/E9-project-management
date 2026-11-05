@@ -290,3 +290,26 @@ def item_code(item, scopes):
     scope = scopes.get(item.scope)
     prefix = scope.prefix if scope else tracker.SCOPES.get(item.scope, ("", "?"))[1]
     return f"{prefix}{item.item_number}"
+
+
+def renumber_scope(project, scope_key, user=None):
+    """Close the gaps after rows are deleted: W1, W2, W3… in the order the rows are shown.
+
+    Returns how many codes changed. Rows are matched to photos, history and BOQ by id,
+    so only the visible code changes.
+    """
+    from django.db.models import F
+
+    # rows deleted earlier (soft) would block the numbers; they are gone for good
+    E9ScopeItem.all_objects.filter(project=project, scope=scope_key, deleted_at__isnull=False).delete()
+    rows = list(E9ScopeItem.objects.filter(project=project, scope=scope_key).order_by("sort_order", "item_number"))
+    wanted = {row.id: index for index, row in enumerate(rows, start=1)}
+    changed = [row for row in rows if row.item_number != wanted[row.id]]
+    if not changed:
+        return 0
+    ids = [row.id for row in changed]
+    # two steps so no two rows ever share a number on the way
+    E9ScopeItem.objects.filter(id__in=ids).update(item_number=F("item_number") + 1_000_000)
+    for row in changed:
+        E9ScopeItem.objects.filter(id=row.id).update(item_number=wanted[row.id])
+    return len(changed)

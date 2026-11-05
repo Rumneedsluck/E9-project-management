@@ -104,15 +104,19 @@ class TestTrackerItemsAPI:
         response = session_client.post(url, {"scope": "glass_film"}, format="json")
         assert response.data[0]["item_code"] == "GF1"
 
-        # deleting W3 does not let its code be reused
-        w3 = E9ScopeItem.objects.get(project=project, scope="wall_graphics", item_number=3)
-        assert session_client.delete(item_url(workspace.slug, project.id, w3.id)).status_code == 204
+        # deleting W1 moves the others up: old W2 becomes W1, old W3 becomes W2
+        w1, w2, w3 = (E9ScopeItem.objects.get(project=project, scope="wall_graphics", item_number=n) for n in (1, 2, 3))
+        assert session_client.delete(item_url(workspace.slug, project.id, w1.id)).status_code == 204
+        w2.refresh_from_db()
+        w3.refresh_from_db()
+        assert (w2.item_number, w3.item_number) == (1, 2)
+        # the next new row continues from there
         response = session_client.post(url, {"scope": "wall_graphics"}, format="json")
-        assert response.data[0]["item_code"] == "W4"
+        assert response.data[0]["item_code"] == "W3"
 
         listing = session_client.get(url)
         assert listing.data["can_edit"] is True
-        assert sorted(row["item_code"] for row in listing.data["items"]) == ["GF1", "W1", "W2", "W4"]
+        assert sorted(row["item_code"] for row in listing.data["items"]) == ["GF1", "W1", "W2", "W3"]
 
     @pytest.mark.django_db
     def test_edit_row_updates_area_and_stage(self, session_client, workspace, project):

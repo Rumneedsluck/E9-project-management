@@ -654,7 +654,12 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   /** Delete several rows after one confirmation. */
   const removeMany = async (ids: string[], what: string) => {
     if (ids.length === 0) return;
-    if (!window.confirm(`Delete ${what}? Their codes will not be reused. This cannot be undone.`)) return;
+    if (
+      !window.confirm(
+        `Delete ${what}? The rows below move up to close the gap (W3 becomes W2…). This cannot be undone.`
+      )
+    )
+      return;
     const done: string[] = [];
     for (const id of ids) {
       try {
@@ -665,21 +670,18 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
         break;
       }
     }
-    await mutate((current) => current && { ...current, items: current.items.filter((row) => !done.includes(row.id)) }, {
-      revalidate: false,
-    });
+    // codes close the gap after a delete, so load them again
+    await mutate();
     setSelected(new Set());
     if (done.length) setToast({ type: "success", title: `Deleted ${done.length} row(s)` });
   };
 
   const removeRow = async (item: TE9ScopeItem) => {
     const label = [item.item_code, item.description || item.floor_area].filter(Boolean).join(" – ");
-    if (!window.confirm(`Delete ${label}? The code ${item.item_code} will not be reused.`)) return;
+    if (!window.confirm(`Delete ${label}? The rows below it move up to close the gap (W3 becomes W2…).`)) return;
     try {
       await e9ProjectService.deleteItem(workspaceSlug, project.id, item.id);
-      await mutate((current) => current && { ...current, items: current.items.filter((row) => row.id !== item.id) }, {
-        revalidate: false,
-      });
+      await mutate();
     } catch {
       setToast({ type: "error", title: `Couldn't delete ${item.item_code}`, message: "Please try again." });
     }
