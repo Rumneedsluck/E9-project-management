@@ -24,7 +24,8 @@ import { useAppRouter } from "@/hooks/use-app-router";
 import { e9ProjectService } from "@/services/e9/project.service";
 // local
 import { E9_PRIORITIES, E9_STATUSES } from "./constants";
-import { E9_TRACKER_STAGES } from "./tracker/constants";
+import { E9_SCOPES, E9_TRACKER_STAGES } from "./tracker/constants";
+import { ordinal } from "./tracker/setup-panels";
 import { validateE9Form } from "./form-validation";
 import type { TE9FormErrors, TE9FormValues } from "./form-validation";
 import { getInitials, suggestIdentifier } from "./helpers";
@@ -129,6 +130,9 @@ export const E9ProjectForm = observer(function E9ProjectForm({ workspaceSlug, pr
   const [errors, setErrors] = useState<TE9FormErrors>({});
   const [identifierTouched, setIdentifierTouched] = useState(isEdit);
   const [isSaving, setIsSaving] = useState(false);
+  // New projects only: which scopes this job has, and how many floors
+  const [chosenScopes, setChosenScopes] = useState<string[]>(() => E9_SCOPES.map((scope) => scope.key));
+  const [floorCount, setFloorCount] = useState("");
 
   const memberIds = getWorkspaceMemberIds(workspaceSlug) ?? [];
   const memberName = (userId: string) => {
@@ -214,6 +218,20 @@ export const E9ProjectForm = observer(function E9ProjectForm({ workspaceSlug, pr
         // 2. Add the E9 details, 3. add the team
         await e9ProjectService.updateProfile(workspaceSlug, created.id, profile);
         await syncMembers(created.id, [currentUser?.id, values.project_lead].filter(Boolean) as string[]);
+        // 4. Switch on only the scopes this job has
+        const scopes = await e9ProjectService.listScopes(workspaceSlug, created.id);
+        await e9ProjectService.saveScopes(
+          workspaceSlug,
+          created.id,
+          scopes.map((scope) => ({ ...scope, enabled: chosenScopes.includes(scope.key) }))
+        );
+        // 5. Add the floors (Ground Floor + 1st … Nth)
+        const upTo = Math.min(Number(floorCount) || 0, 99);
+        if (upTo > 0)
+          await e9ProjectService.addFloors(workspaceSlug, created.id, [
+            "Ground Floor",
+            ...Array.from({ length: upTo }, (_, index) => `${ordinal(index + 1)} Floor`),
+          ]);
       } else {
         const changes: Record<string, string | null> = {};
         if (values.name.trim() !== project.name) changes.name = values.name.trim();
@@ -507,6 +525,65 @@ export const E9ProjectForm = observer(function E9ProjectForm({ workspaceSlug, pr
               </Field>
             </div>
           </E9Panel>
+
+          {!isEdit && (
+            <E9Panel title="What does this job have?">
+              <div className="flex flex-col gap-4 p-5">
+                <p className="text-body-xs-regular text-tertiary">
+                  Tick the scopes on this job. Only these appear on the Tracker sheet and Dashboard. You can switch
+                  scopes on or off, or add your own, later from Tracker › Scopes.
+                </p>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {E9_SCOPES.map((scope) => {
+                    const checked = chosenScopes.includes(scope.key);
+                    return (
+                      <label
+                        key={scope.key}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-body-sm-medium",
+                          checked
+                            ? "border-accent-strong bg-accent-subtle text-primary"
+                            : "border-subtle text-secondary"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-[var(--brand-default)]"
+                          checked={checked}
+                          onChange={() =>
+                            setChosenScopes((prev) =>
+                              checked ? prev.filter((key) => key !== scope.key) : [...prev, scope.key]
+                            )
+                          }
+                        />
+                        <span className="flex-1">{scope.label}</span>
+                        <span className="text-body-2xs-semibold text-tertiary">
+                          {scope.unit === "sqft" ? "sq ft" : scope.unit === "nos" ? "Nos" : "either"}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <Field
+                  label="Number of floors (optional)"
+                  htmlFor="e9-floor-count"
+                  hint="Adds Ground Floor plus 1st to this floor. Each floor gets its own status, target date and totals."
+                >
+                  <input
+                    id="e9-floor-count"
+                    type="number"
+                    min={0}
+                    max={99}
+                    inputMode="numeric"
+                    className={cn(inputClass(), "sm:max-w-[10rem]")}
+                    value={floorCount}
+                    placeholder="e.g. 17"
+                    onChange={(e) => setFloorCount(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </E9Panel>
+          )}
 
           <E9Panel title="Stage target dates">
             <div className="flex flex-col gap-4 p-5">

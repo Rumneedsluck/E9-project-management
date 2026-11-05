@@ -56,6 +56,7 @@ const makeProject = (overrides: Partial<TE9Project> = {}, e9: Partial<TE9Project
     target_delivered: null,
     target_installation: null,
     target_sign_off: null,
+    hidden_columns: [],
     updated_at: null,
     ...e9,
   },

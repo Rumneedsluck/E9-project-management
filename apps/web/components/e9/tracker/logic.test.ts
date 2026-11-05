@@ -6,7 +6,8 @@
 
 import { describe, expect, it } from "vitest";
 import type { TE9ScopeItem } from "./logic";
-import { isFilled, isStageOverdue, scopeProgress, stageTargetRows, trackerKpis } from "./logic";
+import { floorProgress, isFilled, isStageOverdue, scopeProgress, stageTargetRows, trackerKpis } from "./logic";
+import type { TE9Floor } from "./logic";
 
 const TODAY = new Date(2026, 10, 5); // 5 Nov 2026
 
@@ -88,7 +89,10 @@ describe("which rows count", () => {
 });
 
 describe("progress by scope", () => {
-  const rows = scopeProgress(all);
+  const rows = scopeProgress(all, [
+    { key: "wall_graphics", label: "Wall Graphics", unit_mode: "sqft" },
+    { key: "frames", label: "Frames", unit_mode: "nos" },
+  ]);
   const wallRow = rows.find((row) => row.scope === "wall_graphics")!;
   const frameRow = rows.find((row) => row.scope === "frames")!;
 
@@ -138,5 +142,29 @@ describe("stage targets and overdue", () => {
     expect(isStageOverdue(walls[4], "installation", targets, TODAY)).toBe(false);
     expect(isStageOverdue(emptyRows[0], "installation", targets, TODAY)).toBe(false);
     expect(isStageOverdue(walls[0], "installation", { target_installation: "2026-12-01" }, TODAY)).toBe(false);
+  });
+});
+
+describe("floor-wise totals", () => {
+  const floors: TE9Floor[] = [
+    { id: "f1", name: "Reception", sort_order: 1, status: "Handed Over", target_date: null, notes: "" },
+    { id: "f2", name: "4th Floor", sort_order: 2, status: "In Progress", target_date: null, notes: "" },
+    { id: "f3", name: "17th Floor", sort_order: 3, status: "Not Started", target_date: null, notes: "" },
+  ];
+  const rows = floorProgress(all, floors);
+
+  it("keeps the floor list order and includes empty floors", () => {
+    expect(rows.map((row) => row.name)).toEqual(["Reception", "4th Floor", "17th Floor", "No floor set"]);
+    expect(rows[2].items).toBe(0);
+    expect(rows[0].floor?.status).toBe("Handed Over");
+  });
+
+  it("adds up sq ft and Nos per floor", () => {
+    const fourth = rows.find((row) => row.name === "4th Floor")!;
+    expect(fourth.items).toBe(6);
+    expect(fourth.area).toBe(1243.57);
+    expect(fourth.percentItems).toBe(33);
+    const unassigned = rows.find((row) => row.name === "No floor set")!;
+    expect(unassigned.nos).toBe(10); // the frames have no floor typed (description only)
   });
 });

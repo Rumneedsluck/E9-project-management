@@ -19,6 +19,7 @@ import { getStatusMeta } from "./constants";
 import { getProgressPercent } from "./helpers";
 import { useE9Project } from "./hooks";
 import { E9ErrorState, E9LoadingState } from "./states";
+import { E9ProjectHistory, E9SiteAuditPanel } from "./tracker/project-docs";
 import { E9TrackerDashboard } from "./tracker/tracker-dashboard";
 import { E9TrackerSheet } from "./tracker/tracker-sheet";
 import {
@@ -45,11 +46,12 @@ const empty = <span className="text-placeholder">Not set</span>;
 
 type Props = { workspaceSlug: string; projectId: string };
 
-type TView = "overview" | "tracker" | "dashboard";
+type TView = "overview" | "tracker" | "dashboard" | "history";
 const VIEWS: { key: TView; label: string }[] = [
   { key: "tracker", label: "Tracker" },
   { key: "dashboard", label: "Dashboard" },
   { key: "overview", label: "Project info" },
+  { key: "history", label: "History" },
 ];
 
 export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug, projectId }: Props) {
@@ -150,6 +152,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
       {view === "dashboard" && (
         <E9TrackerDashboard workspaceSlug={workspaceSlug} project={project} onOpenSheet={() => setView("tracker")} />
       )}
+      {view === "history" && <E9ProjectHistory workspaceSlug={workspaceSlug} projectId={project.id} />}
       {view === "overview" && (
         <>
           {/* Status strip */}
@@ -237,6 +240,8 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
               </div>
             </E9Panel>
           </div>
+
+          <E9SiteAuditPanel workspaceSlug={workspaceSlug} projectId={project.id} />
         </>
       )}
     </E9PageBody>

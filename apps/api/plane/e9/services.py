@@ -178,6 +178,21 @@ def as_text(value):
     return str(value)
 
 
+# The same field name means something else on a floor / a scope
+ENTITY_FIELD_LABELS = {
+    ("floor", "status"): "Floor status",
+    ("floor", "name"): "Floor name",
+    ("scope", "label"): "Scope name",
+    ("scope", "prefix"): "Code prefix",
+}
+
+
+def field_label(entity, field):
+    if not field:
+        return ""
+    return ENTITY_FIELD_LABELS.get((entity, field)) or FIELD_LABELS.get(field, field.replace("_", " ").capitalize())
+
+
 def record(project, user, entity, action, entity_id=None, label="", field="", old="", new=""):
     return E9ChangeLog.objects.create(
         project=project,
@@ -187,7 +202,7 @@ def record(project, user, entity, action, entity_id=None, label="", field="", ol
         entity_label=label[:255],
         action=action,
         field=field,
-        field_label=FIELD_LABELS.get(field, field.replace("_", " ").capitalize()) if field else "",
+        field_label=field_label(entity, field),
         old_value=as_text(old),
         new_value=as_text(new),
         created_by_id=getattr(user, "id", None),
@@ -210,7 +225,7 @@ def record_changes(project, user, entity, entity_id, label, before, after):
                 entity_label=label[:255],
                 action="updated",
                 field=field,
-                field_label=FIELD_LABELS.get(field, field.replace("_", " ").capitalize()),
+                field_label=field_label(entity, field),
                 old_value=as_text(old_value),
                 new_value=as_text(new_value),
                 created_by_id=getattr(user, "id", None),

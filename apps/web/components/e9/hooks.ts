@@ -36,6 +36,46 @@ export const useE9Items = (workspaceSlug: string | undefined, projectId: string 
     { revalidateOnFocus: false }
   );
 
+export const e9ScopesKey = (slug: string, projectId: string) => `E9_SCOPES_${slug}_${projectId}`;
+export const e9FloorsKey = (slug: string, projectId: string) => `E9_FLOORS_${slug}_${projectId}`;
+export const e9PhotosKey = (slug: string, projectId: string) => `E9_PHOTOS_${slug}_${projectId}`;
+export const e9DocsKey = (slug: string, projectId: string) => `E9_DOCS_${slug}_${projectId}`;
+export const e9HistoryKey = (slug: string, projectId: string, entityId?: string) =>
+  `E9_HISTORY_${slug}_${projectId}_${entityId ?? "all"}`;
+
+const opts = { revalidateOnFocus: false };
+
+/** The project's scope sheets (standard + the team's own). */
+export const useE9Scopes = (slug: string, projectId: string) =>
+  useSWR(e9ScopesKey(slug, projectId), () => e9ProjectService.listScopes(slug, projectId), opts);
+
+export const useE9Floors = (slug: string, projectId: string) =>
+  useSWR(e9FloorsKey(slug, projectId), () => e9ProjectService.listFloors(slug, projectId), opts);
+
+/** All item photos of a project (grouped by item on the sheet). */
+export const useE9Photos = (slug: string, projectId: string) =>
+  useSWR(e9PhotosKey(slug, projectId), () => e9ProjectService.listAttachments(slug, projectId, "photo"), opts);
+
+/** Site audit reports and other project PDFs. */
+export const useE9Documents = (slug: string, projectId: string) =>
+  useSWR(e9DocsKey(slug, projectId), () => e9ProjectService.listAttachments(slug, projectId, "site_audit"), opts);
+
+export const useE9History = (slug: string, projectId: string, entityId?: string) =>
+  useSWR(e9HistoryKey(slug, projectId, entityId), () => e9ProjectService.listHistory(slug, projectId, entityId), opts);
+
+/** After a big change (import, scope set-up) reload everything for the project. */
+export const refreshE9Tracker = async (slug: string, projectId: string) => {
+  await Promise.all([
+    mutate(e9ItemsKey(slug, projectId)),
+    mutate(e9ScopesKey(slug, projectId)),
+    mutate(e9FloorsKey(slug, projectId)),
+    mutate(e9PhotosKey(slug, projectId)),
+    mutate(e9DocsKey(slug, projectId)),
+    mutate(e9ProjectKey(slug, projectId)),
+    mutate((key) => typeof key === "string" && key.startsWith(`E9_HISTORY_${slug}_${projectId}`)),
+  ]);
+};
+
 /** Refresh the cached E9 data after a change. */
 export const refreshE9Projects = async (workspaceSlug: string, projectId?: string) => {
   await mutate(e9ProjectsKey(workspaceSlug));

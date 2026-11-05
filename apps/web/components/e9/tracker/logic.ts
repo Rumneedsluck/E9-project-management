@@ -4,13 +4,68 @@
  * See the LICENSE file for details.
  */
 
-import type { TE9ScopeKey, TE9StageKey } from "./constants";
-import { E9_SCOPES, E9_TRACKER_STAGES } from "./constants";
+import type { TE9StageKey } from "./constants";
+import { E9_TRACKER_STAGES } from "./constants";
+
+export type TE9UnitMode = "sqft" | "nos" | "either";
+
+/** A scope sheet on a project (standard or added by the team). */
+export type TE9ProjectScope = {
+  key: string;
+  label: string;
+  prefix: string;
+  unit_mode: TE9UnitMode;
+  is_standard: boolean;
+  enabled: boolean;
+  sort_order: number;
+  item_count?: number;
+};
+
+export type TE9FloorStatus = "Not Started" | "In Progress" | "Handed Over";
+
+export type TE9Floor = {
+  id: string;
+  name: string;
+  sort_order: number;
+  status: TE9FloorStatus;
+  target_date: string | null;
+  notes: string;
+};
+
+export type TE9Attachment = {
+  id: string;
+  item: string | null;
+  kind: "photo" | "site_audit" | "dc_scan" | "document";
+  name: string;
+  size: number;
+  content_type: string;
+  link: string;
+  label: string;
+  version: "" | "Draft" | "Final";
+  sent_on: string | null;
+  has_file: boolean;
+  created_at: string;
+  created_by: string | null;
+};
+
+export type TE9Change = {
+  id: string;
+  entity: "item" | "project" | "scope" | "floor" | "attachment" | "import";
+  entity_id: string | null;
+  entity_label: string;
+  action: "created" | "updated" | "deleted" | "uploaded" | "imported";
+  field: string;
+  field_label: string;
+  old_value: string;
+  new_value: string;
+  created_at: string;
+  actor: { id: string; name: string } | null;
+};
 
 /** One row on a scope sheet, as returned by /e9/projects/:id/items/. */
 export type TE9ScopeItem = {
   id: string;
-  scope: TE9ScopeKey;
+  scope: string;
   item_number: number;
   item_code: string;
   unit: "sqft" | "nos";
@@ -105,7 +160,7 @@ export const isStageOverdue = (
 };
 
 export type TScopeProgress = {
-  scope: TE9ScopeKey;
+  scope: string;
   label: string;
   unit: "sqft" | "nos" | "mixed";
   items: number;
@@ -124,31 +179,65 @@ export type TScopeProgress = {
 
 const percent = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 
-export const scopeProgress = (items: TE9ScopeItem[]): TScopeProgress[] =>
-  E9_SCOPES.map((scope) => {
-    const rows = items.filter((item) => item.scope === scope.key && isFilled(item));
-    const sum = (filter: (item: TE9ScopeItem) => boolean) =>
-      rows.filter(filter).reduce((total, item) => total + itemMeasure(item), 0);
-    const total = sum(() => true);
-    const area = rows.reduce((totalArea, item) => totalArea + itemArea(item), 0);
-    const installedArea = rows
-      .filter((item) => item.installation_status === "Installation Done")
-      .reduce((totalArea, item) => totalArea + itemArea(item), 0);
-    const installed = sum((item) => item.installation_status === "Installation Done");
+/** Totals for one group of rows (a scope, a floor ...). */
+const groupTotals = (rows: TE9ScopeItem[]) => {
+  const sum = (filter: (item: TE9ScopeItem) => boolean) =>
+    rows.filter(filter).reduce((total, item) => total + itemMeasure(item), 0);
+  const total = sum(() => true);
+  const area = rows.reduce((totalArea, item) => totalArea + itemArea(item), 0);
+  const installedArea = rows
+    .filter((item) => item.installation_status === "Installation Done")
+    .reduce((totalArea, item) => totalArea + itemArea(item), 0);
+  const installed = sum((item) => item.installation_status === "Installation Done");
+  return {
+    items: total,
+    nos: rows.filter((item) => item.unit === "nos").reduce((t, item) => t + itemMeasure(item), 0),
+    area: Math.round(area * 100) / 100,
+    productionDone: sum((item) => item.production_status === "Production Done"),
+    materialReceived: sum((item) => item.material_status === "Material Received"),
+    qcPassed: sum((item) => item.quality_check === "Passed"),
+    delivered: sum((item) => item.dispatch_status === "Delivered at Site"),
+    installed,
+    signedOff: sum((item) => item.client_sign_off === "Signed Off"),
+    percentItems: percent(installed, total),
+    percentArea: area > 0 ? percent(installedArea, area) : null,
+  };
+};
+
+export type TFloorProgress = ReturnType<typeof groupTotals> & {
+  name: string;
+  floor: TE9Floor | null;
+  rows: number;
+};
+
+/** Floor-wise totals. Floors from the floor list come first (in their order), then any other floor names typed on items. */
+export const floorProgress = (items: TE9ScopeItem[], floors: TE9Floor[]): TFloorProgress[] => {
+  const rows = items.filter(isFilled);
+  const names = [...floors.map((floor) => floor.name), ...rows.map((item) => item.floor_area.trim() || "No floor set")];
+  return [...new Set(names)]
+    .map((name) => {
+      const floorRows = rows.filter((item) => (item.floor_area.trim() || "No floor set") === name);
+      return {
+        name,
+        floor: floors.find((floor) => floor.name === name) ?? null,
+        rows: floorRows.length,
+        ...groupTotals(floorRows),
+      };
+    })
+    .filter((row) => row.rows > 0 || row.floor);
+};
+
+export const scopeProgress = (
+  items: TE9ScopeItem[],
+  scopes: Pick<TE9ProjectScope, "key" | "label" | "unit_mode">[]
+): TScopeProgress[] =>
+  scopes.map((scope) => {
+    const totals = groupTotals(items.filter((item) => item.scope === scope.key && isFilled(item)));
     return {
       scope: scope.key,
       label: scope.label,
-      unit: scope.unit === "either" ? "mixed" : scope.unit,
-      items: total,
-      area: Math.round(area * 100) / 100,
-      productionDone: sum((item) => item.production_status === "Production Done"),
-      materialReceived: sum((item) => item.material_status === "Material Received"),
-      qcPassed: sum((item) => item.quality_check === "Passed"),
-      delivered: sum((item) => item.dispatch_status === "Delivered at Site"),
-      installed,
-      signedOff: sum((item) => item.client_sign_off === "Signed Off"),
-      percentItems: percent(installed, total),
-      percentArea: area > 0 ? percent(installedArea, area) : null,
+      unit: scope.unit_mode === "either" ? "mixed" : scope.unit_mode,
+      ...totals,
     };
   });
 
