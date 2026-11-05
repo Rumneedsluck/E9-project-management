@@ -56,7 +56,7 @@ def blank_item(**values):
 @pytest.mark.unit
 class TestTrackerRules:
     def test_area_matches_template_formula(self):
-        # 114 x 116.5 in, 1 no -> 92.23 sq ft (Example Client wall W1)
+        # 114 x 116.5 in, 1 no -> 92.23 sq ft (sample wall W1)
         assert tracker.item_area_sqft(Decimal("114"), Decimal("116.5"), None) == Decimal("92.23")
         assert tracker.item_area_sqft(Decimal("108"), Decimal("240"), Decimal("2")) == Decimal("360.00")
         assert tracker.item_area_sqft(None, Decimal("240"), None) is None
