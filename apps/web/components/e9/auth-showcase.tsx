@@ -15,22 +15,24 @@ export function E9AuthShowcase() {
       {/* soft brand glow */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-40 -right-40 size-[520px] rounded-full bg-[var(--brand-default)] opacity-25 blur-[120px]"
+        className="e9-glow pointer-events-none absolute -top-40 -right-40 size-[520px] rounded-full bg-[var(--brand-default)] opacity-25 blur-[120px]"
       />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 bottom-0 h-1.5 bg-gradient-to-r from-[var(--brand-default)] via-[var(--brand-700)] to-transparent"
       />
 
-      <E9Logo inverse withTagline />
+      <span className="e9-logo-in">
+        <E9Logo inverse withTagline large />
+      </span>
 
-      <div className="relative flex flex-col gap-6">
+      <div className="e9-enter relative flex flex-col gap-6">
         <span className="text-body-xs-semibold tracking-[0.2em] text-white/50 uppercase">{E9_BRAND.productName}</span>
         <h1 className="max-w-md text-[2.5rem] leading-[1.1] font-semibold tracking-tight">{E9_BRAND.loginHeadline}</h1>
         <p className="max-w-md text-body-md-regular text-white/65">{E9_BRAND.loginDescription}</p>
       </div>
 
-      <ol className="relative flex flex-col gap-3" aria-label="Project journey">
+      <ol className="e9-enter relative flex flex-col gap-3" aria-label="Project journey">
         {JOURNEY.map((step, index) => (
           <li key={step} className="flex items-center gap-3 text-body-sm-medium">
             <span
