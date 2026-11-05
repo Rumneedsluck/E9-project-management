@@ -12,7 +12,7 @@ import { Button } from "@makeplane/propel/components/button";
 import { setToast } from "@plane/blocks/toast";
 import { cn } from "@plane/utils";
 import { e9ProjectService } from "@/services/e9/project.service";
-import { useE9Floors, useE9Items, useE9Photos, useE9Scopes } from "../hooks";
+import { useE9Boq, useE9Floors, useE9Items, useE9Photos, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { DateCell, NumberCell, SelectCell, TextCell } from "./cells";
@@ -50,6 +50,9 @@ type TRowContext = {
   photos: TE9Attachment[];
   openPhotos: () => void;
   floorListId: string;
+  boqListId: string;
+  /** BOQ numbers on this project's BOQ (upper case); null while there is no BOQ */
+  boqNos: Set<string> | null;
   workspaceSlug: string;
   projectId: string;
 };
@@ -93,7 +96,23 @@ const COLUMNS: TColumn[] = [
     label: "BOQ No.",
     width: 84,
     band: "Item details",
-    render: text("boq_item_no", "BOQ item no."),
+    render: (ctx) => {
+      const value = ctx.item.boq_item_no ?? "";
+      const notOnBoq = !!ctx.boqNos && !ctx.empty && !ctx.boqNos.has(value.trim().toUpperCase());
+      return (
+        <span title={notOnBoq ? (value ? `${value} is not on the BOQ` : "Pick the BOQ line for this row") : undefined}>
+          <TextCell
+            label="BOQ item no."
+            value={value}
+            listId={ctx.boqListId}
+            overdue={notOnBoq}
+            disabled={ctx.disabled}
+            placeholder="BO1"
+            onSave={(next) => ctx.save({ boq_item_no: next.toUpperCase() })}
+          />
+        </span>
+      );
+    },
   },
   {
     key: "stage",
@@ -494,6 +513,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const { data: floors } = useE9Floors(workspaceSlug, project.id);
   const { data: photos } = useE9Photos(workspaceSlug, project.id);
   const floorListId = useId();
+  const boqListId = useId();
+  const { data: boq } = useE9Boq(workspaceSlug, project.id);
 
   const enabledScopes = useMemo(() => (scopes ?? []).filter((scope) => scope.enabled), [scopes]);
   // links from the BOQ, JC & DC pages open the tracker on a scope with a search (?scope=...&q=...)
@@ -542,6 +563,11 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       ]),
     ],
     [floors, items]
+  );
+
+  const boqNos = useMemo(
+    () => (boq && boq.lines.length > 0 ? new Set(boq.lines.map((line) => line.line_no.toUpperCase())) : null),
+    [boq]
   );
 
   const rows = useMemo(() => {
@@ -643,6 +669,16 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
+      <datalist id={boqListId}>
+        {[...(boq?.lines ?? [])]
+          // oxlint-disable-next-line unicorn/no-array-sort -- copied array
+          .sort((a, b) => Number(b.scope === scopeKey) - Number(a.scope === scopeKey))
+          .map((line) => (
+            <option key={line.id} value={line.line_no}>
+              {[line.description, line.po_label].filter(Boolean).join(" · ")}
+            </option>
+          ))}
+      </datalist>
       <datalist id={floorListId}>
         {floorNames.map((name) => (
           <option key={name} value={name} />
@@ -844,6 +880,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                         photos: photosByItem.get(item.id) ?? [],
                         openPhotos: () => setPhotoItem(item),
                         floorListId,
+                        boqListId,
+                        boqNos,
                         workspaceSlug,
                         projectId: project.id,
                       };
