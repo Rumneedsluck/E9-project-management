@@ -182,3 +182,33 @@ class TestE9DemoSetup:
         from plane.license.models import InstanceConfiguration
 
         assert InstanceConfiguration.objects.get(key="ENABLE_SIGNUP").value == "0"
+
+
+@pytest.mark.unit
+class TestE9DemoClear:
+    @pytest.mark.django_db
+    def test_clear_removes_only_demo_data(self, monkeypatch):
+        from django.core.management import call_command
+
+        from plane.db.models import Workspace
+
+        monkeypatch.setenv("SECRET_KEY", "test-secret")
+        call_command("e9_demo_setup", "--email", "owner@example.com", "--password", "Demo-pass-123")
+        workspace = Workspace.objects.get(slug="e9-creative")
+        owner = User.objects.get(email="owner@example.com")
+        real = Project.objects.create(name="Baker Tilly Bangalore", identifier="BTB", workspace=workspace)
+
+        # dry run changes nothing
+        call_command("e9_demo_clear")
+        assert Project.objects.filter(workspace=workspace).count() == 8
+
+        call_command("e9_demo_clear", "--yes")
+        assert list(Project.objects.filter(workspace=workspace)) == [real]
+        assert WorkspaceMember.objects.filter(workspace=workspace).count() == 1
+        assert WorkspaceMember.objects.get(workspace=workspace).member == owner
+        assert not User.objects.get(email="kavya.rao@example.com").is_active
+        assert User.objects.get(email="owner@example.com").is_active
+
+        # running it again is harmless
+        call_command("e9_demo_clear", "--yes")
+        assert list(Project.objects.filter(workspace=workspace)) == [real]
