@@ -78,6 +78,13 @@ COLUMNS = {
     "quality check": "quality_check",
     "qc done by": "qc_done_by",
     "dc no(s). (comma-separated)": "dc_nos",
+    "dc qty (comma-separated)": "dc_qty",
+    "production height (in)": "production_height_in",
+    "production width (in)": "production_width_in",
+    "production quantity": "production_qty",
+    "certified height (in)": "certified_height_in",
+    "certified width (in)": "certified_width_in",
+    "certified qty (nos)": "certified_qty",
     "dispatch status": "dispatch_status",
     "installation status": "installation_status",
     "installation date": "installation_date",
@@ -97,7 +104,17 @@ CHOICES = {
     "installation_status": tracker.INSTALLATION_STATUS,
     "client_sign_off": tracker.CLIENT_SIGN_OFF,
 }
-NUMBER_FIELDS = {"height_in", "width_in", "qty"}
+NUMBER_FIELDS = {
+    "height_in",
+    "width_in",
+    "qty",
+    "production_height_in",
+    "production_width_in",
+    "production_qty",
+    "certified_height_in",
+    "certified_width_in",
+    "certified_qty",
+}
 TEXT_LIMITS = {
     "boq_item_no": 60,
     "floor_area": 255,
@@ -105,6 +122,7 @@ TEXT_LIMITS = {
     "jc_no": 60,
     "qc_done_by": 120,
     "dc_nos": 255,
+    "dc_qty": 255,
     "installed_by": 255,
 }
 FILLED_FIELDS = ("floor_area", "description", "height_in", "width_in", "qty")
@@ -334,6 +352,223 @@ def _save_boq(project, lines, scopes, user):
     return added
 
 
+# ---------------------------------------------------------------------------
+# Reprints & Extras, Snag List, JC Log and DC Log sheets
+# ---------------------------------------------------------------------------
+
+
+def _read_table(workbook, title, must_have, mapping, max_rows=2000):
+    """Rows of a log sheet as {field: value}. The header row is the one containing `must_have`."""
+    sheet = next((ws for ws in workbook.worksheets if ws.title.strip().lower() == title), None)
+    if sheet is None:
+        return []
+    columns = None
+    header_row = 0
+    for index, row in enumerate(sheet.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
+        headers = [_header(cell) for cell in row]
+        if must_have in headers:
+            columns = {position: mapping.get(header) for position, header in enumerate(headers)}
+            header_row = index
+            break
+    if columns is None:
+        return []
+    rows = []
+    for row in sheet.iter_rows(
+        min_row=header_row + 1, max_row=min(sheet.max_row, header_row + max_rows), values_only=True
+    ):
+        values = {}
+        for position, cell in enumerate(row):
+            field = columns.get(position)
+            if field and cell not in (None, "") and not (isinstance(cell, str) and cell.startswith("=")):
+                values[field] = cell
+        if values:
+            rows.append(values)
+    return rows
+
+
+REPRINT_COLUMNS = {
+    "date": "reprint_date",
+    "item code": "code",
+    "type": "kind",
+    "caused by": "cause",
+    "reason": "reason",
+    "description": "description",
+    "pieces": "pieces",
+    "reprint height (in) (tile)": "reprint_height_in",
+    "reprint width (in) (tile)": "reprint_width_in",
+    "jc no.": "jc_no",
+    "approved by client?": "approved",
+    "remarks": "remarks",
+}
+SNAG_COLUMNS = {
+    "date raised": "raised_on",
+    "item code": "code",
+    "snag reason": "reason",
+    "snag details": "details",
+    "priority": "priority",
+    "raised by": "raised_by",
+    "assigned to": "assigned_to",
+    "target date": "target_date",
+    "status": "status",
+    "date closed": "closed_on",
+    "remarks": "remarks",
+}
+JC_COLUMNS = {
+    "jc no.": "number",
+    "jc date": "jc_date",
+    "vendor": "vendor",
+    "expected date": "expected_date",
+    "received?": "received",
+    "received date": "received_date",
+    "e-proof sent on": "eproof_sent_on",
+}
+DC_COLUMNS = {
+    "dc no.": "number",
+    "dc date": "dc_date",
+    "dispatched from": "dispatched_from",
+    "sent by": "sent_by",
+    "vehicle / transporter": "vehicle",
+    "invoice no.": "invoice_no",
+    "invoice date": "invoice_date",
+    "e9 sign-off": "e9_signoff",
+    "client sign-off": "client_signoff",
+    "client signatory (name)": "client_signatory",
+    "status": "status",
+    "remarks": "notes",
+}
+LOG_DATE_FIELDS = {
+    "reprint_date",
+    "raised_on",
+    "target_date",
+    "closed_on",
+    "jc_date",
+    "expected_date",
+    "received_date",
+    "eproof_sent_on",
+    "dc_date",
+    "invoice_date",
+}
+
+
+def _clean_row(values):
+    out = {}
+    for field, raw in values.items():
+        if field in LOG_DATE_FIELDS:
+            out[field] = _date(raw)
+        elif field in ("pieces", "reprint_height_in", "reprint_width_in"):
+            out[field] = _number(raw)
+        else:
+            out[field] = _text(raw)
+    return out
+
+
+def _save_logs(project, workbook, items_by_code, user, warnings, report):
+    """Reprints & Extras, Snag List and the typed details of the JC / DC logs."""
+    from .models import E9BoqLine, E9Challan, E9JobCard, E9Reprint, E9Snag
+
+    scopes = {scope.key: scope for scope in ensure_scopes(project)}
+
+    def unit_of(item):
+        scope = scopes.get(item.scope)
+        mode = scope.unit_mode if scope else "either"
+        return tracker.item_unit(mode, item.height_in, item.width_in, item.unit_override)
+
+    # Reprints & Extras
+    added = 0
+    for row in (_clean_row(r) for r in _read_table(workbook, "reprints & extras", "caused by", REPRINT_COLUMNS)):
+        code = row.get("code", "").upper()
+        item = items_by_code.get(code)
+        if not code:
+            continue
+        if item is None:
+            warnings.append(f"Reprints & Extras: item code '{code}' not found, row skipped.")
+            continue
+        kind = "extra" if row.get("kind", "").lower().startswith("extra") else "reprint"
+        cause = {"client": "client", "site": "site"}.get(row.get("cause", "").lower(), "e9")
+        height = row.get("reprint_height_in") or item.height_in
+        width = row.get("reprint_width_in") or item.width_in
+        reprint = E9Reprint(
+            project=project,
+            workspace_id=project.workspace_id,
+            item=item,
+            boq_line=E9BoqLine.objects.filter(project=project, line_no__iexact=item.boq_item_no.strip()).first()
+            if item.boq_item_no
+            else None,
+            kind=kind,
+            cause=cause,
+            reason=row.get("reason", ""),
+            description=row.get("description", ""),
+            pieces=row.get("pieces"),
+            reprint_height_in=row.get("reprint_height_in"),
+            reprint_width_in=row.get("reprint_width_in"),
+            jc_no=row.get("jc_no", "")[:60],
+            approved=row.get("approved", "") if row.get("approved", "") in ("Yes", "Pending", "No") else "",
+            remarks=row.get("remarks", ""),
+            reprint_date=row.get("reprint_date"),
+        )
+        reprint.qty = tracker.reprint_measure(unit_of(item), reprint.pieces, height, width)
+        reprint.save(created_by_id=user.id)
+        added += 1
+    report["reprints"] = added
+
+    # Snag List
+    added = 0
+    for row in (_clean_row(r) for r in _read_table(workbook, "snag list", "snag reason", SNAG_COLUMNS)):
+        code = row.get("code", "").upper()
+        if not code and not row.get("reason") and not row.get("details"):
+            continue  # ready-made row with only the defaults
+        item = items_by_code.get(code)
+        if code and item is None:
+            warnings.append(f"Snag List: item code '{code}' not found, snag kept without an item.")
+        status = row.get("status", "Open")
+        E9Snag(
+            project=project,
+            workspace_id=project.workspace_id,
+            item=item,
+            raised_on=row.get("raised_on"),
+            reason=row.get("reason", "")[:80],
+            details=row.get("details", ""),
+            priority=row.get("priority", "Medium") if row.get("priority") in tracker.SNAG_PRIORITY else "Medium",
+            raised_by=row.get("raised_by", "")[:120],
+            assigned_to=row.get("assigned_to", "")[:120],
+            target_date=row.get("target_date"),
+            status=status if status in tracker.SNAG_STATUS else "Open",
+            closed_on=row.get("closed_on"),
+            remarks=row.get("remarks", ""),
+            sort_order=(added + 1) * 1000,
+        ).save(created_by_id=user.id)
+        added += 1
+    report["snags"] = added
+
+    # JC / DC log details (the numbers themselves come from the item rows)
+    for title, must, mapping, model, key in (
+        ("jc log", "vendor", JC_COLUMNS, E9JobCard, "job_cards"),
+        ("dc log", "dispatched from", DC_COLUMNS, E9Challan, "challans"),
+    ):
+        saved = 0
+        for row in (_clean_row(r) for r in _read_table(workbook, title, must, mapping)):
+            number = row.pop("number", "").strip()[:60]
+            details = {field: value for field, value in row.items() if value not in (None, "")}
+            # rows that only carry the template's default words are skipped
+            meaningful = {k: v for k, v in details.items() if v not in ("Pending", "Dispatched")}
+            if not number or not meaningful:
+                continue
+            entry = model.objects.filter(project=project, number__iexact=number).first() or model(
+                project=project, workspace_id=project.workspace_id, number=number
+            )
+            for field, value in details.items():
+                if field == "received" and value not in ("Pending", "Partly", "Yes", "No"):
+                    value = {"partial": "Partly", "received": "Yes"}.get(str(value).lower(), "Pending")
+                if field == "status" and value not in ("Dispatched", "Delivered at Site", "Returned"):
+                    continue
+                if field in ("e9_signoff", "client_signoff") and value not in ("Pending", "Signed", "Returned"):
+                    continue
+                setattr(entry, field, value[:120] if isinstance(value, str) and field != "notes" else value)
+            entry.save(created_by_id=user.id) if entry._state.adding else entry.save()
+            saved += 1
+        report[key] = saved
+
+
 def import_tracker(project, upload, user):
     try:
         workbook = openpyxl.load_workbook(upload, data_only=True, read_only=False)
@@ -424,6 +659,11 @@ def import_tracker(project, upload, user):
             report["site_visits"] += 1
 
         report["boq_lines"] = _save_boq(project, boq_lines, scopes, user)
+
+        from .services import item_code
+
+        items_by_code = {item_code(item, scopes).upper(): item for item in E9ScopeItem.objects.filter(project=project)}
+        _save_logs(project, workbook, items_by_code, user, warnings, report)
 
         total = sum(report["items"].values())
         record(
