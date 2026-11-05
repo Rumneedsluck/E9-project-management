@@ -7,6 +7,7 @@
 import { useMemo } from "react";
 import { cn, renderFormattedDate } from "@plane/utils";
 import { E9BoqDashboardPanel } from "../commercial/boq-dashboard-panel";
+import { E9OpenSnagsPanel } from "../commercial/snags-page";
 import { useE9Floors, useE9Items, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
@@ -70,7 +71,7 @@ type Props = {
   workspaceSlug: string;
   project: TE9Project;
   onOpenSheet: () => void;
-  onOpenView?: (view: "boq" | "billing") => void;
+  onOpenView?: (view: "boq" | "billing" | "snags") => void;
 };
 
 export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpenView }: Props) {
@@ -256,6 +257,7 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
       </E9Panel>
 
       <E9BoqDashboardPanel workspaceSlug={workspaceSlug} projectId={project.id} onOpen={(view) => onOpenView?.(view)} />
+      <E9OpenSnagsPanel workspaceSlug={workspaceSlug} projectId={project.id} onOpen={() => onOpenView?.("snags")} />
 
       {floors.length > 0 && (
         <E9Panel title={`Progress by floor · ${floors.length}`}>

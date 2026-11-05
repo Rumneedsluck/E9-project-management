@@ -66,6 +66,11 @@ export const useE9History = (slug: string, projectId: string, entityId?: string)
 export const e9BoqKey = (slug: string, projectId: string) => `E9_BOQ_${slug}_${projectId}`;
 export const e9LogsKey = (slug: string, projectId: string) => `E9_LOGS_${slug}_${projectId}`;
 export const e9BillsKey = (slug: string, projectId: string) => `E9_BILLS_${slug}_${projectId}`;
+export const e9SnagsKey = (slug: string, projectId: string) => `E9_SNAGS_${slug}_${projectId}`;
+
+export const useE9Snags = (slug: string, projectId: string) =>
+  useSWR(e9SnagsKey(slug, projectId), () => e9ProjectService.getSnags(slug, projectId), opts);
+
 export const e9SummaryKey = (slug: string) => `E9_SUMMARY_${slug}`;
 
 export const useE9Boq = (slug: string, projectId: string) =>

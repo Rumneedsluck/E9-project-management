@@ -30,13 +30,38 @@ import type { TE9Challan, TE9JobCard, TE9LogItem, TE9Logs } from "./types";
 
 type Props = { workspaceSlug: string; project: TE9Project };
 
-function Items({ slug, projectId, items }: { slug: string; projectId: string; items: TE9LogItem[] }) {
+function Items({
+  slug,
+  projectId,
+  items,
+  showQty = false,
+}: {
+  slug: string;
+  projectId: string;
+  items: TE9LogItem[];
+  showQty?: boolean;
+}) {
   if (items.length === 0) return <span className="text-placeholder">No tracker rows</span>;
   return (
     <span className="flex flex-wrap gap-1">
       {items.map((item) => (
-        <span key={item.id} title={[item.floor, item.description].filter(Boolean).join(" · ")}>
+        <span
+          key={item.id}
+          className="inline-flex items-center gap-1"
+          title={[item.floor, item.description].filter(Boolean).join(" · ")}
+        >
           <ItemLink slug={slug} projectId={projectId} scope={item.scope} code={item.code} />
+          {showQty && (
+            <span
+              className={cn(
+                "text-body-2xs-semibold tabular-nums",
+                item.sent ? "text-secondary" : "text-warning-primary"
+              )}
+            >
+              ({item.sent ? `${fmt(item.sent)}${item.unit === "sqft" ? " sq ft" : ""}` : "qty?"})
+              {item.partial && <span className="ml-0.5 rounded bg-warning-subtle px-1 text-warning-primary">part</span>}
+            </span>
+          )}
         </span>
       ))}
     </span>
@@ -242,7 +267,7 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1600px] text-left text-body-xs-regular">
+              <table className="w-full min-w-[1900px] text-left text-body-xs-regular">
                 <thead>
                   <tr className="border-b border-subtle text-body-2xs-semibold text-tertiary">
                     {[
@@ -259,6 +284,8 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
                       "Invoice date",
                       "E9 sign-off",
                       "Client sign-off",
+                      "Client signatory",
+                      "Status",
                       "Signed DC scan",
                       "Mail",
                     ].map((heading) => (
@@ -273,7 +300,12 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
                     <tr key={dc.number}>
                       <td className="px-3 py-2 font-semibold whitespace-nowrap">{dc.number}</td>
                       <td className="max-w-[280px] min-w-[180px] px-3 py-2">
-                        <Items slug={workspaceSlug} projectId={project.id} items={dc.items} />
+                        <Items slug={workspaceSlug} projectId={project.id} items={dc.items} showQty />
+                        {dc.unknown_qty > 0 && (
+                          <span className="mt-1 block text-body-2xs-regular text-warning-primary">
+                            Type the DC Qty on the tracker for rows marked “qty?”.
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 tabular-nums">{dc.count}</td>
                       <td className="px-3 py-2 tabular-nums">{isPositive(dc.sqft) ? fmt(dc.sqft) : "—"}</td>
@@ -320,6 +352,24 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
                           options={["Pending", "Signed", "Returned"]}
                           disabled={disabled}
                           onSave={(v) => save("dc", dc.number, "client_signoff", v)}
+                        />
+                      </td>
+                      <td className="w-36 px-1 py-1">
+                        <TextCell
+                          label="Client signatory"
+                          value={dc.client_signatory}
+                          placeholder="Name"
+                          disabled={disabled}
+                          onSave={(v) => save("dc", dc.number, "client_signatory", v)}
+                        />
+                      </td>
+                      <td className="w-36 px-1 py-1">
+                        <SelectCell
+                          label="DC status"
+                          value={dc.status}
+                          options={["Dispatched", "Delivered at Site", "Returned"]}
+                          disabled={disabled}
+                          onSave={(v) => save("dc", dc.number, "status", v)}
                         />
                       </td>
                       <td className="px-3 py-2">

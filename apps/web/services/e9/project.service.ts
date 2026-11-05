@@ -6,7 +6,7 @@
 
 import { API_BASE_URL } from "@plane/constants";
 import type { TE9Attachment, TE9Change, TE9Floor, TE9ProjectScope, TE9ScopeItem } from "@/components/e9/tracker/logic";
-import type { TE9Bills, TE9Boq, TE9Logs, TE9Summary } from "@/components/e9/commercial/types";
+import type { TE9Bills, TE9Boq, TE9Logs, TE9Snags, TE9Summary } from "@/components/e9/commercial/types";
 import type { TE9ProfilePayload, TE9Project } from "@/components/e9/types";
 import { APIService } from "@/services/api.service";
 
@@ -231,6 +231,23 @@ export class E9ProjectService extends APIService {
   // ---- company summary ----
   getSummary(workspaceSlug: string): Promise<TE9Summary> {
     return this.call(this.get(`/api/workspaces/${workspaceSlug}/e9/summary/`));
+  }
+
+  // ---- snag list ----
+  getSnags(workspaceSlug: string, projectId: string): Promise<TE9Snags> {
+    return this.call(this.get(`${this.base(workspaceSlug, projectId)}/snags/`));
+  }
+
+  createSnag(workspaceSlug: string, projectId: string, data: object): Promise<TE9Snags> {
+    return this.call(this.post(`${this.base(workspaceSlug, projectId)}/snags/`, data));
+  }
+
+  updateSnag(workspaceSlug: string, projectId: string, snagId: string, data: object): Promise<TE9Snags> {
+    return this.call(this.patch(`${this.base(workspaceSlug, projectId)}/snags/${snagId}/`, data));
+  }
+
+  deleteSnag(workspaceSlug: string, projectId: string, snagId: string): Promise<TE9Snags> {
+    return this.call(this.delete(`${this.base(workspaceSlug, projectId)}/snags/${snagId}/`));
   }
 }
 
