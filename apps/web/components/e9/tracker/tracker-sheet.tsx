@@ -33,6 +33,7 @@ import type { TE9ScopeKey, TE9StageKey } from "./constants";
 import type { TE9Attachment, TE9ProjectScope, TE9ScopeItem } from "./logic";
 import { formatMeasure, isFilled, isStageOverdue, itemArea, itemMeasure } from "./logic";
 import { E9ItemHistoryModal, E9PhotoCell, E9PhotosModal } from "./photos-history";
+import { mailSearchUrl } from "../commercial/shared";
 import { E9ColumnsModal, E9FloorsModal, E9ImportModal, E9ScopesModal } from "./setup-panels";
 
 const stageColor = (key: TE9StageKey) => E9_TRACKER_STAGES.find((stage) => stage.key === key)?.color ?? "#888";
@@ -339,7 +340,7 @@ const COLUMNS: TColumn[] = [
         />
         {ctx.item.jc_no && (
           <a
-            href={`https://mail.google.com/mail/u/0/#search/${encodeURIComponent(ctx.item.jc_no)}`}
+            href={mailSearchUrl(ctx.item.jc_no)}
             target="_blank"
             rel="noopener noreferrer"
             title="Find the e-proof mail in Gmail"
@@ -639,6 +640,38 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     }
   };
 
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // forget ticks when switching scope / floor / search
+  useEffect(() => setSelected(new Set()), [scopeKey, floorFilter, search]);
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  /** Delete several rows after one confirmation. */
+  const removeMany = async (ids: string[], what: string) => {
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${what}? Their codes will not be reused. This cannot be undone.`)) return;
+    const done: string[] = [];
+    for (const id of ids) {
+      try {
+        await e9ProjectService.deleteItem(workspaceSlug, project.id, id);
+        done.push(id);
+      } catch {
+        setToast({ type: "error", title: "Some rows could not be deleted", message: "Please try again." });
+        break;
+      }
+    }
+    await mutate((current) => current && { ...current, items: current.items.filter((row) => !done.includes(row.id)) }, {
+      revalidate: false,
+    });
+    setSelected(new Set());
+    if (done.length) setToast({ type: "success", title: `Deleted ${done.length} row(s)` });
+  };
+
   const removeRow = async (item: TE9ScopeItem) => {
     const label = [item.item_code, item.description || item.floor_area].filter(Boolean).join(" – ");
     if (!window.confirm(`Delete ${label}? The code ${item.item_code} will not be reused.`)) return;
@@ -786,6 +819,30 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                   className="h-8 w-52 rounded-lg border border-subtle bg-surface-1 pr-2 pl-8 text-body-xs-regular text-primary outline-none placeholder:text-placeholder focus-visible:border-accent-strong"
                 />
               </label>
+              {canEdit && selected.size > 0 && (
+                <Button
+                  variant="danger"
+                  size="md"
+                  stretch="auto"
+                  label={`Delete ${selected.size} selected`}
+                  onClick={() => removeMany([...selected], `${selected.size} selected row(s)`)}
+                />
+              )}
+              {canEdit && selected.size === 0 && rows.some((row) => !isFilled(row)) && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  stretch="auto"
+                  label={`Delete ${rows.filter((row) => !isFilled(row)).length} blank row(s)`}
+                  onClick={() => {
+                    const blank = rows.filter((row) => !isFilled(row));
+                    void removeMany(
+                      blank.map((row) => row.id),
+                      `${blank.length} blank row(s) (${blank.map((row) => row.item_code).join(", ")})`
+                    );
+                  }}
+                />
+              )}
               {canEdit && (
                 <>
                   <Button
@@ -841,7 +898,20 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                   </tr>
                   <tr>
                     <th className="sticky left-0 z-[4] border-b border-subtle bg-layer-1 px-2 py-2 text-body-2xs-semibold text-tertiary">
-                      Code
+                      <span className="flex items-center gap-1.5">
+                        {canEdit && rows.length > 0 && (
+                          <input
+                            type="checkbox"
+                            aria-label="Select all rows"
+                            className="size-3.5 accent-[var(--brand-default)]"
+                            checked={rows.every((row) => selected.has(row.id))}
+                            onChange={(event) =>
+                              setSelected(event.target.checked ? new Set(rows.map((row) => row.id)) : new Set())
+                            }
+                          />
+                        )}
+                        Code
+                      </span>
                     </th>
                     {columns.map((column) => (
                       <th
@@ -887,8 +957,24 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                       };
                       return (
                         <tr key={item.id} className={cn("group", ctx.empty && "opacity-70")}>
-                          <td className="sticky left-0 z-[2] border-b border-subtle bg-surface-1 px-2 py-1 align-middle text-body-xs-semibold text-primary group-hover:bg-layer-1">
-                            {item.item_code}
+                          <td
+                            className={cn(
+                              "sticky left-0 z-[2] border-b border-subtle bg-surface-1 px-2 py-1 align-middle text-body-xs-semibold text-primary group-hover:bg-layer-1",
+                              selected.has(item.id) && "bg-accent-subtle"
+                            )}
+                          >
+                            <label className="flex cursor-pointer items-center gap-1.5">
+                              {canEdit && (
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ${item.item_code}`}
+                                  className="size-3.5 accent-[var(--brand-default)]"
+                                  checked={selected.has(item.id)}
+                                  onChange={() => toggle(item.id)}
+                                />
+                              )}
+                              {item.item_code}
+                            </label>
                           </td>
                           {columns.map((column) => (
                             <td
@@ -899,7 +985,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                             </td>
                           ))}
                           <td className="border-b border-subtle px-1 py-1 align-middle">
-                            <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                            <div className="flex items-center justify-end gap-0.5">
                               <button
                                 type="button"
                                 onClick={() => setHistoryItem(item)}
@@ -914,7 +1000,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                                   type="button"
                                   onClick={() => removeRow(item)}
                                   aria-label={`Delete ${item.item_code}`}
-                                  className="grid size-7 place-items-center rounded-md text-placeholder hover:bg-danger-subtle hover:text-danger-primary"
+                                  title={`Delete ${item.item_code}`}
+                                  className="grid size-7 place-items-center rounded-md text-tertiary hover:bg-danger-subtle hover:text-danger-primary"
                                 >
                                   <CloseOutline className="size-3.5" />
                                 </button>
@@ -986,7 +1073,7 @@ function Legend() {
         "bg-danger-subtle ring-1 ring-[var(--border-color-danger-strong)]",
         "Overdue against the stage target / rework"
       )}
-      <span>Hover a row for its history (clock) and delete (✕).</span>
+      <span>Tick rows to delete several at once, or use ✕ at the end of a row. The clock shows who changed it.</span>
     </div>
   );
 }

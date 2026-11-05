@@ -19,6 +19,7 @@ import { getStatusMeta } from "./constants";
 import { getProgressPercent } from "./helpers";
 import { useE9Project } from "./hooks";
 import { E9ErrorState, E9LoadingState } from "./states";
+import { E9DeleteProjectButton } from "./delete-project";
 import { E9BillingPage } from "./commercial/billing-page";
 import { E9BoqPage } from "./commercial/boq-page";
 import { E9LogsPage } from "./commercial/logs-page";
@@ -120,6 +121,9 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
             label="Work items"
             onClick={() => router.push(`/${workspaceSlug}/projects/${project.id}/issues`)}
           />
+          {project.can_edit && (
+            <E9DeleteProjectButton workspaceSlug={workspaceSlug} projectId={project.id} projectName={project.name} />
+          )}
           {project.can_edit && (
             <Button
               stretch="auto"
