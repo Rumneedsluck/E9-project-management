@@ -4,7 +4,12 @@
 
 from django.urls import path
 
-from .views import E9ProjectDetailEndpoint, E9ProjectListEndpoint
+from .views import (
+    E9ProjectDetailEndpoint,
+    E9ProjectListEndpoint,
+    E9ScopeItemDetailEndpoint,
+    E9ScopeItemListEndpoint,
+)
 
 urlpatterns = [
     path(
@@ -16,5 +21,15 @@ urlpatterns = [
         "workspaces/<str:slug>/e9/projects/<uuid:project_id>/",
         E9ProjectDetailEndpoint.as_view(),
         name="e9-project-detail",
+    ),
+    path(
+        "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/",
+        E9ScopeItemListEndpoint.as_view(),
+        name="e9-scope-items",
+    ),
+    path(
+        "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/<uuid:item_id>/",
+        E9ScopeItemDetailEndpoint.as_view(),
+        name="e9-scope-item-detail",
     ),
 ]

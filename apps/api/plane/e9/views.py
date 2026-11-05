@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # See the LICENSE file for details.
 
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Count, Q
 from rest_framework import status
 from rest_framework.response import Response
@@ -11,8 +11,9 @@ from plane.app.permissions import ROLE, allow_permission
 from plane.app.views.base import BaseAPIView
 from plane.db.models import Issue, Project, ProjectMember, StateGroup, WorkspaceMember
 
-from .models import E9ProjectProfile
-from .serializers import E9ProjectProfileSerializer, default_profile_data
+from . import tracker
+from .models import E9ProjectProfile, E9ScopeItem
+from .serializers import E9ProjectProfileSerializer, E9ScopeItemSerializer, default_profile_data
 
 
 def _is_workspace_admin(user, slug):
@@ -148,3 +149,118 @@ class E9ProjectDetailEndpoint(BaseAPIView):
 
         data = _serialize_projects(Project.objects.filter(pk=project.id), request.user, slug)
         return Response(data[0], status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Tracker: scope items (one row per wall / glass panel / signage ...)
+# ---------------------------------------------------------------------------
+
+
+def _can_update_items(user, slug, project_id):
+    """Project admins and members update the tracker; guests only view. Workspace admins always can."""
+    return ProjectMember.objects.filter(
+        member=user,
+        workspace__slug=slug,
+        project_id=project_id,
+        role__in=[ROLE.ADMIN.value, ROLE.MEMBER.value],
+        is_active=True,
+    ).exists() or _is_workspace_admin(user, slug)
+
+
+MAX_ROWS_PER_ADD = 100
+
+
+class E9ScopeItemListEndpoint(BaseAPIView):
+    """List a project's tracker items, or add new rows to a scope sheet."""
+
+    def _project(self, request, slug, project_id):
+        return _visible_projects(request.user, slug).filter(pk=project_id).first()
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
+    def get(self, request, slug, project_id):
+        project = self._project(request, slug, project_id)
+        if project is None:
+            return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
+        items = E9ScopeItem.objects.filter(project=project)
+        return Response(
+            {
+                "can_edit": _can_update_items(request.user, slug, project.id),
+                "items": E9ScopeItemSerializer(items, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
+    def post(self, request, slug, project_id):
+        project = self._project(request, slug, project_id)
+        if project is None:
+            return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_update_items(request.user, slug, project.id):
+            return Response({"error": "Guests can view the tracker but not change it."}, status=403)
+
+        scope = request.data.get("scope")
+        if scope not in tracker.SCOPES:
+            return Response({"scope": "Pick a valid scope."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            count = int(request.data.get("count", 1))
+        except (TypeError, ValueError):
+            count = 0
+        if not 1 <= count <= MAX_ROWS_PER_ADD:
+            return Response({"count": f"Add between 1 and {MAX_ROWS_PER_ADD} rows at a time."}, status=400)
+
+        values = {key: value for key, value in request.data.items() if key not in ("scope", "count")}
+        serializer = E9ScopeItemSerializer(data=values, context={"scope": scope})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            # Lock the project row so two people adding rows at once get different codes
+            Project.objects.select_for_update().filter(pk=project.id).first()
+            existing = E9ScopeItem.all_objects.filter(project=project, scope=scope)
+            last_number = existing.aggregate(models.Max("item_number"))["item_number__max"] or 0
+            last_order = existing.aggregate(models.Max("sort_order"))["sort_order__max"] or 0
+            created = [
+                E9ScopeItem.objects.create(
+                    project=project,
+                    workspace_id=project.workspace_id,
+                    scope=scope,
+                    item_number=last_number + index,
+                    sort_order=last_order + index * 1000,
+                    **serializer.validated_data,
+                )
+                for index in range(1, count + 1)
+            ]
+        return Response(E9ScopeItemSerializer(created, many=True).data, status=status.HTTP_201_CREATED)
+
+
+class E9ScopeItemDetailEndpoint(BaseAPIView):
+    """Update or remove one tracker row."""
+
+    def _item(self, request, slug, project_id, item_id):
+        project = _visible_projects(request.user, slug).filter(pk=project_id).first()
+        if project is None:
+            return None
+        return E9ScopeItem.objects.filter(project=project, pk=item_id).first()
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
+    def patch(self, request, slug, project_id, item_id):
+        item = self._item(request, slug, project_id, item_id)
+        if item is None:
+            return Response({"error": "Item not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_update_items(request.user, slug, project_id):
+            return Response({"error": "Guests can view the tracker but not change it."}, status=403)
+        serializer = E9ScopeItemSerializer(item, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
+    def delete(self, request, slug, project_id, item_id):
+        item = self._item(request, slug, project_id, item_id)
+        if item is None:
+            return Response({"error": "Item not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_update_items(request.user, slug, project_id):
+            return Response({"error": "Guests can view the tracker but not change it."}, status=403)
+        item.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

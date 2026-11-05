@@ -6,6 +6,8 @@ from django.db import models
 
 from plane.db.models.base import BaseModel
 
+from . import tracker
+
 
 class E9ProjectStatus(models.TextChoices):
     """Where an awarded signage/branding job currently is.
@@ -49,6 +51,18 @@ class E9ProjectProfile(BaseModel):
     priority = models.CharField(max_length=16, choices=E9ProjectPriority.choices, default=E9ProjectPriority.MEDIUM)
     start_date = models.DateField(null=True, blank=True)
     deadline = models.DateField(null=True, blank=True, help_text="Final handover deadline")
+    # Project Info (from the tracker template)
+    client_contact = models.CharField(max_length=255, blank=True, default="")
+    site_contact = models.CharField(max_length=255, blank=True, default="")
+    work_order_date = models.DateField(null=True, blank=True)
+    site_timings = models.TextField(blank=True, default="", help_text="Site timings / restrictions")
+    # Stage target dates: drive the red "overdue" highlighting on the tracker
+    target_site_audit = models.DateField(null=True, blank=True)
+    target_pre_press = models.DateField(null=True, blank=True)
+    target_material = models.DateField(null=True, blank=True)
+    target_delivered = models.DateField(null=True, blank=True)
+    target_installation = models.DateField(null=True, blank=True)
+    target_sign_off = models.DateField(null=True, blank=True)
 
     class Meta:
         verbose_name = "E9 Project Profile"
@@ -58,3 +72,87 @@ class E9ProjectProfile(BaseModel):
 
     def __str__(self):
         return f"E9 profile <{self.project_id}>"
+
+
+def _choices(values):
+    return [(value, value or "—") for value in values]
+
+
+class E9ScopeItem(BaseModel):
+    """One row on a tracker scope sheet (a wall, a glass panel, a signage, a frame...)."""
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_scope_items")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_scope_items")
+    scope = models.CharField(max_length=32, choices=tracker.SCOPE_CHOICES)
+    item_number = models.PositiveIntegerField(help_text="W1 -> 1. Never reused within a project and scope.")
+    sort_order = models.FloatField(default=65535)
+
+    # Item details
+    boq_item_no = models.CharField(max_length=60, blank=True, default="")
+    floor_area = models.CharField(max_length=255, blank=True, default="")
+    floor_plan_ref = models.CharField(max_length=500, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    # 1 · Site audit
+    site_audit_status = models.CharField(
+        max_length=40, choices=_choices(tracker.SITE_AUDIT_STATUS), default="Not Started"
+    )
+    height_in = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    width_in = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    qty = models.DecimalField(max_digits=9, decimal_places=2, null=True, blank=True)
+    unit_override = models.CharField(max_length=8, choices=_choices(tracker.UNIT_OVERRIDE), blank=True, default="")
+    photo_link = models.CharField(max_length=1000, blank=True, default="")
+    site_issue = models.CharField(max_length=80, choices=_choices(tracker.ALL_SITE_ISSUES), default="No issues")
+    issue_resolved = models.CharField(max_length=8, choices=_choices(tracker.ISSUE_RESOLVED), default="N/A")
+    # 2 · Pre-press
+    pre_press = models.CharField(max_length=60, choices=_choices(tracker.PRE_PRESS), default="Not Started")
+    jc_no = models.CharField(max_length=60, blank=True, default="")
+    # 3 · Production & material
+    production_status = models.CharField(
+        max_length=40, choices=_choices(tracker.PRODUCTION_STATUS), default="Not Started"
+    )
+    material_status = models.CharField(max_length=40, choices=_choices(tracker.MATERIAL_STATUS), blank=True, default="")
+    # 4 · Quality & dispatch
+    quality_check = models.CharField(max_length=40, choices=_choices(tracker.QUALITY_CHECK), default="Pending")
+    qc_done_by = models.CharField(max_length=120, blank=True, default="")
+    dc_nos = models.CharField(max_length=255, blank=True, default="", help_text="Comma-separated DC numbers")
+    dispatch_status = models.CharField(
+        max_length=40, choices=_choices(tracker.DISPATCH_STATUS), default="Not Dispatched"
+    )
+    # 5 · Installation
+    installation_status = models.CharField(
+        max_length=40, choices=_choices(tracker.INSTALLATION_STATUS), default="Not Started"
+    )
+    installation_date = models.DateField(null=True, blank=True)
+    installed_by = models.CharField(max_length=255, blank=True, default="")
+    # 6 · Handover
+    client_sign_off = models.CharField(max_length=40, choices=_choices(tracker.CLIENT_SIGN_OFF), default="Pending")
+    remarks = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 Scope Item"
+        verbose_name_plural = "E9 Scope Items"
+        db_table = "e9_scope_items"
+        ordering = ("scope", "sort_order", "item_number")
+        indexes = [models.Index(fields=["project", "scope"], name="e9_item_project_scope_idx")]
+        constraints = [
+            models.UniqueConstraint(fields=["project", "scope", "item_number"], name="e9_item_unique_code_per_project")
+        ]
+
+    def __str__(self):
+        return self.item_code
+
+    @property
+    def item_code(self):
+        return f"{tracker.SCOPES[self.scope][1]}{self.item_number}"
+
+    @property
+    def unit(self):
+        return tracker.item_unit(self.scope, self.height_in, self.width_in, self.unit_override)
+
+    @property
+    def area_sqft(self):
+        return tracker.item_area_sqft(self.height_in, self.width_in, self.qty)
+
+    @property
+    def current_stage(self):
+        return tracker.current_stage(self)
