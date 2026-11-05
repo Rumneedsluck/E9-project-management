@@ -33,7 +33,7 @@ import {
   trackerHref,
   unitText,
 } from "./shared";
-import type { TE9Amendment, TE9Boq, TE9BoqLine, TE9PO, TE9Reprint } from "./types";
+import type { TE9Amendment, TE9Boq, TE9BoqLine, TE9PO } from "./types";
 
 type Props = { workspaceSlug: string; project: TE9Project };
 
@@ -41,7 +41,6 @@ type TModal =
   | { type: "po"; po?: TE9PO }
   | { type: "line"; poId: string; line?: TE9BoqLine; amendmentId?: string }
   | { type: "amendment"; po: TE9PO; amendment?: TE9Amendment }
-  | { type: "reprint"; reprint?: TE9Reprint }
   | null;
 
 const AMENDMENT_TEXT: Record<TE9Amendment["status"], { label: string; className: string }> = {
@@ -238,14 +237,6 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
         </>
       )}
 
-      <ReprintsPanel
-        boq={data}
-        canAdd={data.can_update}
-        onAdd={() => setModal({ type: "reprint" })}
-        onEdit={(reprint) => setModal({ type: "reprint", reprint })}
-        onDelete={(reprint) => remove("reprints", reprint.id, "this reprint")}
-      />
-
       {modal?.type === "po" && (
         <POModal
           po={modal.po}
@@ -289,20 +280,6 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
               modal.amendment
                 ? e9ProjectService.boqUpdate(workspaceSlug, project.id, "amendments", modal.amendment.id, body)
                 : e9ProjectService.boqCreate(workspaceSlug, project.id, "amendments", body)
-            )
-          }
-        />
-      )}
-      {modal?.type === "reprint" && (
-        <ReprintModal
-          boq={data}
-          reprint={modal.reprint}
-          onClose={() => setModal(null)}
-          onSave={(body) =>
-            send("Couldn't save the reprint", () =>
-              modal.reprint
-                ? e9ProjectService.boqUpdate(workspaceSlug, project.id, "reprints", modal.reprint.id, body)
-                : e9ProjectService.boqCreate(workspaceSlug, project.id, "reprints", body)
             )
           }
         />
@@ -706,96 +683,6 @@ function POCard(props: TPOCardProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Reprints
-// ---------------------------------------------------------------------------
-
-function ReprintsPanel({
-  boq,
-  canAdd,
-  onAdd,
-  onEdit,
-  onDelete,
-}: {
-  boq: TE9Boq;
-  canAdd: boolean;
-  onAdd: () => void;
-  onEdit: (reprint: TE9Reprint) => void;
-  onDelete: (reprint: TE9Reprint) => void;
-}) {
-  return (
-    <E9Panel
-      title={`Reprints · ${boq.reprints.length}`}
-      action={
-        canAdd ? (
-          <SmallButton onClick={onAdd}>
-            <AddOutline className="size-3.5" /> Add reprint
-          </SmallButton>
-        ) : undefined
-      }
-    >
-      <p className="border-b border-subtle px-5 py-2 text-body-2xs-regular text-tertiary">
-        Our own mistakes are only reprints: not billed and not counted as extra. Reprints because the client changed
-        something are billable and are added to what can be certified.
-      </p>
-      {boq.reprints.length === 0 ? (
-        <p className="px-5 py-6 text-center text-body-sm-regular text-tertiary">No reprints.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-body-xs-regular">
-            <thead>
-              <tr className="border-b border-subtle text-body-2xs-semibold text-tertiary">
-                {["Date", "BOQ No.", "Caused by", "Qty", "Reason", "JC No.", ""].map((heading) => (
-                  <th key={heading} className="px-4 py-2.5 font-semibold">
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-subtle text-primary">
-              {boq.reprints.map((reprint) => (
-                <tr key={reprint.id}>
-                  <td className="px-4 py-2.5 whitespace-nowrap">
-                    {renderFormattedDate(reprint.reprint_date ?? reprint.created_at)}
-                  </td>
-                  <td className="px-4 py-2.5 font-semibold">{reprint.line_no || "—"}</td>
-                  <td className="px-4 py-2.5">
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-body-2xs-semibold",
-                        reprint.cause === "client"
-                          ? "bg-accent-subtle text-accent-primary"
-                          : "bg-layer-2 text-secondary"
-                      )}
-                    >
-                      {reprint.cause === "client" ? "Client change – billable" : "Our mistake – reprint"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums">{fmt(reprint.qty)}</td>
-                  <td className="max-w-[320px] px-4 py-2.5">{reprint.reason || "—"}</td>
-                  <td className="px-4 py-2.5">{reprint.jc_no || "—"}</td>
-                  <td className="px-2 py-2.5 text-right whitespace-nowrap">
-                    {canAdd && (
-                      <>
-                        <SmallButton tone="neutral" onClick={() => onEdit(reprint)}>
-                          Edit
-                        </SmallButton>
-                        <SmallButton tone="danger" onClick={() => onDelete(reprint)}>
-                          ✕
-                        </SmallButton>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </E9Panel>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Forms
 // ---------------------------------------------------------------------------
 
@@ -1183,108 +1070,6 @@ function AmendmentModal({
             </span>
           )}
         </div>
-      </div>
-    </E9Modal>
-  );
-}
-
-function ReprintModal({
-  boq,
-  reprint,
-  onClose,
-  onSave,
-}: {
-  boq: TE9Boq;
-  reprint?: TE9Reprint;
-  onClose: () => void;
-  onSave: (body: object) => Promise<boolean>;
-}) {
-  const [cause, setCause] = useState<TE9Reprint["cause"]>(reprint?.cause ?? "internal");
-  const [boqLine, setBoqLine] = useState(reprint?.boq_line ?? boq.lines[0]?.id ?? "");
-  const [qty, setQty] = useState(reprint ? String(Number(reprint.qty)) : "");
-  const [reason, setReason] = useState(reprint?.reason ?? "");
-  const [jcNo, setJcNo] = useState(reprint?.jc_no ?? "");
-  const [date, setDate] = useState(reprint?.reprint_date ?? new Date().toISOString().slice(0, 10));
-  const { busy, save } = useSaver(onSave, onClose);
-  const line = boq.lines.find((entry) => entry.id === boqLine);
-  return (
-    <E9Modal
-      open
-      onClose={onClose}
-      title={reprint ? "Edit reprint" : "Add a reprint"}
-      footer={
-        <ModalFooter
-          onClose={onClose}
-          busy={busy}
-          label="Save"
-          onSave={() =>
-            save({ cause, boq_line: boqLine || null, qty, reason, jc_no: jcNo, reprint_date: date || null })
-          }
-        />
-      }
-    >
-      <div className="grid grid-cols-1 gap-3 px-5 py-4 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <FormField label="Why was it reprinted?">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {(
-                [
-                  ["internal", "Our mistake", "Reprint only – not billed"],
-                  ["client", "Client change", "Billable"],
-                ] as const
-              ).map(([value, title, hint]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setCause(value)}
-                  className={cn(
-                    "flex flex-col items-start rounded-lg border px-3 py-2 text-left",
-                    cause === value ? "border-accent-strong bg-accent-subtle" : "border-subtle"
-                  )}
-                >
-                  <span className="text-body-sm-semibold text-primary">{title}</span>
-                  <span className="text-body-2xs-regular text-tertiary">{hint}</span>
-                </button>
-              ))}
-            </div>
-          </FormField>
-        </div>
-        <FormField label="BOQ line">
-          <select className={inputClass} value={boqLine} onChange={(e) => setBoqLine(e.target.value)}>
-            <option value="">—</option>
-            {boq.lines.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.line_no} · {entry.description || "—"}
-              </option>
-            ))}
-          </select>
-        </FormField>
-        <FormField label={`Quantity${line ? ` (${unitText(line.unit)})` : ""}`}>
-          <input
-            type="number"
-            min={0}
-            step="any"
-            className={inputClass}
-            value={qty}
-            onChange={(e) => setQty(e.target.value)}
-          />
-        </FormField>
-        <div className="sm:col-span-2">
-          <FormField label="Reason">
-            <input
-              className={inputClass}
-              value={reason}
-              placeholder="e.g. Colour mismatch / client changed the text"
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </FormField>
-        </div>
-        <FormField label="JC No.">
-          <input className={inputClass} value={jcNo} onChange={(e) => setJcNo(e.target.value)} />
-        </FormField>
-        <FormField label="Date">
-          <input type="date" className={inputClass} value={date} onChange={(e) => setDate(e.target.value)} />
-        </FormField>
       </div>
     </E9Modal>
   );

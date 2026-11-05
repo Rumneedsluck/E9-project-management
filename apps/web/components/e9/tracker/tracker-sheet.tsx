@@ -72,10 +72,12 @@ type TColumn = {
 const BAND_COLORS: Record<string, string> = {
   "Item details": GREY,
   "1 · Site audit": stageColor("site_audit"),
+  "Production size (what we send)": "#0E7490",
   "2 · Pre-press": stageColor("pre_press"),
   "3 · Production & material": stageColor("material"),
   "4 · Quality & dispatch": stageColor("delivered"),
   "5 · Installation": stageColor("installation"),
+  "Certified (joint measurement)": "#C2410C",
   "6 · Handover": stageColor("sign_off"),
   Notes: GREY,
 };
@@ -89,6 +91,59 @@ const text = (field: keyof TE9ScopeItem, label: string, placeholder?: string) =>
     onSave={(value) => ctx.save({ [field]: value })}
   />
 );
+
+/** A calculated value (blue-grey in the template): number + unit, never typed. */
+function AutoCell({
+  value,
+  unit,
+  hint,
+  tone,
+}: {
+  value: string | null | undefined;
+  unit: "sqft" | "nos";
+  hint?: string;
+  tone?: "warn" | "ok";
+}) {
+  const number = value === null || value === undefined ? null : Number(value);
+  return (
+    <div className="flex flex-col px-2 text-right leading-tight" title={hint}>
+      <span
+        className={cn(
+          "text-body-xs-semibold tabular-nums",
+          tone === "warn" ? "text-warning-primary" : tone === "ok" ? "text-success-primary" : "text-primary"
+        )}
+      >
+        {number === null ? "—" : number.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+      </span>
+      {number !== null && (
+        <span className="text-body-2xs-regular text-tertiary">{unit === "sqft" ? "sq ft" : "Nos"}</span>
+      )}
+    </div>
+  );
+}
+
+const numberColumn = (
+  key: string,
+  hideKey: string,
+  label: string,
+  band: string,
+  field: keyof TE9ScopeItem,
+  ariaLabel: string
+): TColumn => ({
+  key,
+  hideKey,
+  label,
+  width: 80,
+  band,
+  render: (ctx) => (
+    <NumberCell
+      label={ariaLabel}
+      value={(ctx.item[field] as string | null) ?? null}
+      disabled={ctx.disabled}
+      onSave={(v) => ctx.save({ [field]: v })}
+    />
+  ),
+});
 
 const COLUMNS: TColumn[] = [
   {
@@ -307,6 +362,50 @@ const COLUMNS: TColumn[] = [
       />
     ),
   },
+  numberColumn(
+    "prodh",
+    "production_size",
+    "Prod. H (in)",
+    "Production size (what we send)",
+    "production_height_in",
+    "Production height in inches"
+  ),
+  numberColumn(
+    "prodw",
+    "production_size",
+    "Prod. W (in)",
+    "Production size (what we send)",
+    "production_width_in",
+    "Production width in inches"
+  ),
+  numberColumn(
+    "prodqty",
+    "production_size",
+    "Prod. Qty",
+    "Production size (what we send)",
+    "production_qty",
+    "Production quantity"
+  ),
+  {
+    key: "prodmeasure",
+    hideKey: "production_size",
+    label: "Production qty",
+    width: 104,
+    band: "Production size (what we send)",
+    render: ({ item, empty }) =>
+      empty ? null : (
+        <AutoCell
+          value={item.production_measure}
+          unit={item.unit}
+          hint={
+            item.wastage
+              ? `Wastage ${Number(item.wastage).toLocaleString("en-IN")} sq ft vs measured`
+              : "Blank production size = same as measured"
+          }
+          tone={item.wastage && Number(item.wastage) > 0 ? "warn" : undefined}
+        />
+      ),
+  },
   {
     key: "prepress",
     hideKey: "pre_press",
@@ -419,6 +518,14 @@ const COLUMNS: TColumn[] = [
     render: text("dc_nos", "DC numbers", "e.g. 3500, 3501"),
   },
   {
+    key: "dcqty",
+    hideKey: "dc_qty",
+    label: "DC Qty",
+    width: 104,
+    band: "4 · Quality & dispatch",
+    render: text("dc_qty", "Quantity on each DC", "e.g. 100, 50"),
+  },
+  {
     key: "dispatch",
     hideKey: "dispatch_status",
     label: "Dispatch",
@@ -434,6 +541,36 @@ const COLUMNS: TColumn[] = [
         onSave={(v) => ctx.save({ dispatch_status: v })}
       />
     ),
+  },
+  {
+    key: "dispatched",
+    hideKey: "dc_qty",
+    label: "Dispatched",
+    width: 96,
+    band: "4 · Quality & dispatch",
+    render: ({ item, empty }) =>
+      empty || !item.dc_nos ? null : (
+        <AutoCell
+          value={item.dispatched}
+          unit={item.unit}
+          hint={item.dc_list.map((row) => `DC ${row.dc}: ${row.qty ?? "qty not typed"}`).join("\n")}
+        />
+      ),
+  },
+  {
+    key: "balance",
+    hideKey: "dc_qty",
+    label: "Balance to send",
+    width: 104,
+    band: "4 · Quality & dispatch",
+    render: ({ item, empty }) =>
+      empty || !item.dc_nos ? null : (
+        <AutoCell
+          value={item.balance}
+          unit={item.unit}
+          tone={item.balance && Number(item.balance) > 0 ? "warn" : "ok"}
+        />
+      ),
   },
   {
     key: "install",
@@ -475,6 +612,39 @@ const COLUMNS: TColumn[] = [
     band: "5 · Installation",
     render: text("installed_by", "Installed by", "Team"),
   },
+  numberColumn(
+    "certh",
+    "certified",
+    "Cert. H (in)",
+    "Certified (joint measurement)",
+    "certified_height_in",
+    "Certified height in inches"
+  ),
+  numberColumn(
+    "certw",
+    "certified",
+    "Cert. W (in)",
+    "Certified (joint measurement)",
+    "certified_width_in",
+    "Certified width in inches"
+  ),
+  numberColumn(
+    "certqty",
+    "certified",
+    "Cert. Qty",
+    "Certified (joint measurement)",
+    "certified_qty",
+    "Certified quantity"
+  ),
+  {
+    key: "certmeasure",
+    hideKey: "certified",
+    label: "Certifiable",
+    width: 100,
+    band: "Certified (joint measurement)",
+    render: ({ item, empty }) =>
+      empty ? null : <AutoCell value={item.certified_measure} unit={item.unit} hint="Used for billing" />,
+  },
   {
     key: "signoff",
     hideKey: "client_sign_off",
@@ -499,6 +669,20 @@ const COLUMNS: TColumn[] = [
     width: 220,
     band: "Notes",
     render: text("remarks", "Remarks"),
+  },
+  {
+    key: "resent",
+    hideKey: "resent",
+    label: "Re-sent",
+    width: 110,
+    band: "Notes",
+    className: "px-2",
+    render: ({ item }) =>
+      item.resent ? (
+        <span className="rounded bg-danger-subtle px-1.5 py-0.5 text-body-2xs-semibold text-danger-primary">
+          {item.resent}
+        </span>
+      ) : null,
   },
 ];
 

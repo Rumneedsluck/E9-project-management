@@ -35,7 +35,7 @@ export type TE9Floor = {
 export type TE9Attachment = {
   id: string;
   item: string | null;
-  kind: "photo" | "site_audit" | "dc_scan" | "document" | "po" | "mail" | "certificate" | "pi" | "wcc";
+  kind: "photo" | "site_audit" | "dc_scan" | "document" | "po" | "mail" | "certificate" | "pi" | "wcc" | "snag";
   /** the PO / amendment / bill this file belongs to */
   ref_id?: string | null;
   name: string;
@@ -66,6 +66,21 @@ export type TE9Change = {
 
 /** One row on a scope sheet, as returned by /e9/projects/:id/items/. */
 export type TE9ScopeItem = {
+  // template columns added later (production size, partial DCs, certified)
+  production_height_in: string | null;
+  production_width_in: string | null;
+  production_qty: string | null;
+  production_measure: string | null;
+  wastage: string | null;
+  dc_qty: string;
+  dispatched: string | null;
+  balance: string | null;
+  dc_list: { dc: string; qty: string | null }[];
+  certified_height_in: string | null;
+  certified_width_in: string | null;
+  certified_qty: string | null;
+  certified_measure: string | null;
+  resent: string;
   id: string;
   scope: string;
   item_number: number;

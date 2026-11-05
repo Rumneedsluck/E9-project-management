@@ -403,17 +403,21 @@ export const HIDEABLE_COLUMNS: { key: string; label: string }[] = [
   { key: "site_issue", label: "Site issue & resolved" },
   { key: "pre_press", label: "Pre-press" },
   { key: "jc_no", label: "JC No." },
+  { key: "production_size", label: "Production size (what we send)" },
   { key: "production_status", label: "Production" },
   { key: "material_status", label: "Material" },
   { key: "quality_check", label: "Quality check" },
   { key: "qc_done_by", label: "QC by" },
   { key: "dc_nos", label: "DC No(s)." },
+  { key: "dc_qty", label: "DC Qty, dispatched & balance" },
   { key: "dispatch_status", label: "Dispatch" },
   { key: "installation_status", label: "Installation" },
   { key: "installation_date", label: "Install date" },
   { key: "installed_by", label: "Installed by" },
+  { key: "certified", label: "Certified (joint measurement)" },
   { key: "client_sign_off", label: "Client sign-off" },
   { key: "remarks", label: "Remarks" },
+  { key: "resent", label: "Re-sent (reprints)" },
 ];
 
 export function E9ColumnsModal({ open, onClose, workspaceSlug, project }: TProps) {

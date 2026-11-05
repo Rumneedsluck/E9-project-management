@@ -23,6 +23,8 @@ import { E9DeleteProjectButton } from "./delete-project";
 import { E9BillingPage } from "./commercial/billing-page";
 import { E9BoqPage } from "./commercial/boq-page";
 import { E9LogsPage } from "./commercial/logs-page";
+import { E9ReprintsPage } from "./commercial/reprints-page";
+import { E9SnagsPage } from "./commercial/snags-page";
 import { E9ProjectHistory, E9SiteAuditPanel } from "./tracker/project-docs";
 import { E9TrackerDashboard } from "./tracker/tracker-dashboard";
 import { E9TrackerSheet } from "./tracker/tracker-sheet";
@@ -50,12 +52,14 @@ const empty = <span className="text-placeholder">Not set</span>;
 
 type Props = { workspaceSlug: string; projectId: string };
 
-type TView = "overview" | "tracker" | "dashboard" | "boq" | "logs" | "billing" | "history";
+type TView = "overview" | "tracker" | "dashboard" | "boq" | "logs" | "reprints" | "snags" | "billing" | "history";
 const VIEWS: { key: TView; label: string }[] = [
   { key: "tracker", label: "Tracker" },
   { key: "dashboard", label: "Dashboard" },
   { key: "boq", label: "BOQ" },
   { key: "logs", label: "JC & DC" },
+  { key: "reprints", label: "Reprints & Extras" },
+  { key: "snags", label: "Snag List" },
   { key: "billing", label: "Billing" },
   { key: "overview", label: "Project info" },
   { key: "history", label: "History" },
@@ -87,7 +91,9 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
   const team = project.member_ids.filter((id) => id !== project.project_lead);
 
   return (
-    <E9PageBody wide={view === "tracker" || view === "boq" || view === "logs"}>
+    <E9PageBody
+      wide={view === "tracker" || view === "boq" || view === "logs" || view === "reprints" || view === "snags"}
+    >
       <Link
         href={`/${workspaceSlug}/e9/projects`}
         className="inline-flex w-fit items-center gap-1.5 text-body-xs-medium text-tertiary hover:text-primary"
@@ -168,11 +174,13 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
           workspaceSlug={workspaceSlug}
           project={project}
           onOpenSheet={() => setView("tracker")}
-          onOpenView={setView}
+          onOpenView={(next) => setView(next)}
         />
       )}
       {view === "boq" && <E9BoqPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "logs" && <E9LogsPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "reprints" && <E9ReprintsPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "snags" && <E9SnagsPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "billing" && <E9BillingPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "history" && <E9ProjectHistory workspaceSlug={workspaceSlug} projectId={project.id} />}
       {view === "overview" && (

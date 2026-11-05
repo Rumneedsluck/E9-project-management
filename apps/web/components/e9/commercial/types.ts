@@ -73,10 +73,25 @@ export type TE9Reprint = {
   line_no: string;
   item: string | null;
   item_code: string;
-  cause: "internal" | "client";
+  scope: string;
+  scope_label: string;
+  item_description: string;
+  original_height_in: TE9Num | null;
+  original_width_in: TE9Num | null;
+  size_used: string;
+  unit: TE9BoqUnit;
+  kind: "reprint" | "extra";
+  cause: "e9" | "client" | "site";
   qty: TE9Num;
   reason: string;
+  description: string;
+  pieces: TE9Num | null;
+  reprint_height_in: TE9Num | null;
+  reprint_width_in: TE9Num | null;
   jc_no: string;
+  vendor: string;
+  approved: "" | "Yes" | "Pending" | "No";
+  remarks: string;
   reprint_date: string | null;
   created_at: string;
 };
@@ -103,6 +118,7 @@ export type TE9Boq = {
   pos: TE9PO[];
   lines: TE9BoqLine[];
   reprints: TE9Reprint[];
+  reprint_reasons: string[];
   unlinked: TE9Unlinked[];
   bills: TE9BillSummary[];
   totals: { excess_lines: number; pending_lines: number; unlinked_items: number };
@@ -118,6 +134,9 @@ export type TE9LogItem = {
   unit: TE9BoqUnit;
   qty: TE9Num | null;
   area: TE9Num | null;
+  /** DC log only: quantity sent on this DC (null = not typed) and whether the item went in parts */
+  sent?: TE9Num | null;
+  partial?: boolean;
 };
 
 export type TE9JobCard = {
@@ -141,6 +160,9 @@ export type TE9Challan = {
   saved: boolean;
   sqft: TE9Num;
   nos: TE9Num;
+  unknown_qty: number;
+  client_signatory: string;
+  status: "Dispatched" | "Delivered at Site" | "Returned";
   dc_date: string;
   dispatched_from: string;
   sent_by: string;
@@ -210,3 +232,35 @@ export type TE9SummaryProject = {
 };
 
 export type TE9Summary = { projects: TE9SummaryProject[] };
+
+export type TE9Snag = {
+  id: string;
+  item: string | null;
+  item_code: string;
+  scope: string;
+  scope_label: string;
+  item_description: string;
+  floor: string;
+  days_open: number | null;
+  overdue: boolean;
+  raised_on: string | null;
+  reason: string;
+  details: string;
+  priority: string;
+  raised_by: string;
+  assigned_to: string;
+  target_date: string | null;
+  status: "Open" | "In Progress" | "Fixed - Awaiting Client" | "Closed";
+  closed_on: string | null;
+  remarks: string;
+  created_at: string;
+};
+
+export type TE9Snags = {
+  can_update: boolean;
+  snags: TE9Snag[];
+  reasons: string[];
+  priorities: string[];
+  statuses: TE9Snag["status"][];
+  open: number;
+};
