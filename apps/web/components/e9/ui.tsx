@@ -200,7 +200,7 @@ export function E9PageBody({ children, wide = false }: { children: ReactNode; wi
   return (
     <div
       className={cn(
-        "mx-auto flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
+        "e9-enter mx-auto flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
         wide ? "max-w-none" : "max-w-[1280px]"
       )}
     >

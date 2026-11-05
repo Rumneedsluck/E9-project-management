@@ -1,6 +1,6 @@
 {
-  "name": "Plane",
-  "short_name": "Plane",
+  "name": "E9 Operations",
+  "short_name": "E9",
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -19,9 +19,8 @@
       "type": "image/png"
     }
   ],
-  "theme_color": "#FFFFFF",
-  "background_color": "#FFFFFF",
+  "theme_color": "#DA1E26",
+  "background_color": "#0B0B0B",
   "start_url": "/",
-  "display": "standalone",
-  "orientation": "portrait"
+  "display": "standalone"
 }
