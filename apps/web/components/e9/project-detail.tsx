@@ -19,6 +19,9 @@ import { getStatusMeta } from "./constants";
 import { getProgressPercent } from "./helpers";
 import { useE9Project } from "./hooks";
 import { E9ErrorState, E9LoadingState } from "./states";
+import { E9BillingPage } from "./commercial/billing-page";
+import { E9BoqPage } from "./commercial/boq-page";
+import { E9LogsPage } from "./commercial/logs-page";
 import { E9ProjectHistory, E9SiteAuditPanel } from "./tracker/project-docs";
 import { E9TrackerDashboard } from "./tracker/tracker-dashboard";
 import { E9TrackerSheet } from "./tracker/tracker-sheet";
@@ -46,10 +49,13 @@ const empty = <span className="text-placeholder">Not set</span>;
 
 type Props = { workspaceSlug: string; projectId: string };
 
-type TView = "overview" | "tracker" | "dashboard" | "history";
+type TView = "overview" | "tracker" | "dashboard" | "boq" | "logs" | "billing" | "history";
 const VIEWS: { key: TView; label: string }[] = [
   { key: "tracker", label: "Tracker" },
   { key: "dashboard", label: "Dashboard" },
+  { key: "boq", label: "BOQ" },
+  { key: "logs", label: "JC & DC" },
+  { key: "billing", label: "Billing" },
   { key: "overview", label: "Project info" },
   { key: "history", label: "History" },
 ];
@@ -80,7 +86,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
   const team = project.member_ids.filter((id) => id !== project.project_lead);
 
   return (
-    <E9PageBody wide={view === "tracker"}>
+    <E9PageBody wide={view === "tracker" || view === "boq" || view === "logs"}>
       <Link
         href={`/${workspaceSlug}/e9/projects`}
         className="inline-flex w-fit items-center gap-1.5 text-body-xs-medium text-tertiary hover:text-primary"
@@ -128,7 +134,11 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
       </div>
 
       {/* Tabs */}
-      <div className="-mb-2 flex gap-1 border-b border-subtle" role="tablist" aria-label="Project views">
+      <div
+        className="-mb-2 flex gap-1 overflow-x-auto border-b border-subtle"
+        role="tablist"
+        aria-label="Project views"
+      >
         {VIEWS.map((entry) => (
           <button
             key={entry.key}
@@ -137,7 +147,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
             aria-selected={view === entry.key}
             onClick={() => setView(entry.key)}
             className={cn(
-              "-mb-px border-b-2 px-4 py-2.5 text-body-sm-semibold transition-colors",
+              "-mb-px shrink-0 border-b-2 px-4 py-2.5 text-body-sm-semibold whitespace-nowrap transition-colors",
               view === entry.key
                 ? "border-[var(--brand-default)] text-primary"
                 : "border-transparent text-tertiary hover:text-secondary"
@@ -150,8 +160,16 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
 
       {view === "tracker" && <E9TrackerSheet workspaceSlug={workspaceSlug} project={project} />}
       {view === "dashboard" && (
-        <E9TrackerDashboard workspaceSlug={workspaceSlug} project={project} onOpenSheet={() => setView("tracker")} />
+        <E9TrackerDashboard
+          workspaceSlug={workspaceSlug}
+          project={project}
+          onOpenSheet={() => setView("tracker")}
+          onOpenView={setView}
+        />
       )}
+      {view === "boq" && <E9BoqPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "logs" && <E9LogsPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "billing" && <E9BillingPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "history" && <E9ProjectHistory workspaceSlug={workspaceSlug} projectId={project.id} />}
       {view === "overview" && (
         <>

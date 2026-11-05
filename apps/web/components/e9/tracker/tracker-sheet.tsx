@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useId, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { AddOutline, ClockOutline, CloseOutline, SearchOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
@@ -495,9 +496,20 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const floorListId = useId();
 
   const enabledScopes = useMemo(() => (scopes ?? []).filter((scope) => scope.enabled), [scopes]);
-  const [scopeKey, setScopeKey] = useState<string | null>(null);
+  // links from the BOQ, JC & DC pages open the tracker on a scope with a search (?scope=...&q=...)
+  const searchParams = useSearchParams();
+  const linkScope = searchParams.get("scope");
+  const linkQuery = searchParams.get("q");
+  const [scopeKey, setScopeKey] = useState<string | null>(linkScope);
   const [floorFilter, setFloorFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(linkQuery ?? "");
+  useEffect(() => {
+    if (linkScope) setScopeKey(linkScope);
+    if (linkQuery !== null) {
+      setSearch(linkQuery);
+      setFloorFilter("all");
+    }
+  }, [linkScope, linkQuery]);
   const [adding, setAdding] = useState(false);
   const [panel, setPanel] = useState<TOpenPanel>(null);
   const [photoItem, setPhotoItem] = useState<TE9ScopeItem | null>(null);
@@ -534,6 +546,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
+    // a search that is exactly an item code (W1) opens just that row, not W10, W11…
+    if (query && items.some((item) => item.scope === scopeKey && item.item_code.toLowerCase() === query))
+      return items.filter((item) => item.scope === scopeKey && item.item_code.toLowerCase() === query);
     return items
       .filter((item) => item.scope === scopeKey)
       .filter(
