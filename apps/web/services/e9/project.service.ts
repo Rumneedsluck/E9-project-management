@@ -6,8 +6,12 @@
 
 import { API_BASE_URL } from "@plane/constants";
 import type { TE9Attachment, TE9Change, TE9Floor, TE9ProjectScope, TE9ScopeItem } from "@/components/e9/tracker/logic";
+import type { TE9Bills, TE9Boq, TE9Logs, TE9Summary } from "@/components/e9/commercial/types";
 import type { TE9ProfilePayload, TE9Project } from "@/components/e9/types";
 import { APIService } from "@/services/api.service";
+
+export type TE9BoqKind = "pos" | "lines" | "amendments" | "reprints";
+const boqPath = (kind: TE9BoqKind) => (kind === "reprints" ? "reprints" : `boq/${kind}`);
 
 /** Talks to the E9 endpoints added by the backend `plane.e9` app. */
 export class E9ProjectService extends APIService {
@@ -178,6 +182,55 @@ export class E9ProjectService extends APIService {
         headers: { "Content-Type": "multipart/form-data" },
       })
     );
+  }
+
+  // ---- BOQ, POs, amendments, reprints ----
+  getBoq(workspaceSlug: string, projectId: string): Promise<TE9Boq> {
+    return this.call(this.get(`${this.base(workspaceSlug, projectId)}/boq/`));
+  }
+
+  /** kind: pos | lines | amendments (under boq/) or reprints. Returns the whole BOQ again. */
+  boqCreate(workspaceSlug: string, projectId: string, kind: TE9BoqKind, data: object): Promise<TE9Boq> {
+    return this.call(this.post(`${this.base(workspaceSlug, projectId)}/${boqPath(kind)}/`, data));
+  }
+
+  boqUpdate(workspaceSlug: string, projectId: string, kind: TE9BoqKind, id: string, data: object): Promise<TE9Boq> {
+    return this.call(this.patch(`${this.base(workspaceSlug, projectId)}/${boqPath(kind)}/${id}/`, data));
+  }
+
+  boqDelete(workspaceSlug: string, projectId: string, kind: TE9BoqKind, id: string): Promise<TE9Boq> {
+    return this.call(this.delete(`${this.base(workspaceSlug, projectId)}/${boqPath(kind)}/${id}/`));
+  }
+
+  // ---- JC & DC logs ----
+  getLogs(workspaceSlug: string, projectId: string): Promise<TE9Logs> {
+    return this.call(this.get(`${this.base(workspaceSlug, projectId)}/logs/`));
+  }
+
+  saveLog(workspaceSlug: string, projectId: string, kind: "jc" | "dc", data: object): Promise<TE9Logs> {
+    return this.call(this.put(`${this.base(workspaceSlug, projectId)}/logs/${kind}/`, data));
+  }
+
+  // ---- billing ----
+  getBills(workspaceSlug: string, projectId: string): Promise<TE9Bills> {
+    return this.call(this.get(`${this.base(workspaceSlug, projectId)}/bills/`));
+  }
+
+  createBill(workspaceSlug: string, projectId: string, data: object): Promise<TE9Bills> {
+    return this.call(this.post(`${this.base(workspaceSlug, projectId)}/bills/`, data));
+  }
+
+  updateBill(workspaceSlug: string, projectId: string, billId: string, data: object): Promise<TE9Bills> {
+    return this.call(this.patch(`${this.base(workspaceSlug, projectId)}/bills/${billId}/`, data));
+  }
+
+  deleteBill(workspaceSlug: string, projectId: string, billId: string): Promise<TE9Bills> {
+    return this.call(this.delete(`${this.base(workspaceSlug, projectId)}/bills/${billId}/`));
+  }
+
+  // ---- company summary ----
+  getSummary(workspaceSlug: string): Promise<TE9Summary> {
+    return this.call(this.get(`/api/workspaces/${workspaceSlug}/e9/summary/`));
   }
 }
 

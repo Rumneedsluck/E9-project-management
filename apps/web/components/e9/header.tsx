@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { DashboardsOutline, ProjectsOutline } from "@makeplane/propel/icons";
+import { BillingsOutline, DashboardsOutline, ProjectsOutline } from "@makeplane/propel/icons";
 import { Breadcrumbs } from "@plane/blocks/breadcrumb";
 import { Header } from "@plane/blocks/layout";
 import { BreadcrumbLink } from "@/components/common/breadcrumb-link";
@@ -15,7 +15,7 @@ type TCrumb = { label: string; href?: string };
 type Props = {
   workspaceSlug: string;
   /** "dashboard" or "projects": decides the first breadcrumb */
-  section: "dashboard" | "projects";
+  section: "dashboard" | "projects" | "summary";
   /** Extra breadcrumbs after the section, e.g. the project name */
   trail?: TCrumb[];
 };
@@ -29,11 +29,17 @@ export function E9Header({ workspaceSlug, section, trail = [] }: Props) {
           href: `/${workspaceSlug}/e9`,
           icon: <DashboardsOutline className="size-4 text-tertiary" />,
         }
-      : {
-          label: "E9 Projects",
-          href: `/${workspaceSlug}/e9/projects`,
-          icon: <ProjectsOutline className="size-4 text-tertiary" />,
-        };
+      : section === "summary"
+        ? {
+            label: "Extra & Billing",
+            href: `/${workspaceSlug}/e9/summary`,
+            icon: <BillingsOutline className="size-4 text-tertiary" />,
+          }
+        : {
+            label: "E9 Projects",
+            href: `/${workspaceSlug}/e9/projects`,
+            icon: <ProjectsOutline className="size-4 text-tertiary" />,
+          };
   return (
     <AppHeader
       header={

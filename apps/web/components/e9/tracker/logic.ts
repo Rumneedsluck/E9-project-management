@@ -35,7 +35,9 @@ export type TE9Floor = {
 export type TE9Attachment = {
   id: string;
   item: string | null;
-  kind: "photo" | "site_audit" | "dc_scan" | "document";
+  kind: "photo" | "site_audit" | "dc_scan" | "document" | "po" | "mail" | "certificate" | "pi" | "wcc";
+  /** the PO / amendment / bill this file belongs to */
+  ref_id?: string | null;
   name: string;
   size: number;
   content_type: string;

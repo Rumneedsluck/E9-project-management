@@ -6,6 +6,7 @@
 
 import { useMemo } from "react";
 import { cn, renderFormattedDate } from "@plane/utils";
+import { E9BoqDashboardPanel } from "../commercial/boq-dashboard-panel";
 import { useE9Floors, useE9Items, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
@@ -65,9 +66,14 @@ const STATUS_TEXT: Record<TStageTargetRow["status"], { text: string; className: 
   no_items: { text: "No items yet", className: "text-placeholder" },
 };
 
-type Props = { workspaceSlug: string; project: TE9Project; onOpenSheet: () => void };
+type Props = {
+  workspaceSlug: string;
+  project: TE9Project;
+  onOpenSheet: () => void;
+  onOpenView?: (view: "boq" | "billing") => void;
+};
 
-export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet }: Props) {
+export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpenView }: Props) {
   const { data, error, isLoading, mutate } = useE9Items(workspaceSlug, project.id);
   const items = useMemo(() => data?.items ?? [], [data]);
   const { data: scopeList } = useE9Scopes(workspaceSlug, project.id);
@@ -248,6 +254,8 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet }: Prop
           not counted.
         </p>
       </E9Panel>
+
+      <E9BoqDashboardPanel workspaceSlug={workspaceSlug} projectId={project.id} onOpen={(view) => onOpenView?.(view)} />
 
       {floors.length > 0 && (
         <E9Panel title={`Progress by floor · ${floors.length}`}>

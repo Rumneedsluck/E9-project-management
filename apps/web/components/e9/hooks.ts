@@ -63,6 +63,33 @@ export const useE9Documents = (slug: string, projectId: string) =>
 export const useE9History = (slug: string, projectId: string, entityId?: string) =>
   useSWR(e9HistoryKey(slug, projectId, entityId), () => e9ProjectService.listHistory(slug, projectId, entityId), opts);
 
+export const e9BoqKey = (slug: string, projectId: string) => `E9_BOQ_${slug}_${projectId}`;
+export const e9LogsKey = (slug: string, projectId: string) => `E9_LOGS_${slug}_${projectId}`;
+export const e9BillsKey = (slug: string, projectId: string) => `E9_BILLS_${slug}_${projectId}`;
+export const e9SummaryKey = (slug: string) => `E9_SUMMARY_${slug}`;
+
+export const useE9Boq = (slug: string, projectId: string) =>
+  useSWR(e9BoqKey(slug, projectId), () => e9ProjectService.getBoq(slug, projectId), opts);
+
+export const useE9Logs = (slug: string, projectId: string) =>
+  useSWR(e9LogsKey(slug, projectId), () => e9ProjectService.getLogs(slug, projectId), opts);
+
+export const useE9Bills = (slug: string, projectId: string) =>
+  useSWR(e9BillsKey(slug, projectId), () => e9ProjectService.getBills(slug, projectId), opts);
+
+export const useE9Summary = (slug: string | undefined) =>
+  useSWR(slug ? e9SummaryKey(slug) : null, () => e9ProjectService.getSummary(slug!), opts);
+
+/** BOQ, billing and the summary all depend on each other: refresh them together. */
+export const refreshE9Commercial = async (slug: string, projectId: string) => {
+  await Promise.all([
+    mutate(e9BoqKey(slug, projectId)),
+    mutate(e9BillsKey(slug, projectId)),
+    mutate(e9SummaryKey(slug)),
+    mutate((key) => typeof key === "string" && key.startsWith(`E9_HISTORY_${slug}_${projectId}`)),
+  ]);
+};
+
 /** After a big change (import, scope set-up) reload everything for the project. */
 export const refreshE9Tracker = async (slug: string, projectId: string) => {
   await Promise.all([
@@ -72,6 +99,9 @@ export const refreshE9Tracker = async (slug: string, projectId: string) => {
     mutate(e9PhotosKey(slug, projectId)),
     mutate(e9DocsKey(slug, projectId)),
     mutate(e9ProjectKey(slug, projectId)),
+    mutate(e9BoqKey(slug, projectId)),
+    mutate(e9LogsKey(slug, projectId)),
+    mutate(e9BillsKey(slug, projectId)),
     mutate((key) => typeof key === "string" && key.startsWith(`E9_HISTORY_${slug}_${projectId}`)),
   ]);
 };
