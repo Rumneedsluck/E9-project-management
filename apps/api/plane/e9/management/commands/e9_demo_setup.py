@@ -239,6 +239,10 @@ class Command(BaseCommand):
             )
             user.set_password(password)
             user.save()
+        elif not user.is_active:
+            # re-activate a demo login switched off by e9_demo_clear
+            user.is_active = True
+            user.save(update_fields=["is_active"])
         Profile.objects.get_or_create(
             user=user,
             defaults={
