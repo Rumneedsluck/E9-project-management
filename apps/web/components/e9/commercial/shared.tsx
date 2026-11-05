@@ -146,7 +146,7 @@ export function SmallButton({
 type TRefFilesProps = {
   slug: string;
   projectId: string;
-  kind: "po" | "mail" | "certificate" | "pi" | "wcc" | "dc_scan";
+  kind: "po" | "mail" | "certificate" | "pi" | "wcc" | "dc_scan" | "document";
   /** files belong to this PO / amendment / bill … */
   refId?: string;
   /** … or carry this label (DC number) */
