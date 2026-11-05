@@ -159,3 +159,124 @@ def current_stage(item):
     if item.site_audit_status == "Measured":
         return "Measured"
     return "Not Started"
+
+
+# ---------------------------------------------------------------------------
+# Production size, dispatch and certified quantity (template columns P–T, AB–AG, AK–AN)
+# ---------------------------------------------------------------------------
+
+DISPATCHED_DONE = ("Dispatched", "Delivered at Site")
+REPRINT_REASONS = [
+    "File changed by client",
+    "Design change",
+    "Print defect",
+    "Production mistake",
+    "Application fault",
+    "Wrong size / re-measure",
+    "Site not ready",
+    "Damaged in transit",
+    "Client wants more",
+    "Quantity revised by client",
+]
+SNAG_REASONS = [
+    "Scratch / damage",
+    "Peeling / bubbles",
+    "Wrong size",
+    "Colour mismatch",
+    "Misaligned / not straight",
+    "Missing item",
+    "Artwork / spelling error",
+    "Damaged by others",
+    "Cleaning pending",
+    "Fixing / adhesive issue",
+    "Other",
+]
+SNAG_PRIORITY = ["High", "Medium", "Low"]
+SNAG_STATUS = ["Open", "In Progress", "Fixed - Awaiting Client", "Closed"]
+
+
+def split_list(text):
+    """'3500, 3501 / 3502' -> ['3500', '3501', '3502']"""
+    return [part.strip() for part in (text or "").replace(";", ",").replace("/", ",").split(",") if part.strip()]
+
+
+def to_decimal(value):
+    try:
+        number = Decimal(str(value).strip())
+        return number.quantize(Decimal("0.01")) if number.is_finite() else None
+    except Exception:  # noqa: BLE001 - anything that is not a number counts as blank
+        return None
+
+
+def measured(item, unit):
+    """Site-measured quantity: sq ft for sq-ft items, Nos otherwise."""
+    if unit == "sqft":
+        return item_area_sqft(item.height_in, item.width_in, item.qty) or Decimal(0)
+    return Decimal(item.qty) if item.qty else Decimal(1)
+
+
+def production_measure(item, unit):
+    """What we send for production. Uses the production size when typed, else the measured size."""
+    if unit == "sqft":
+        area = item_area_sqft(item.production_height_in, item.production_width_in, item.production_qty)
+        if area is not None:
+            return area
+        return measured(item, unit)
+    if item.production_qty is not None:
+        return Decimal(item.production_qty)
+    return measured(item, unit)
+
+
+def wastage(item, unit):
+    """Production area minus measured area (only when a production size is typed)."""
+    if unit != "sqft":
+        return None
+    area = item_area_sqft(item.production_height_in, item.production_width_in, item.production_qty)
+    if area is None:
+        return None
+    return (area - measured(item, unit)).quantize(Decimal("0.01"))
+
+
+def dc_breakdown(item, unit):
+    """[(dc number, quantity sent or None)] in the order typed. One DC and no quantity = all of it."""
+    dcs = split_list(item.dc_nos)
+    quantities = [to_decimal(part) for part in split_list(item.dc_qty)]
+    rows = []
+    for index, dc in enumerate(dcs):
+        qty = quantities[index] if index < len(quantities) else None
+        if qty is None and len(dcs) == 1:
+            # one DC and no quantity typed: the whole item went on it
+            qty = production_measure(item, unit)
+        rows.append((dc, qty))
+    return rows
+
+
+def dispatched(item, unit):
+    return sum((qty for _, qty in dc_breakdown(item, unit) if qty is not None), Decimal(0))
+
+
+def balance_to_send(item, unit):
+    total = production_measure(item, unit)
+    if not total:
+        return None
+    return max(Decimal(0), total - dispatched(item, unit))
+
+
+def certified_measure(item, unit):
+    """Joint measurement: certified H × W (× Qty) for sq ft, certified Qty for Nos. None if not certified."""
+    if unit == "sqft":
+        area = item_area_sqft(item.certified_height_in, item.certified_width_in, item.certified_qty)
+        if area is not None:
+            return area
+        return Decimal(item.certified_qty) if item.certified_qty is not None else None
+    return Decimal(item.certified_qty) if item.certified_qty is not None else None
+
+
+def reprint_measure(unit, pieces, height, width):
+    """Reprints & Extras 'Qty (BOQ unit)': tile size × pieces for sq ft, pieces for Nos."""
+    count = Decimal(pieces) if pieces else Decimal(1)
+    if unit == "sqft" and height and width:
+        return (Decimal(height) * Decimal(width) / Decimal(144) * count).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    return count

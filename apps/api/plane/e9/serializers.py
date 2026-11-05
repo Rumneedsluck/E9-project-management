@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # See the LICENSE file for details.
 
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from . import tracker
@@ -43,17 +45,21 @@ HIDEABLE_COLUMNS = [
     "site_issue",
     "pre_press",
     "jc_no",
+    "production_size",
     "production_status",
     "material_status",
     "quality_check",
     "qc_done_by",
     "dc_nos",
+    "dc_qty",
     "dispatch_status",
     "installation_status",
     "installation_date",
     "installed_by",
+    "certified",
     "client_sign_off",
     "remarks",
+    "resent",
 ]
 
 
@@ -98,15 +104,22 @@ ITEM_EDITABLE_FIELDS = [
     "issue_resolved",
     "pre_press",
     "jc_no",
+    "production_height_in",
+    "production_width_in",
+    "production_qty",
     "production_status",
     "material_status",
     "quality_check",
     "qc_done_by",
     "dc_nos",
+    "dc_qty",
     "dispatch_status",
     "installation_status",
     "installation_date",
     "installed_by",
+    "certified_height_in",
+    "certified_width_in",
+    "certified_qty",
     "client_sign_off",
     "remarks",
     "sort_order",
@@ -120,6 +133,13 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
     unit = serializers.SerializerMethodField()
     area_sqft = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, allow_null=True)
     current_stage = serializers.CharField(read_only=True)
+    production_measure = serializers.SerializerMethodField()
+    wastage = serializers.SerializerMethodField()
+    dispatched = serializers.SerializerMethodField()
+    balance = serializers.SerializerMethodField()
+    certified_measure = serializers.SerializerMethodField()
+    dc_list = serializers.SerializerMethodField()
+    resent = serializers.SerializerMethodField()
 
     class Meta:
         model = E9ScopeItem
@@ -131,6 +151,13 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
             "unit",
             "area_sqft",
             "current_stage",
+            "production_measure",
+            "wastage",
+            "dispatched",
+            "balance",
+            "certified_measure",
+            "dc_list",
+            "resent",
             *ITEM_EDITABLE_FIELDS,
             "updated_at",
         ]
@@ -147,12 +174,62 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
         mode = scope.unit_mode if scope else tracker.SCOPES.get(item.scope, ("", "", "either"))[2]
         return tracker.item_unit(mode, item.height_in, item.width_in, item.unit_override)
 
+    @staticmethod
+    def _text(value):
+        return None if value is None else str(value.quantize(Decimal("0.01")))
+
+    def get_production_measure(self, item):
+        return self._text(tracker.production_measure(item, self.get_unit(item)))
+
+    def get_wastage(self, item):
+        return self._text(tracker.wastage(item, self.get_unit(item)))
+
+    def get_dispatched(self, item):
+        return self._text(tracker.dispatched(item, self.get_unit(item)))
+
+    def get_balance(self, item):
+        return self._text(tracker.balance_to_send(item, self.get_unit(item)))
+
+    def get_certified_measure(self, item):
+        return self._text(tracker.certified_measure(item, self.get_unit(item)))
+
+    def get_dc_list(self, item):
+        return [{"dc": dc, "qty": self._text(qty)} for dc, qty in tracker.dc_breakdown(item, self.get_unit(item))]
+
+    def get_resent(self, item):
+        counts = self.context.get("resent")
+        if counts is None:
+            from .models import E9Reprint
+
+            counts = {}
+            for kind in E9Reprint.objects.filter(item=item).values_list("kind", flat=True):
+                counts.setdefault(str(item.id), {}).setdefault(kind, 0)
+                counts[str(item.id)][kind] += 1
+        parts = counts.get(str(item.id), {})
+        return " · ".join(
+            f"{'Reprint' if kind == 'reprint' else 'Extra'} x{count}" for kind, count in sorted(parts.items())
+        )
+
     def validate(self, attrs):
         scope = self.instance.scope if self.instance else self.context.get("scope")
         issue = attrs.get("site_issue")
         if scope and issue and issue not in tracker.site_issues_for(scope):
             raise serializers.ValidationError({"site_issue": f"'{issue}' is not a site issue for this scope."})
-        for field in ("height_in", "width_in", "qty"):
+        if attrs.get("dc_qty"):
+            bad = [part for part in tracker.split_list(attrs["dc_qty"]) if tracker.to_decimal(part) is None]
+            if bad:
+                raise serializers.ValidationError({"dc_qty": "Type numbers only, separated by commas, e.g. 100, 50."})
+        for field in (
+            "height_in",
+            "width_in",
+            "qty",
+            "production_height_in",
+            "production_width_in",
+            "production_qty",
+            "certified_height_in",
+            "certified_width_in",
+            "certified_qty",
+        ):
             value = attrs.get(field)
             if value is not None and value < 0:
                 raise serializers.ValidationError({field: "Cannot be negative."})

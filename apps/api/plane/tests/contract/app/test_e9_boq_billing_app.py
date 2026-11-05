@@ -153,7 +153,7 @@ class TestBoqExtra:
         member = member_client(workspace, project, 15)
         response = member.post(
             url(workspace, project, "reprints/"),
-            {"item": items[0]["id"], "cause": "internal", "qty": "1", "reason": "Colour mismatch"},
+            {"item": items[0]["id"], "cause": "e9", "qty": "1", "reason": "Colour mismatch"},
             format="json",
         )
         assert response.status_code == 201, response.data
@@ -286,7 +286,8 @@ class TestLogs:
         jcs = {jc["number"]: jc["count"] for jc in data["job_cards"]}
         assert jcs == {"UE7377": 2, "UE7400": 1}
         dcs = {dc["number"]: (dc["count"], dc["nos"]) for dc in data["challans"]}
-        assert dcs == {"3500": (2, "4.00"), "3501": (1, "2.00")}
+        # two DCs on one row and no DC Qty typed: the split is unknown until the quantities are typed
+        assert dcs == {"3500": (2, "2.00"), "3501": (1, "0")}
 
         member = member_client(workspace, project, 15)
         response = member.put(
@@ -299,3 +300,87 @@ class TestLogs:
         assert jc["vendor"] == "I Media" and jc["received"] == "Yes" and jc["count"] == 2
         guest = member_client(workspace, project, 5)
         assert guest.put(url(workspace, project, "logs/dc/"), {"number": "3500"}, format="json").status_code == 403
+
+
+@pytest.mark.contract
+class TestTemplateColumns:
+    def _wall(self, client, workspace, project, **fields):
+        row = client.post(url(workspace, project, "items/"), {"scope": "wall_graphics"}, format="json").data[0]
+        body = {"description": "Wall 1", "height_in": "120", "width_in": "144", **fields}
+        return client.patch(url(workspace, project, f"items/{row['id']}/"), body, format="json")
+
+    @pytest.mark.django_db
+    def test_production_size_dispatch_balance_and_certified(self, session_client, workspace, project):
+        # measured 120 x 144 in = 120 sq ft; production 122 x 146 = 123.69 sq ft
+        response = self._wall(
+            session_client,
+            workspace,
+            project,
+            production_height_in="122",
+            production_width_in="146",
+            dc_nos="3500, 3501",
+            dc_qty="100, 20",
+            certified_height_in="120",
+            certified_width_in="140",
+        )
+        assert response.status_code == 200, response.data
+        item = response.data
+        assert item["area_sqft"] == "120.00" and item["production_measure"] == "123.69"
+        assert item["wastage"] == "3.69"
+        assert item["dispatched"] == "120.00" and item["balance"] == "3.69"
+        assert item["certified_measure"] == "116.67"
+        assert item["dc_list"] == [{"dc": "3500", "qty": "100.00"}, {"dc": "3501", "qty": "20.00"}]
+
+        bad = session_client.patch(
+            url(workspace, project, f"items/{item['id']}/"), {"dc_qty": "100, abc"}, format="json"
+        )
+        assert bad.status_code == 400
+
+    @pytest.mark.django_db
+    def test_dc_log_shows_part_quantities_per_dc(self, session_client, workspace, project):
+        self._wall(session_client, workspace, project, dc_nos="3500, 3501", dc_qty="100, 20")
+        self._wall(session_client, workspace, project, dc_nos="3500", dispatch_status="Dispatched")
+        challans = {dc["number"]: dc for dc in session_client.get(url(workspace, project, "logs/")).data["challans"]}
+        assert challans["3500"]["count"] == 2 and challans["3500"]["sqft"] == "220.00"  # 100 + the whole of W2
+        assert challans["3501"]["sqft"] == "20.00"
+        sent = {row["code"]: (row["sent"], row["partial"]) for row in challans["3500"]["items"]}
+        assert sent == {"W1": ("100.00", True), "W2": ("120.00", False)}
+
+    @pytest.mark.django_db
+    def test_reprint_qty_from_item_tile_and_pieces(self, session_client, workspace, project):
+        item = self._wall(session_client, workspace, project).data
+        data = session_client.post(
+            url(workspace, project, "reprints/"),
+            {
+                "item": item["id"],
+                "kind": "reprint",
+                "cause": "e9",
+                "reason": "Print defect",
+                "reprint_width_in": "48",
+                "pieces": "2",
+            },
+            format="json",
+        ).data
+        reprint = data["reprints"][0]
+        # one 120 x 48 tile = 40 sq ft, two pieces = 80 sq ft
+        assert reprint["qty"] == "80.00" and reprint["size_used"] == "120.00 × 48.00 in"
+        assert reprint["item_code"] == "W1" and reprint["unit"] == "sqft"
+        listing = session_client.get(url(workspace, project, "items/")).data["items"]
+        assert listing[0]["resent"] == "Reprint x1"
+
+    @pytest.mark.django_db
+    def test_snag_list(self, session_client, workspace, project):
+        item = self._wall(session_client, workspace, project).data
+        data = session_client.post(
+            url(workspace, project, "snags/"),
+            {"item": item["id"], "reason": "Peeling / bubbles", "priority": "High", "assigned_to": "Team A"},
+            format="json",
+        ).data
+        snag = data["snags"][0]
+        assert data["open"] == 1 and snag["item_code"] == "W1" and snag["status"] == "Open" and snag["days_open"] == 0
+        data = session_client.patch(
+            url(workspace, project, f"snags/{snag['id']}/"), {"status": "Closed"}, format="json"
+        ).data
+        assert data["open"] == 0 and data["snags"][0]["closed_on"]
+        guest = member_client(workspace, project, 5)
+        assert guest.post(url(workspace, project, "snags/"), {"reason": "Other"}, format="json").status_code == 403

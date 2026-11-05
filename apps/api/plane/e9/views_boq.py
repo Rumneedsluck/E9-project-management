@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from plane.app.permissions import allow_permission
 from plane.app.views.base import BaseAPIView
 
-from . import boq
+from . import boq, tracker
 from .models import (
     E9Amendment,
     E9AmendmentChange,
@@ -29,6 +29,7 @@ from .models import (
     E9PurchaseOrder,
     E9Reprint,
     E9ReprintCause,
+    E9ReprintKind,
     E9ScopeItem,
 )
 from .services import item_code, record, record_changes, scope_map, snapshot
@@ -141,10 +142,17 @@ AMENDMENT_SPEC = {
     "notes": _text(5000),
 }
 REPRINT_SPEC = {
+    "kind": _choice(E9ReprintKind.values),
     "cause": _choice(E9ReprintCause.values),
-    "qty": _decimal(required=True),
+    "qty": _decimal(),
     "reason": _text(5000),
+    "description": _text(5000),
+    "pieces": _decimal(),
+    "reprint_height_in": _decimal(),
+    "reprint_width_in": _decimal(),
     "jc_no": _text(60),
+    "approved": _choice(["", "Yes", "Pending", "No"]),
+    "remarks": _text(5000),
     "reprint_date": _date,
 }
 JC_SPEC = {
@@ -165,6 +173,8 @@ DC_SPEC = {
     "invoice_date": _date,
     "e9_signoff": _choice(["Pending", "Signed"]),
     "client_signoff": _choice(["Pending", "Signed", "Returned"]),
+    "client_signatory": _text(120),
+    "status": _choice(["Dispatched", "Delivered at Site", "Returned"]),
     "notes": _text(5000),
 }
 # billing: fields grouped by stage, in order
@@ -260,17 +270,41 @@ def _po_payload(po):
     }
 
 
-def _reprint_payload(reprint, scopes):
+def _item_unit(item, scopes):
+    scope = scopes.get(item.scope)
+    return item_unit(scope.unit_mode if scope else "either", item.height_in, item.width_in, item.unit_override)
+
+
+def _reprint_payload(reprint, scopes, vendors):
+    item = reprint.item if reprint.item_id else None
+    unit = _item_unit(item, scopes) if item else (reprint.boq_line.unit if reprint.boq_line_id else "nos")
+    height = reprint.reprint_height_in or (item.height_in if item else None)
+    width = reprint.reprint_width_in or (item.width_in if item else None)
     return {
         "id": str(reprint.id),
         "boq_line": str(reprint.boq_line_id) if reprint.boq_line_id else None,
         "line_no": reprint.boq_line.line_no if reprint.boq_line_id else "",
         "item": str(reprint.item_id) if reprint.item_id else None,
-        "item_code": item_code(reprint.item, scopes) if reprint.item_id else "",
+        "item_code": item_code(item, scopes) if item else "",
+        "scope": item.scope if item else "",
+        "scope_label": (scopes[item.scope].label if item and item.scope in scopes else ""),
+        "item_description": item.description if item else "",
+        "original_height_in": _num(item.height_in) if item else None,
+        "original_width_in": _num(item.width_in) if item else None,
+        "size_used": f"{_num(height)} × {_num(width)} in" if height and width else "",
+        "unit": unit,
+        "kind": reprint.kind,
         "cause": reprint.cause,
         "qty": _num(reprint.qty),
         "reason": reprint.reason,
+        "description": reprint.description,
+        "pieces": _num(reprint.pieces),
+        "reprint_height_in": _num(reprint.reprint_height_in),
+        "reprint_width_in": _num(reprint.reprint_width_in),
         "jc_no": reprint.jc_no,
+        "vendor": vendors.get(boq.norm(reprint.jc_no), "") if reprint.jc_no else "",
+        "approved": reprint.approved,
+        "remarks": reprint.remarks,
         "reprint_date": _iso(reprint.reprint_date),
         "created_at": reprint.created_at.isoformat(),
     }
@@ -285,13 +319,15 @@ def boq_payload(project, user, slug):
         .order_by("sort_order", "created_at")
     )
     reprints = E9Reprint.objects.filter(project=project).select_related("boq_line", "item")
+    vendors = {boq.norm(jc.number): jc.vendor for jc in E9JobCard.objects.filter(project=project) if jc.vendor}
     unlinked = boq.unlinked_items(project, lines, items, scopes)
     return {
         "can_edit": _can_edit(user, slug, project.id),
         "can_update": _can_update_items(user, slug, project.id),
         "pos": [_po_payload(po) for po in pos],
         "lines": lines,
-        "reprints": [_reprint_payload(reprint, scopes) for reprint in reprints],
+        "reprints": [_reprint_payload(reprint, scopes, vendors) for reprint in reprints],
+        "reprint_reasons": tracker.REPRINT_REASONS,
         "unlinked": unlinked,
         "bills": boq.bill_rows(project),
         "totals": {
@@ -627,6 +663,21 @@ def _reprint_links(project, reprint, data):
             ).first()
 
 
+def _reprint_qty(project, reprint, data):
+    """Qty (BOQ unit): worked out from the item, the tile size and pieces – like the template."""
+    if reprint.item_id and "qty" not in data:
+        unit = _item_unit(reprint.item, scope_map(project))
+        height = reprint.reprint_height_in or reprint.item.height_in
+        width = reprint.reprint_width_in or reprint.item.width_in
+        reprint.qty = tracker.reprint_measure(unit, reprint.pieces, height, width)
+    elif not reprint.item_id and reprint.qty in (None, Decimal("0")) and not reprint.pieces:
+        raise Invalid("qty", "Pick the item code, or type the quantity.")
+    elif not reprint.item_id and reprint.pieces and "qty" not in data:
+        reprint.qty = Decimal(reprint.pieces)
+    if reprint.qty is None:
+        reprint.qty = Decimal("0")
+
+
 class E9ReprintListEndpoint(BaseAPIView):
     @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
     def post(self, request, slug, project_id):
@@ -637,8 +688,7 @@ class E9ReprintListEndpoint(BaseAPIView):
         try:
             _apply(reprint, request.data, REPRINT_SPEC)
             _reprint_links(project, reprint, request.data)
-            if "qty" not in request.data:
-                raise Invalid("qty", "Type the reprinted quantity.")
+            _reprint_qty(project, reprint, request.data)
         except Invalid as problem:
             return _bad(problem)
         reprint.save(created_by_id=request.user.id)
@@ -650,7 +700,7 @@ class E9ReprintListEndpoint(BaseAPIView):
             "created",
             reprint.id,
             label,
-            new=f"{reprint.qty} · {reprint.get_cause_display()}",
+            new=f"{reprint.get_kind_display()} · {reprint.qty} · caused by {reprint.get_cause_display()}",
         )
         return Response(boq_payload(project, request.user, slug), status=201)
 
@@ -668,6 +718,7 @@ class E9ReprintDetailEndpoint(BaseAPIView):
         try:
             _apply(reprint, request.data, REPRINT_SPEC)
             _reprint_links(project, reprint, request.data)
+            _reprint_qty(project, reprint, request.data)
         except Invalid as problem:
             return _bad(problem)
         reprint.save()
@@ -719,8 +770,13 @@ def logs_payload(project, user, slug):
         }
         if item.jc_no.strip():
             jcs[boq.norm(item.jc_no)].append((item.jc_no.strip(), row))
-        for dc in _split_dcs(item.dc_nos):
-            dcs[boq.norm(dc)].append((dc, row))
+        # partial dispatch: each DC gets the quantity typed for it (DC Qty, same order as DC No.)
+        breakdown = tracker.dc_breakdown(item, unit)
+        partial = len(breakdown) > 1 or any(
+            qty is not None and qty < tracker.production_measure(item, unit) for _, qty in breakdown
+        )
+        for dc, qty in breakdown:
+            dcs[boq.norm(dc)].append((dc, {**row, "sent": _num(qty), "partial": partial}))
 
     def merge(groups, meta_model, spec, totals):
         saved = {boq.norm(meta.number): meta for meta in meta_model.objects.filter(project=project)}
@@ -736,8 +792,13 @@ def logs_payload(project, user, slug):
             if not meta:
                 entry.update({k: v for k, v in DEFAULTS.get(meta_model, {}).items()})
             if totals:
-                entry["sqft"] = str(sum(Decimal(row["area"]) for row in rows if row["area"]))
-                entry["nos"] = str(sum(Decimal(row["qty"] or 1) for row in rows if row["unit"] == "nos"))
+                entry["sqft"] = str(
+                    sum((Decimal(row["sent"]) for row in rows if row["unit"] == "sqft" and row["sent"]), Decimal("0"))
+                )
+                entry["nos"] = str(
+                    sum((Decimal(row["sent"]) for row in rows if row["unit"] == "nos" and row["sent"]), Decimal("0"))
+                )
+                entry["unknown_qty"] = sum(1 for row in rows if not row["sent"])
             out.append(entry)
         return out
 
@@ -750,7 +811,7 @@ def logs_payload(project, user, slug):
 
 DEFAULTS = {
     E9JobCard: {"received": "Pending"},
-    E9Challan: {"e9_signoff": "Pending", "client_signoff": "Pending"},
+    E9Challan: {"e9_signoff": "Pending", "client_signoff": "Pending", "status": "Dispatched"},
 }
 
 

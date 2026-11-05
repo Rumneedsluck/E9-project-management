@@ -24,7 +24,7 @@ from .models import (
     E9Reprint,
     E9ScopeItem,
 )
-from .tracker import item_area_sqft
+from . import tracker
 
 ZERO = Decimal("0")
 CONFIRMED = E9AmendmentStatus.CONFIRMED
@@ -40,10 +40,8 @@ def is_filled(item):
 
 
 def measure(item, unit):
-    """How much one tracker row counts towards a BOQ line."""
-    if unit == "sqft":
-        return item_area_sqft(item.height_in, item.width_in, item.qty) or ZERO
-    return Decimal(item.qty) if item.qty else Decimal(1)
+    """How much one tracker row counts towards a BOQ line (site-measured size)."""
+    return tracker.measured(item, unit)
 
 
 def q2(value):
@@ -86,9 +84,14 @@ def line_rows(project):
     for item in items:
         by_no[norm(item.boq_item_no)].append(item)
 
-    reprints = defaultdict(lambda: {"internal": ZERO, "client": ZERO})
+    reprints = defaultdict(lambda: {"internal": ZERO, "client": ZERO, "extra": ZERO})
     for reprint in E9Reprint.objects.filter(project=project, boq_line__isnull=False):
-        key = "client" if reprint.cause == E9ReprintCause.CLIENT else "internal"
+        if reprint.kind == "extra":
+            key = "extra"
+        elif reprint.cause == E9ReprintCause.CLIENT:
+            key = "client"
+        else:
+            key = "internal"
         reprints[reprint.boq_line_id][key] += reprint.qty or ZERO
 
     certified = defaultdict(lambda: ZERO)
@@ -113,10 +116,18 @@ def line_rows(project):
         allowed = base + confirmed_change
         rows_for_line = by_no.get(norm(line.line_no), [])
         unit = line.unit
-        on_tracker = sum((measure(item, unit) for item in rows_for_line), ZERO)
+        # production size when typed (what we actually send), else the measured size
+        on_tracker = sum((tracker.production_measure(item, unit) for item in rows_for_line), ZERO)
         produced = sum(
-            (measure(item, unit) for item in rows_for_line if item.production_status == "Production Done"), ZERO
+            (
+                tracker.production_measure(item, unit)
+                for item in rows_for_line
+                if item.production_status == "Production Done"
+            ),
+            ZERO,
         )
+        certified_rows = [tracker.certified_measure(item, unit) for item in rows_for_line]
+        certified_on_site = sum((value for value in certified_rows if value is not None), ZERO)
         installed = sum(
             (measure(item, unit) for item in rows_for_line if item.installation_status == "Installation Done"), ZERO
         )
@@ -128,7 +139,9 @@ def line_rows(project):
         else:
             status = "ok"
         client_reprints = reprints[line.id]["client"]
-        billable_now = min(installed, allowed) + client_reprints
+        # after the joint measurement the certified quantity counts; before it, what is installed
+        done = certified_on_site if certified_on_site > 0 else installed
+        billable_now = min(done, allowed) + client_reprints
         max_billable = allowed + client_reprints
         rows.append(
             {
@@ -155,6 +168,8 @@ def line_rows(project):
                 "status": status,
                 "internal_reprints": q2(reprints[line.id]["internal"]),
                 "client_reprints": q2(client_reprints),
+                "extras": q2(reprints[line.id]["extra"]),
+                "certified_on_site": q2(certified_on_site),
                 "billable_now": q2(billable_now),
                 "max_billable": q2(max_billable),
                 "certified": q2(certified[line.id]),
