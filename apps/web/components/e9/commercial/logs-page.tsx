@@ -12,7 +12,20 @@ import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
 import { DateCell, SelectCell, TextCell } from "../tracker/cells";
-import { E9RefFiles, ItemLink, fmt, isPositive, showError } from "./shared";
+import { Button } from "@makeplane/propel/components/button";
+import { E9Modal } from "../tracker/modal";
+import {
+  E9RefFiles,
+  FormField,
+  ItemLink,
+  fmt,
+  inputClass,
+  isPositive,
+  mailSearchUrl,
+  readMailSettings,
+  saveMailSettings,
+  showError,
+} from "./shared";
 import type { TE9Challan, TE9JobCard, TE9LogItem, TE9Logs } from "./types";
 
 type Props = { workspaceSlug: string; project: TE9Project };
@@ -33,6 +46,8 @@ function Items({ slug, projectId, items }: { slug: string; projectId: string; it
 export function E9LogsPage({ workspaceSlug, project }: Props) {
   const { data, error, isLoading, mutate } = useE9Logs(workspaceSlug, project.id);
   const [tab, setTab] = useState<"jc" | "dc">("jc");
+  const [mailOpen, setMailOpen] = useState(false);
+  const [, setMailVersion] = useState(0);
 
   if (isLoading && !data) return <E9LoadingState />;
   if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
@@ -74,11 +89,27 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
             </button>
           ))}
         </div>
-        <p className="text-body-2xs-regular text-tertiary">
-          Numbers and items fill themselves from the JC No. / DC No. typed on tracker rows. Click a code to open that
-          row.
-        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-body-2xs-regular text-tertiary">
+            Numbers and items fill themselves from the JC No. / DC No. typed on tracker rows.
+          </p>
+          <button
+            type="button"
+            onClick={() => setMailOpen(true)}
+            className="rounded-lg border border-subtle bg-surface-1 px-3 py-1.5 text-body-xs-semibold text-primary hover:bg-layer-1-hover"
+          >
+            ✉ Mail settings
+          </button>
+        </div>
       </div>
+      {mailOpen && (
+        <MailSettingsModal
+          onClose={() => {
+            setMailOpen(false);
+            setMailVersion((value) => value + 1);
+          }}
+        />
+      )}
 
       {tab === "jc" ? (
         <E9Panel>
@@ -187,12 +218,12 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
                         <td className="px-3 py-2 whitespace-nowrap">
                           <a
                             title="Searches your Gmail for this JC number (you must be signed in to Gmail in this browser)"
-                            href={`https://mail.google.com/mail/u/0/#search/${encodeURIComponent(jc.number)}`}
+                            href={mailSearchUrl(jc.number)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="font-semibold text-accent-primary hover:underline"
                           >
-                            📧 Open mail
+                            ✉ Open mail
                           </a>
                         </td>
                       </tr>
@@ -211,7 +242,7 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1500px] text-left text-body-xs-regular">
+              <table className="w-full min-w-[1600px] text-left text-body-xs-regular">
                 <thead>
                   <tr className="border-b border-subtle text-body-2xs-semibold text-tertiary">
                     {[
@@ -229,6 +260,7 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
                       "E9 sign-off",
                       "Client sign-off",
                       "Signed DC scan",
+                      "Mail",
                     ].map((heading) => (
                       <th key={heading} className="px-3 py-2.5 font-semibold">
                         {heading}
@@ -300,6 +332,16 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
                           addText="Scan"
                         />
                       </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <a
+                          href={mailSearchUrl(dc.number)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-accent-primary hover:underline"
+                        >
+                          ✉ Open mail
+                        </a>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -309,5 +351,59 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
         </E9Panel>
       )}
     </div>
+  );
+}
+
+function MailSettingsModal({ onClose }: { onClose: () => void }) {
+  const saved = readMailSettings();
+  const [account, setAccount] = useState(saved.account);
+  const [words, setWords] = useState(saved.words);
+  return (
+    <E9Modal
+      open
+      onClose={onClose}
+      title="Open JC / DC mails"
+      description="“Open mail” opens Gmail and searches for the JC or DC number. Tell it which mail account to use."
+      footer={
+        <>
+          <Button variant="secondary" size="md" stretch="auto" label="Cancel" onClick={onClose} />
+          <Button
+            variant="primary"
+            size="md"
+            stretch="auto"
+            label="Save"
+            onClick={() => {
+              saveMailSettings({ account: account.trim(), words: words.trim() });
+              onClose();
+            }}
+          />
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 px-5 py-4">
+        <FormField
+          label="Your work Gmail / Google Workspace address"
+          hint="The account where job cards and DCs are mailed. Leave empty to use the first account signed in to Chrome."
+        >
+          <input
+            className={inputClass}
+            type="email"
+            value={account}
+            placeholder="you@yourcompany.com"
+            onChange={(event) => setAccount(event.target.value)}
+          />
+        </FormField>
+        <FormField
+          label="Extra search words (optional)"
+          hint="Added before the number, e.g. “Job Card” or “from:vendor@imedia.com”. Leave empty to search just the number."
+        >
+          <input className={inputClass} value={words} onChange={(event) => setWords(event.target.value)} />
+        </FormField>
+        <p className="rounded-lg bg-layer-1 px-3 py-2 text-body-2xs-regular text-tertiary">
+          You must be signed in to that Gmail in this browser. The website does not read your mailbox – it only opens
+          the search. This setting is saved on this computer.
+        </p>
+      </div>
+    </E9Modal>
   );
 }

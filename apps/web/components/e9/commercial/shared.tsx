@@ -240,3 +240,36 @@ export function E9RefFiles({ slug, projectId, kind, refId, label, canUpload, add
     </span>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Opening a JC / DC in Gmail
+// ---------------------------------------------------------------------------
+
+const MAIL_KEY = "e9-mail-settings";
+export type TE9MailSettings = { account: string; words: string };
+
+export const readMailSettings = (): TE9MailSettings => {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(MAIL_KEY) ?? "{}") as Partial<TE9MailSettings>;
+    return { account: saved.account ?? "", words: saved.words ?? "" };
+  } catch {
+    return { account: "", words: "" };
+  }
+};
+
+export const saveMailSettings = (settings: TE9MailSettings) => {
+  try {
+    window.localStorage.setItem(MAIL_KEY, JSON.stringify(settings));
+  } catch {
+    // private window: settings simply are not remembered
+  }
+};
+
+/** Gmail search for a JC / DC number, in the mail account chosen in Mail settings. */
+export const mailSearchUrl = (number: string) => {
+  const { account, words } = typeof window === "undefined" ? { account: "", words: "" } : readMailSettings();
+  const query = encodeURIComponent([words.trim(), number.trim()].filter(Boolean).join(" "));
+  return account.trim()
+    ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(account.trim())}#search/${query}`
+    : `https://mail.google.com/mail/u/0/#search/${query}`;
+};
