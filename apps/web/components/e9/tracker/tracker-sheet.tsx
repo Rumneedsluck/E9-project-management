@@ -4,22 +4,20 @@
  * See the LICENSE file for details.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AddOutline, CloseOutline, SearchOutline } from "@makeplane/propel/icons";
+import { AddOutline, ClockOutline, CloseOutline, SearchOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { setToast } from "@plane/blocks/toast";
 import { cn } from "@plane/utils";
-// local
-import { useE9Items } from "../hooks";
+import { e9ProjectService } from "@/services/e9/project.service";
+import { useE9Floors, useE9Items, useE9Photos, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
-import { e9ProjectService } from "@/services/e9/project.service";
 import { DateCell, NumberCell, SelectCell, TextCell } from "./cells";
 import {
   CLIENT_SIGN_OFF,
   DISPATCH_STATUS,
-  E9_SCOPES,
   E9_TRACKER_STAGES,
   INSTALLATION_STATUS,
   ISSUE_RESOLVED,
@@ -29,76 +27,518 @@ import {
   QUALITY_CHECK,
   SITE_AUDIT_STATUS,
   SITE_ISSUES,
-  getScope,
 } from "./constants";
 import type { TE9ScopeKey, TE9StageKey } from "./constants";
-import type { TE9ScopeItem } from "./logic";
+import type { TE9Attachment, TE9ProjectScope, TE9ScopeItem } from "./logic";
 import { formatMeasure, isFilled, isStageOverdue, itemArea, itemMeasure } from "./logic";
+import { E9ItemHistoryModal, E9PhotoCell, E9PhotosModal } from "./photos-history";
+import { E9ColumnsModal, E9FloorsModal, E9ImportModal, E9ScopesModal } from "./setup-panels";
 
 const stageColor = (key: TE9StageKey) => E9_TRACKER_STAGES.find((stage) => stage.key === key)?.color ?? "#888";
+const GREY = "#6B7280";
 
-/** Column bands, coloured like the stage bands on the Excel scope sheets. */
-const BANDS: { label: string; span: number; color: string }[] = [
-  { label: "Item details", span: 6, color: "#6B7280" },
-  { label: "1 · Site audit", span: 8, color: stageColor("site_audit") },
-  { label: "2 · Pre-press", span: 2, color: stageColor("pre_press") },
-  { label: "3 · Production & material", span: 2, color: stageColor("material") },
-  { label: "4 · Quality & dispatch", span: 4, color: stageColor("delivered") },
-  { label: "5 · Installation", span: 3, color: stageColor("installation") },
-  { label: "6 · Handover", span: 1, color: stageColor("sign_off") },
-  { label: "Notes", span: 1, color: "#6B7280" },
+const siteIssuesFor = (scope: string) => SITE_ISSUES[scope as TE9ScopeKey] ?? SITE_ISSUES.internal_signages;
+
+type TRowContext = {
+  item: TE9ScopeItem;
+  scope: TE9ProjectScope | undefined;
+  disabled: boolean;
+  empty: boolean;
+  overdue: (stage: TE9StageKey) => boolean;
+  save: (patch: Partial<TE9ScopeItem>) => void;
+  photos: TE9Attachment[];
+  openPhotos: () => void;
+  floorListId: string;
+  workspaceSlug: string;
+  projectId: string;
+};
+
+type TColumn = {
+  key: string;
+  /** which "Columns" switch hides it (several columns can share one) */
+  hideKey: string;
+  label: string;
+  width: number;
+  band: string;
+  render: (ctx: TRowContext) => ReactNode;
+  className?: string;
+};
+
+const BAND_COLORS: Record<string, string> = {
+  "Item details": GREY,
+  "1 · Site audit": stageColor("site_audit"),
+  "2 · Pre-press": stageColor("pre_press"),
+  "3 · Production & material": stageColor("material"),
+  "4 · Quality & dispatch": stageColor("delivered"),
+  "5 · Installation": stageColor("installation"),
+  "6 · Handover": stageColor("sign_off"),
+  Notes: GREY,
+};
+
+const text = (field: keyof TE9ScopeItem, label: string, placeholder?: string) => (ctx: TRowContext) => (
+  <TextCell
+    label={label}
+    value={(ctx.item[field] as string) ?? ""}
+    disabled={ctx.disabled}
+    placeholder={placeholder}
+    onSave={(value) => ctx.save({ [field]: value })}
+  />
+);
+
+const COLUMNS: TColumn[] = [
+  {
+    key: "boq",
+    hideKey: "boq_item_no",
+    label: "BOQ No.",
+    width: 84,
+    band: "Item details",
+    render: text("boq_item_no", "BOQ item no."),
+  },
+  {
+    key: "stage",
+    hideKey: "current_stage",
+    label: "Current stage",
+    width: 140,
+    band: "Item details",
+    className: "px-2",
+    render: ({ item, empty }) => (
+      <span className="block truncate text-body-xs-medium text-secondary" title={item.current_stage}>
+        {empty ? "" : item.current_stage}
+      </span>
+    ),
+  },
+  {
+    key: "floor",
+    hideKey: "floor_area",
+    label: "Floor / Area",
+    width: 150,
+    band: "Item details",
+    render: (ctx) => (
+      <TextCell
+        label="Floor / area"
+        value={ctx.item.floor_area}
+        disabled={ctx.disabled}
+        placeholder="Pick or type a floor"
+        listId={ctx.floorListId}
+        onSave={(value) => ctx.save({ floor_area: value })}
+      />
+    ),
+  },
+  {
+    key: "plan",
+    hideKey: "floor_plan_ref",
+    label: "Floor plan",
+    width: 110,
+    band: "Item details",
+    render: text("floor_plan_ref", "Floor plan"),
+  },
+  {
+    key: "desc",
+    hideKey: "description",
+    label: "Description",
+    width: 220,
+    band: "Item details",
+    render: text("description", "Description", "e.g. Wall 01"),
+  },
+  {
+    key: "audit",
+    hideKey: "site_audit_status",
+    label: "Site audit",
+    width: 150,
+    band: "1 · Site audit",
+    render: (ctx) => (
+      <SelectCell
+        label="Site audit status"
+        value={ctx.item.site_audit_status}
+        options={SITE_AUDIT_STATUS}
+        disabled={ctx.disabled}
+        overdue={ctx.overdue("site_audit")}
+        onSave={(value) => ctx.save({ site_audit_status: value })}
+      />
+    ),
+  },
+  {
+    key: "h",
+    hideKey: "size",
+    label: "H (in)",
+    width: 76,
+    band: "1 · Site audit",
+    render: (ctx) => (
+      <NumberCell
+        label="Height in inches"
+        value={ctx.item.height_in}
+        disabled={ctx.disabled}
+        onSave={(v) => ctx.save({ height_in: v })}
+      />
+    ),
+  },
+  {
+    key: "w",
+    hideKey: "size",
+    label: "W (in)",
+    width: 76,
+    band: "1 · Site audit",
+    render: (ctx) => (
+      <NumberCell
+        label="Width in inches"
+        value={ctx.item.width_in}
+        disabled={ctx.disabled}
+        onSave={(v) => ctx.save({ width_in: v })}
+      />
+    ),
+  },
+  {
+    key: "qty",
+    hideKey: "size",
+    label: "Qty",
+    width: 64,
+    band: "1 · Site audit",
+    render: (ctx) => (
+      <NumberCell label="Quantity" value={ctx.item.qty} disabled={ctx.disabled} onSave={(v) => ctx.save({ qty: v })} />
+    ),
+  },
+  {
+    key: "area",
+    hideKey: "size",
+    label: "Area / unit",
+    width: 110,
+    band: "1 · Site audit",
+    className: "px-2",
+    render: ({ item, scope, empty, disabled, save }) => (
+      <div className="flex flex-col leading-tight">
+        <span className="text-right text-body-xs-semibold text-primary tabular-nums">
+          {item.unit === "sqft"
+            ? item.area_sqft
+              ? Number(item.area_sqft).toLocaleString("en-IN", { minimumFractionDigits: 2 })
+              : "—"
+            : `${Number(item.qty || (empty ? 0 : 1))}`}
+        </span>
+        {scope?.unit_mode === "either" && !disabled ? (
+          <select
+            aria-label="Count in"
+            className="mt-0.5 cursor-pointer bg-transparent text-right text-body-2xs-regular text-tertiary outline-none"
+            value={item.unit_override}
+            onChange={(event) => save({ unit_override: event.target.value as TE9ScopeItem["unit_override"] })}
+          >
+            <option value="">{item.unit === "sqft" ? "sq ft (auto)" : "Nos (auto)"}</option>
+            <option value="sqft">sq ft</option>
+            <option value="nos">Nos</option>
+          </select>
+        ) : (
+          <span className="text-right text-body-2xs-regular text-tertiary">
+            {item.unit === "sqft" ? "sq ft" : "Nos"}
+          </span>
+        )}
+      </div>
+    ),
+  },
+  {
+    key: "photos",
+    hideKey: "photos",
+    label: "Photos",
+    width: 110,
+    band: "1 · Site audit",
+    render: (ctx) => (
+      <E9PhotoCell
+        workspaceSlug={ctx.workspaceSlug}
+        projectId={ctx.projectId}
+        item={ctx.item}
+        photos={ctx.photos}
+        disabled={ctx.disabled}
+        onOpen={ctx.openPhotos}
+      />
+    ),
+  },
+  {
+    key: "issue",
+    hideKey: "site_issue",
+    label: "Site issue",
+    width: 200,
+    band: "1 · Site audit",
+    render: ({ item, disabled, save }) => (
+      <SelectCell
+        label="Site issue"
+        value={item.site_issue}
+        options={siteIssuesFor(item.scope)}
+        disabled={disabled}
+        onSave={(value) =>
+          save({
+            site_issue: value,
+            issue_resolved: value === "No issues" ? "N/A" : item.issue_resolved === "N/A" ? "No" : item.issue_resolved,
+          })
+        }
+      />
+    ),
+  },
+  {
+    key: "resolved",
+    hideKey: "site_issue",
+    label: "Resolved?",
+    width: 92,
+    band: "1 · Site audit",
+    render: ({ item, disabled, save }) => (
+      <SelectCell
+        label="Issue resolved"
+        value={item.issue_resolved}
+        options={ISSUE_RESOLVED}
+        disabled={disabled}
+        onSave={(v) => save({ issue_resolved: v })}
+      />
+    ),
+  },
+  {
+    key: "prepress",
+    hideKey: "pre_press",
+    label: "Pre-press",
+    width: 200,
+    band: "2 · Pre-press",
+    render: (ctx) => (
+      <SelectCell
+        label="Pre-press"
+        value={ctx.item.pre_press}
+        options={PRE_PRESS}
+        disabled={ctx.disabled}
+        overdue={ctx.overdue("pre_press")}
+        onSave={(v) => ctx.save({ pre_press: v })}
+      />
+    ),
+  },
+  {
+    key: "jc",
+    hideKey: "jc_no",
+    label: "JC No.",
+    width: 110,
+    band: "2 · Pre-press",
+    render: (ctx) => (
+      <div className="flex items-center">
+        <TextCell
+          label="JC number"
+          value={ctx.item.jc_no}
+          disabled={ctx.disabled}
+          onSave={(v) => ctx.save({ jc_no: v })}
+        />
+        {ctx.item.jc_no && (
+          <a
+            href={`https://mail.google.com/mail/u/0/#search/${encodeURIComponent(ctx.item.jc_no)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Find the e-proof mail in Gmail"
+            className="px-1 text-body-2xs-semibold text-accent-primary"
+          >
+            Mail
+          </a>
+        )}
+      </div>
+    ),
+  },
+  {
+    key: "production",
+    hideKey: "production_status",
+    label: "Production",
+    width: 140,
+    band: "3 · Production & material",
+    render: ({ item, disabled, save }) => (
+      <SelectCell
+        label="Production status"
+        value={item.production_status}
+        options={PRODUCTION_STATUS}
+        disabled={disabled}
+        onSave={(v) => save({ production_status: v })}
+      />
+    ),
+  },
+  {
+    key: "material",
+    hideKey: "material_status",
+    label: "Material",
+    width: 150,
+    band: "3 · Production & material",
+    render: (ctx) => (
+      <SelectCell
+        label="Material status"
+        value={ctx.item.material_status}
+        options={MATERIAL_STATUS}
+        blankLabel="— (no JC yet)"
+        disabled={ctx.disabled}
+        overdue={ctx.overdue("material")}
+        onSave={(v) => ctx.save({ material_status: v })}
+      />
+    ),
+  },
+  {
+    key: "qc",
+    hideKey: "quality_check",
+    label: "Quality check",
+    width: 136,
+    band: "4 · Quality & dispatch",
+    render: ({ item, disabled, save }) => (
+      <SelectCell
+        label="Quality check"
+        value={item.quality_check}
+        options={QUALITY_CHECK}
+        disabled={disabled}
+        onSave={(v) => save({ quality_check: v })}
+      />
+    ),
+  },
+  {
+    key: "qcby",
+    hideKey: "qc_done_by",
+    label: "QC by",
+    width: 110,
+    band: "4 · Quality & dispatch",
+    render: text("qc_done_by", "QC done by"),
+  },
+  {
+    key: "dc",
+    hideKey: "dc_nos",
+    label: "DC No(s).",
+    width: 120,
+    band: "4 · Quality & dispatch",
+    render: text("dc_nos", "DC numbers", "e.g. 3500, 3501"),
+  },
+  {
+    key: "dispatch",
+    hideKey: "dispatch_status",
+    label: "Dispatch",
+    width: 168,
+    band: "4 · Quality & dispatch",
+    render: (ctx) => (
+      <SelectCell
+        label="Dispatch status"
+        value={ctx.item.dispatch_status}
+        options={DISPATCH_STATUS}
+        disabled={ctx.disabled}
+        overdue={ctx.overdue("delivered")}
+        onSave={(v) => ctx.save({ dispatch_status: v })}
+      />
+    ),
+  },
+  {
+    key: "install",
+    hideKey: "installation_status",
+    label: "Installation",
+    width: 156,
+    band: "5 · Installation",
+    render: (ctx) => (
+      <SelectCell
+        label="Installation status"
+        value={ctx.item.installation_status}
+        options={INSTALLATION_STATUS}
+        disabled={ctx.disabled}
+        overdue={ctx.overdue("installation")}
+        onSave={(v) => ctx.save({ installation_status: v })}
+      />
+    ),
+  },
+  {
+    key: "installdate",
+    hideKey: "installation_date",
+    label: "Install date",
+    width: 136,
+    band: "5 · Installation",
+    render: ({ item, disabled, save }) => (
+      <DateCell
+        label="Installation date"
+        value={item.installation_date}
+        disabled={disabled}
+        onSave={(v) => save({ installation_date: v })}
+      />
+    ),
+  },
+  {
+    key: "installedby",
+    hideKey: "installed_by",
+    label: "Installed by",
+    width: 130,
+    band: "5 · Installation",
+    render: text("installed_by", "Installed by", "Team"),
+  },
+  {
+    key: "signoff",
+    hideKey: "client_sign_off",
+    label: "Client sign-off",
+    width: 152,
+    band: "6 · Handover",
+    render: (ctx) => (
+      <SelectCell
+        label="Client sign-off"
+        value={ctx.item.client_sign_off}
+        options={CLIENT_SIGN_OFF}
+        disabled={ctx.disabled}
+        overdue={ctx.overdue("sign_off")}
+        onSave={(v) => ctx.save({ client_sign_off: v })}
+      />
+    ),
+  },
+  {
+    key: "remarks",
+    hideKey: "remarks",
+    label: "Remarks",
+    width: 220,
+    band: "Notes",
+    render: text("remarks", "Remarks"),
+  },
 ];
 
-const COLUMNS: { label: string; width: number }[] = [
-  { label: "Code", width: 64 },
-  { label: "BOQ No.", width: 84 },
-  { label: "Current stage", width: 140 },
-  { label: "Floor / Area", width: 150 },
-  { label: "Floor plan", width: 110 },
-  { label: "Description", width: 220 },
-  { label: "Site audit", width: 150 },
-  { label: "H (in)", width: 76 },
-  { label: "W (in)", width: 76 },
-  { label: "Qty", width: 64 },
-  { label: "Area / unit", width: 104 },
-  { label: "Photo link", width: 120 },
-  { label: "Site issue", width: 200 },
-  { label: "Resolved?", width: 92 },
-  { label: "Pre-press", width: 200 },
-  { label: "JC No.", width: 104 },
-  { label: "Production", width: 140 },
-  { label: "Material", width: 150 },
-  { label: "Quality check", width: 136 },
-  { label: "QC by", width: 110 },
-  { label: "DC No(s).", width: 120 },
-  { label: "Dispatch", width: 168 },
-  { label: "Installation", width: 156 },
-  { label: "Install date", width: 136 },
-  { label: "Installed by", width: 130 },
-  { label: "Client sign-off", width: 152 },
-  { label: "Remarks", width: 220 },
-  { label: "", width: 44 },
-];
+const CODE_WIDTH = 64;
+const ACTIONS_WIDTH = 64;
 
-const STICKY_CODE = "sticky left-0 z-[2] bg-surface-1";
-
+type TOpenPanel = "scopes" | "floors" | "columns" | "import" | null;
 type Props = { workspaceSlug: string; project: TE9Project };
 
 export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const { data, error, isLoading, mutate } = useE9Items(workspaceSlug, project.id);
-  const [scope, setScope] = useState<TE9ScopeKey>("wall_graphics");
+  const { data: scopes } = useE9Scopes(workspaceSlug, project.id);
+  const { data: floors } = useE9Floors(workspaceSlug, project.id);
+  const { data: photos } = useE9Photos(workspaceSlug, project.id);
+  const floorListId = useId();
+
+  const enabledScopes = useMemo(() => (scopes ?? []).filter((scope) => scope.enabled), [scopes]);
+  const [scopeKey, setScopeKey] = useState<string | null>(null);
+  const [floorFilter, setFloorFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
+  const [panel, setPanel] = useState<TOpenPanel>(null);
+  const [photoItem, setPhotoItem] = useState<TE9ScopeItem | null>(null);
+  const [historyItem, setHistoryItem] = useState<TE9ScopeItem | null>(null);
+
+  // stay on a scope that is switched on
+  useEffect(() => {
+    if (enabledScopes.length && !enabledScopes.some((scope) => scope.key === scopeKey))
+      setScopeKey(enabledScopes[0].key);
+  }, [enabledScopes, scopeKey]);
 
   const items = useMemo(() => data?.items ?? [], [data]);
   const canEdit = data?.can_edit ?? false;
-  const targets = project.e9;
-  const scopeMeta = getScope(scope);
+  const canSetUp = project.can_edit;
+  const scope = enabledScopes.find((entry) => entry.key === scopeKey);
+  const hidden = new Set(project.e9.hidden_columns ?? []);
+  const columns = COLUMNS.filter((column) => !hidden.has(column.hideKey));
+
+  const photosByItem = useMemo(() => {
+    const map = new Map<string, TE9Attachment[]>();
+    for (const photo of photos ?? []) if (photo.item) map.set(photo.item, [...(map.get(photo.item) ?? []), photo]);
+    return map;
+  }, [photos]);
+
+  const floorNames = useMemo(
+    () => [
+      ...new Set([
+        ...(floors ?? []).map((floor) => floor.name),
+        ...items.map((item) => item.floor_area).filter(Boolean),
+      ]),
+    ],
+    [floors, items]
+  );
 
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
     return items
-      .filter((item) => item.scope === scope)
+      .filter((item) => item.scope === scopeKey)
+      .filter(
+        (item) => floorFilter === "all" || (floorFilter === "" ? !item.floor_area : item.floor_area === floorFilter)
+      )
       .filter((item) =>
         !query
           ? true
@@ -107,7 +547,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
               .toLowerCase()
               .includes(query)
       );
-  }, [items, scope, search]);
+  }, [items, scopeKey, floorFilter, search]);
 
   const filledByScope = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -116,13 +556,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   }, [items]);
 
   const save = async (item: TE9ScopeItem, patch: Partial<TE9ScopeItem>) => {
-    // show the change straight away, then replace with the server's version (area, stage)
     await mutate(
       (current) =>
-        current && {
-          ...current,
-          items: current.items.map((row) => (row.id === item.id ? { ...row, ...patch } : row)),
-        },
+        current && { ...current, items: current.items.map((row) => (row.id === item.id ? { ...row, ...patch } : row)) },
       { revalidate: false }
     );
     try {
@@ -139,9 +575,19 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   };
 
   const addRows = async (count: number) => {
+    if (!scopeKey) return;
     setAdding(true);
     try {
-      const created = await e9ProjectService.addItems(workspaceSlug, project.id, scope, count);
+      const created = await e9ProjectService.addItems(workspaceSlug, project.id, scopeKey, count);
+      // new rows start on the floor being viewed
+      if (floorFilter && floorFilter !== "all") {
+        await Promise.all(
+          created.map((row) =>
+            e9ProjectService.updateItem(workspaceSlug, project.id, row.id, { floor_area: floorFilter })
+          )
+        );
+        created.forEach((row) => (row.floor_area = floorFilter));
+      }
       await mutate((current) => current && { ...current, items: [...current.items, ...created] }, {
         revalidate: false,
       });
@@ -165,460 +611,308 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     }
   };
 
-  if (isLoading && !data) return <E9LoadingState />;
+  if ((isLoading && !data) || !scopes) return <E9LoadingState />;
   if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
 
   const filledRows = rows.filter(isFilled);
-  const totalMeasure = filledRows.reduce((total, item) => total + itemMeasure(item), 0);
-  const totalArea = filledRows.reduce((total, item) => total + itemArea(item), 0);
-  const tableWidth = COLUMNS.reduce((total, column) => total + column.width, 0);
+  const totalNos = filledRows.filter((item) => item.unit === "nos").reduce((t, item) => t + itemMeasure(item), 0);
+  const totalArea = filledRows.reduce((t, item) => t + itemArea(item), 0);
+  const tableWidth = CODE_WIDTH + ACTIONS_WIDTH + columns.reduce((t, column) => t + column.width, 0);
+  const bands = columns.reduce<{ label: string; span: number }[]>((acc, column) => {
+    const last = acc[acc.length - 1];
+    if (last?.label === column.band) last.span += 1;
+    else acc.push({ label: column.band, span: 1 });
+    return acc;
+  }, []);
+  const panelProps = { workspaceSlug, project, onClose: () => setPanel(null) };
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Scope tabs */}
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Scope sheets">
-        {E9_SCOPES.map((entry) => {
-          const active = entry.key === scope;
-          return (
-            <button
-              key={entry.key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setScope(entry.key)}
-              className={cn(
-                "flex shrink-0 items-center gap-2 rounded-lg border px-3 py-1.5 text-body-xs-semibold whitespace-nowrap transition-colors",
-                active
-                  ? "border-accent-strong bg-accent-subtle text-primary"
-                  : "border-subtle bg-surface-1 text-secondary hover:bg-layer-1-hover"
-              )}
-            >
-              {entry.label}
-              <span
-                className={cn(
-                  "rounded-full px-1.5 text-body-2xs-semibold tabular-nums",
-                  active ? "bg-accent-primary text-on-color" : "bg-layer-2 text-tertiary"
-                )}
-              >
-                {filledByScope[entry.key] ?? 0}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <datalist id={floorListId}>
+        {floorNames.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
 
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-body-sm-semibold text-primary">{scopeMeta.label}</span>
-          <span className="text-body-xs-regular text-tertiary">
-            {filledRows.length} item{filledRows.length === 1 ? "" : "s"}
-            {scopeMeta.unit === "nos" ? ` · ${formatMeasure(totalMeasure, "nos")}` : ""}
-            {totalArea > 0 ? ` · ${formatMeasure(Math.round(totalArea * 100) / 100, "sqft")}` : ""}
-            {scopeMeta.unit === "nos" ? " · counted by quantity" : ""}
-            {canEdit ? " · changes save automatically" : " · view only"}
-          </span>
-        </div>
+      {/* Set-up buttons */}
+      {canSetUp && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="relative flex items-center">
-            <span className="sr-only">Search items</span>
-            <SearchOutline className="pointer-events-none absolute left-2.5 size-3.5 text-placeholder" />
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search code, floor, JC, DC"
-              className="h-8 w-56 rounded-lg border border-subtle bg-surface-1 pr-2 pl-8 text-body-xs-regular text-primary outline-none placeholder:text-placeholder focus-visible:border-accent-strong"
-            />
-          </label>
-          {canEdit && (
-            <>
-              <Button
-                variant="secondary"
-                size="md"
-                stretch="auto"
-                icon={<AddOutline className="size-3.5" />}
-                label="Add row"
-                loading={adding}
-                onClick={() => addRows(1)}
-              />
-              <Button variant="secondary" size="md" stretch="auto" label="Add 10 rows" onClick={() => addRows(10)} />
-            </>
-          )}
+          <SetupButton label="Scopes" hint={`${enabledScopes.length} on`} onClick={() => setPanel("scopes")} />
+          <SetupButton label="Floors" hint={`${floors?.length ?? 0}`} onClick={() => setPanel("floors")} />
+          <SetupButton
+            label="Columns"
+            hint={hidden.size ? `${hidden.size} hidden` : "all shown"}
+            onClick={() => setPanel("columns")}
+          />
+          <SetupButton label="Import from Excel" onClick={() => setPanel("import")} />
         </div>
-      </div>
+      )}
 
-      {/* Sheet */}
-      <div className="overflow-hidden rounded-xl border border-subtle bg-surface-1 shadow-raised-100">
-        <div className="max-h-[70vh] overflow-auto">
-          <table className="table-fixed border-separate border-spacing-0 text-left" style={{ width: tableWidth }}>
-            <colgroup>
-              {COLUMNS.map((column, index) => (
-                // oxlint-disable-next-line react/no-array-index-key -- fixed column list
-                <col key={index} style={{ width: column.width }} />
-              ))}
-            </colgroup>
-            <thead className="sticky top-0 z-[3]">
-              <tr>
-                {BANDS.map((band, index) => (
-                  <th
-                    key={band.label}
-                    colSpan={band.span + (index === BANDS.length - 1 ? 1 : 0)}
-                    className="border-b border-subtle px-2 py-1.5 text-body-2xs-semibold tracking-wide whitespace-nowrap text-white uppercase"
-                    style={{ backgroundColor: band.color }}
-                  >
-                    {band.label}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {COLUMNS.map((column, index) => (
-                  <th
-                    // oxlint-disable-next-line react/no-array-index-key -- fixed column list
-                    key={index}
+      {enabledScopes.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-strong px-6 py-12 text-center text-body-sm-regular text-tertiary">
+          No scopes are switched on for this project yet. {canSetUp ? "Click “Scopes” above to choose them." : ""}
+        </div>
+      ) : (
+        <>
+          {/* Scope tabs */}
+          <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Scope sheets">
+            {enabledScopes.map((entry) => {
+              const active = entry.key === scopeKey;
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setScopeKey(entry.key)}
+                  className={cn(
+                    "flex shrink-0 items-center gap-2 rounded-lg border px-3 py-1.5 text-body-xs-semibold whitespace-nowrap transition-colors",
+                    active
+                      ? "border-accent-strong bg-accent-subtle text-primary"
+                      : "border-subtle bg-surface-1 text-secondary hover:bg-layer-1-hover"
+                  )}
+                >
+                  {entry.label}
+                  <span
                     className={cn(
-                      "border-b border-subtle bg-layer-1 px-2 py-2 text-body-2xs-semibold whitespace-nowrap text-tertiary",
-                      index === 0 && "sticky left-0 z-[4]"
+                      "rounded-full px-1.5 text-body-2xs-semibold tabular-nums",
+                      active ? "bg-accent-primary text-on-color" : "bg-layer-2 text-tertiary"
                     )}
                   >
-                    {column.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={COLUMNS.length} className="px-4 py-14 text-center text-body-sm-regular text-tertiary">
-                    {search
-                      ? "No items match your search."
-                      : canEdit
-                        ? `No ${scopeMeta.label.toLowerCase()} yet. Click “Add row” or “Add 10 rows” to start.`
-                        : `No ${scopeMeta.label.toLowerCase()} yet.`}
-                  </td>
-                </tr>
-              ) : (
-                rows.map((item) => (
-                  <TrackerRow
-                    key={item.id}
-                    item={item}
-                    disabled={!canEdit}
-                    overdue={(stage) => isStageOverdue(item, stage, targets)}
-                    onSave={(patch) => save(item, patch)}
-                    onDelete={() => removeRow(item)}
+                    {filledByScope[entry.key] ?? 0}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Toolbar */}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-body-sm-semibold text-primary">
+                {scope?.label}
+                <span className="ml-2 text-body-2xs-medium text-tertiary">
+                  {scope?.unit_mode === "sqft"
+                    ? "measured in sq ft"
+                    : scope?.unit_mode === "nos"
+                      ? "counted in Nos"
+                      : "sq ft or Nos"}
+                </span>
+              </span>
+              <span className="text-body-xs-regular text-tertiary">
+                {filledRows.length} item{filledRows.length === 1 ? "" : "s"}
+                {totalArea > 0 ? ` · ${formatMeasure(Math.round(totalArea * 100) / 100, "sqft")}` : ""}
+                {totalNos > 0 ? ` · ${formatMeasure(totalNos, "nos")}` : ""}
+                {floorFilter !== "all" ? ` on ${floorFilter || "no floor"}` : ""}
+                {canEdit ? " · changes save automatically" : " · view only"}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1.5">
+                <span className="sr-only">Floor</span>
+                <select
+                  value={floorFilter}
+                  onChange={(event) => setFloorFilter(event.target.value)}
+                  className="h-8 max-w-48 rounded-lg border border-subtle bg-surface-1 px-2 text-body-xs-medium text-primary outline-none focus-visible:border-accent-strong"
+                >
+                  <option value="all">All floors</option>
+                  {floorNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                  <option value="">No floor set</option>
+                </select>
+              </label>
+              <label className="relative flex items-center">
+                <span className="sr-only">Search items</span>
+                <SearchOutline className="pointer-events-none absolute left-2.5 size-3.5 text-placeholder" />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search code, floor, JC, DC"
+                  className="h-8 w-52 rounded-lg border border-subtle bg-surface-1 pr-2 pl-8 text-body-xs-regular text-primary outline-none placeholder:text-placeholder focus-visible:border-accent-strong"
+                />
+              </label>
+              {canEdit && (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    stretch="auto"
+                    icon={<AddOutline className="size-3.5" />}
+                    label="Add row"
+                    loading={adding}
+                    onClick={() => addRows(1)}
                   />
-                ))
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    stretch="auto"
+                    label="Add 10 rows"
+                    onClick={() => addRows(10)}
+                  />
+                </>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <Legend />
+            </div>
+          </div>
+
+          {/* Sheet */}
+          <div className="overflow-hidden rounded-xl border border-subtle bg-surface-1 shadow-raised-100">
+            <div className="max-h-[70vh] overflow-auto">
+              <table className="table-fixed border-separate border-spacing-0 text-left" style={{ width: tableWidth }}>
+                <colgroup>
+                  <col style={{ width: CODE_WIDTH }} />
+                  {columns.map((column) => (
+                    <col key={column.key} style={{ width: column.width }} />
+                  ))}
+                  <col style={{ width: ACTIONS_WIDTH }} />
+                </colgroup>
+                <thead className="sticky top-0 z-[3]">
+                  <tr>
+                    <th
+                      className="sticky left-0 z-[4] border-b border-subtle px-2 py-1.5"
+                      style={{ backgroundColor: GREY }}
+                    />
+                    {bands.map((band, index) => (
+                      <th
+                        // oxlint-disable-next-line react/no-array-index-key -- band names can repeat after hiding columns
+                        key={`${band.label}-${index}`}
+                        colSpan={band.span}
+                        className="border-b border-subtle px-2 py-1.5 text-body-2xs-semibold tracking-wide whitespace-nowrap text-white uppercase"
+                        style={{ backgroundColor: BAND_COLORS[band.label] ?? GREY }}
+                      >
+                        {band.label}
+                      </th>
+                    ))}
+                    <th className="border-b border-subtle" style={{ backgroundColor: GREY }} />
+                  </tr>
+                  <tr>
+                    <th className="sticky left-0 z-[4] border-b border-subtle bg-layer-1 px-2 py-2 text-body-2xs-semibold text-tertiary">
+                      Code
+                    </th>
+                    {columns.map((column) => (
+                      <th
+                        key={column.key}
+                        className="border-b border-subtle bg-layer-1 px-2 py-2 text-body-2xs-semibold whitespace-nowrap text-tertiary"
+                      >
+                        {column.label}
+                      </th>
+                    ))}
+                    <th className="border-b border-subtle bg-layer-1" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={columns.length + 2}
+                        className="px-4 py-14 text-center text-body-sm-regular text-tertiary"
+                      >
+                        {search || floorFilter !== "all"
+                          ? "No items match this floor or search."
+                          : canEdit
+                            ? `No ${scope?.label.toLowerCase()} yet. Click “Add row” or “Add 10 rows” to start.`
+                            : `No ${scope?.label.toLowerCase()} yet.`}
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((item) => {
+                      const ctx: TRowContext = {
+                        item,
+                        scope,
+                        disabled: !canEdit,
+                        empty: !isFilled(item),
+                        overdue: (stage) => isStageOverdue(item, stage, project.e9),
+                        save: (patch) => save(item, patch),
+                        photos: photosByItem.get(item.id) ?? [],
+                        openPhotos: () => setPhotoItem(item),
+                        floorListId,
+                        workspaceSlug,
+                        projectId: project.id,
+                      };
+                      return (
+                        <tr key={item.id} className={cn("group", ctx.empty && "opacity-70")}>
+                          <td className="sticky left-0 z-[2] border-b border-subtle bg-surface-1 px-2 py-1 align-middle text-body-xs-semibold text-primary group-hover:bg-layer-1">
+                            {item.item_code}
+                          </td>
+                          {columns.map((column) => (
+                            <td
+                              key={column.key}
+                              className={cn("border-b border-subtle px-1 py-1 align-middle", column.className)}
+                            >
+                              {column.render(ctx)}
+                            </td>
+                          ))}
+                          <td className="border-b border-subtle px-1 py-1 align-middle">
+                            <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                              <button
+                                type="button"
+                                onClick={() => setHistoryItem(item)}
+                                aria-label={`History of ${item.item_code}`}
+                                title="Who changed what"
+                                className="grid size-7 place-items-center rounded-md text-placeholder hover:bg-layer-1-hover hover:text-primary"
+                              >
+                                <ClockOutline className="size-3.5" />
+                              </button>
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeRow(item)}
+                                  aria-label={`Delete ${item.item_code}`}
+                                  className="grid size-7 place-items-center rounded-md text-placeholder hover:bg-danger-subtle hover:text-danger-primary"
+                                >
+                                  <CloseOutline className="size-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <Legend />
+        </>
+      )}
+
+      <E9ScopesModal open={panel === "scopes"} {...panelProps} />
+      <E9FloorsModal open={panel === "floors"} {...panelProps} />
+      <E9ColumnsModal open={panel === "columns"} {...panelProps} />
+      <E9ImportModal open={panel === "import"} {...panelProps} />
+      <E9PhotosModal
+        open={!!photoItem}
+        onClose={() => setPhotoItem(null)}
+        workspaceSlug={workspaceSlug}
+        projectId={project.id}
+        item={photoItem}
+        disabled={!canEdit}
+      />
+      <E9ItemHistoryModal
+        open={!!historyItem}
+        onClose={() => setHistoryItem(null)}
+        workspaceSlug={workspaceSlug}
+        projectId={project.id}
+        item={historyItem}
+      />
     </div>
   );
 }
 
-function Cell({ children, className }: { children: ReactNode; className?: string }) {
-  return <td className={cn("border-b border-subtle px-1 py-1 align-middle", className)}>{children}</td>;
-}
-
-type TRowProps = {
-  item: TE9ScopeItem;
-  disabled: boolean;
-  overdue: (stage: TE9StageKey) => boolean;
-  onSave: (patch: Partial<TE9ScopeItem>) => void;
-  onDelete: () => void;
-};
-
-function TrackerRow({ item, disabled, overdue, onSave, onDelete }: TRowProps) {
-  const scopeRule = getScope(item.scope).unit;
-  const empty = !isFilled(item);
-  const jcLink = item.jc_no ? `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(item.jc_no)}` : null;
+function SetupButton({ label, hint, onClick }: { label: string; hint?: string; onClick: () => void }) {
   return (
-    <tr className={cn("group hover:bg-layer-1-hover/40", empty && "opacity-70")}>
-      <Cell className={cn(STICKY_CODE, "px-2 text-body-xs-semibold text-primary group-hover:bg-layer-1")}>
-        {item.item_code}
-      </Cell>
-      <Cell>
-        <TextCell
-          label="BOQ item no."
-          value={item.boq_item_no}
-          disabled={disabled}
-          onSave={(v) => onSave({ boq_item_no: v })}
-        />
-      </Cell>
-      <Cell className="px-2">
-        <span className="block truncate text-body-xs-medium text-secondary" title={item.current_stage}>
-          {empty ? "" : item.current_stage}
-        </span>
-      </Cell>
-      <Cell>
-        <TextCell
-          label="Floor / area"
-          value={item.floor_area}
-          disabled={disabled}
-          placeholder="e.g. 4th Floor"
-          onSave={(v) => onSave({ floor_area: v })}
-        />
-      </Cell>
-      <Cell>
-        <TextCell
-          label="Floor plan"
-          value={item.floor_plan_ref}
-          disabled={disabled}
-          onSave={(v) => onSave({ floor_plan_ref: v })}
-        />
-      </Cell>
-      <Cell>
-        <TextCell
-          label="Description"
-          value={item.description}
-          disabled={disabled}
-          placeholder="e.g. Wall 01"
-          onSave={(v) => onSave({ description: v })}
-        />
-      </Cell>
-      {/* 1 · Site audit */}
-      <Cell>
-        <SelectCell
-          label="Site audit status"
-          value={item.site_audit_status}
-          options={SITE_AUDIT_STATUS}
-          disabled={disabled}
-          overdue={overdue("site_audit")}
-          onSave={(v) => onSave({ site_audit_status: v })}
-        />
-      </Cell>
-      <Cell>
-        <NumberCell
-          label="Height in inches"
-          value={item.height_in}
-          disabled={disabled}
-          onSave={(v) => onSave({ height_in: v })}
-        />
-      </Cell>
-      <Cell>
-        <NumberCell
-          label="Width in inches"
-          value={item.width_in}
-          disabled={disabled}
-          onSave={(v) => onSave({ width_in: v })}
-        />
-      </Cell>
-      <Cell>
-        <NumberCell label="Quantity" value={item.qty} disabled={disabled} onSave={(v) => onSave({ qty: v })} />
-      </Cell>
-      <Cell className="px-2">
-        <div className="flex flex-col leading-tight">
-          <span className="text-right text-body-xs-semibold text-primary tabular-nums">
-            {item.unit === "sqft"
-              ? item.area_sqft
-                ? `${Number(item.area_sqft).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
-                : "—"
-              : `${Number(item.qty || (empty ? 0 : 1))}`}
-          </span>
-          {scopeRule === "either" && !disabled ? (
-            <select
-              aria-label="Count in"
-              className="mt-0.5 cursor-pointer bg-transparent text-right text-body-2xs-regular text-tertiary outline-none"
-              value={item.unit_override}
-              onChange={(event) => onSave({ unit_override: event.target.value as TE9ScopeItem["unit_override"] })}
-            >
-              <option value="">{item.unit === "sqft" ? "sq ft (auto)" : "Nos (auto)"}</option>
-              <option value="sqft">sq ft</option>
-              <option value="nos">Nos</option>
-            </select>
-          ) : (
-            <span className="text-right text-body-2xs-regular text-tertiary">
-              {item.unit === "sqft" ? "sq ft" : "Nos"}
-            </span>
-          )}
-        </div>
-      </Cell>
-      <Cell>
-        <div className="flex items-center">
-          <TextCell
-            label="Photo link"
-            value={item.photo_link}
-            disabled={disabled}
-            placeholder="Drive link"
-            onSave={(v) => onSave({ photo_link: v })}
-          />
-          {item.photo_link.startsWith("http") && (
-            <a
-              href={item.photo_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-1 text-body-2xs-semibold text-accent-primary"
-            >
-              Open
-            </a>
-          )}
-        </div>
-      </Cell>
-      <Cell>
-        <SelectCell
-          label="Site issue"
-          value={item.site_issue}
-          options={SITE_ISSUES[item.scope]}
-          disabled={disabled}
-          onSave={(v) =>
-            onSave({
-              site_issue: v,
-              issue_resolved: v === "No issues" ? "N/A" : item.issue_resolved === "N/A" ? "No" : item.issue_resolved,
-            })
-          }
-        />
-      </Cell>
-      <Cell>
-        <SelectCell
-          label="Issue resolved"
-          value={item.issue_resolved}
-          options={ISSUE_RESOLVED}
-          disabled={disabled}
-          onSave={(v) => onSave({ issue_resolved: v })}
-        />
-      </Cell>
-      {/* 2 · Pre-press */}
-      <Cell>
-        <SelectCell
-          label="Pre-press"
-          value={item.pre_press}
-          options={PRE_PRESS}
-          disabled={disabled}
-          overdue={overdue("pre_press")}
-          onSave={(v) => onSave({ pre_press: v })}
-        />
-      </Cell>
-      <Cell>
-        <div className="flex items-center">
-          <TextCell label="JC number" value={item.jc_no} disabled={disabled} onSave={(v) => onSave({ jc_no: v })} />
-          {jcLink && (
-            <a
-              href={jcLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Find the e-proof mail in Gmail"
-              className="px-1 text-body-2xs-semibold text-accent-primary"
-            >
-              Mail
-            </a>
-          )}
-        </div>
-      </Cell>
-      {/* 3 · Production & material */}
-      <Cell>
-        <SelectCell
-          label="Production status"
-          value={item.production_status}
-          options={PRODUCTION_STATUS}
-          disabled={disabled}
-          onSave={(v) => onSave({ production_status: v })}
-        />
-      </Cell>
-      <Cell>
-        <SelectCell
-          label="Material status"
-          value={item.material_status}
-          options={MATERIAL_STATUS}
-          blankLabel="— (no JC yet)"
-          disabled={disabled}
-          overdue={overdue("material")}
-          onSave={(v) => onSave({ material_status: v })}
-        />
-      </Cell>
-      {/* 4 · Quality & dispatch */}
-      <Cell>
-        <SelectCell
-          label="Quality check"
-          value={item.quality_check}
-          options={QUALITY_CHECK}
-          disabled={disabled}
-          onSave={(v) => onSave({ quality_check: v })}
-        />
-      </Cell>
-      <Cell>
-        <TextCell
-          label="QC done by"
-          value={item.qc_done_by}
-          disabled={disabled}
-          onSave={(v) => onSave({ qc_done_by: v })}
-        />
-      </Cell>
-      <Cell>
-        <TextCell
-          label="DC numbers"
-          value={item.dc_nos}
-          disabled={disabled}
-          placeholder="e.g. 3500, 3501"
-          onSave={(v) => onSave({ dc_nos: v })}
-        />
-      </Cell>
-      <Cell>
-        <SelectCell
-          label="Dispatch status"
-          value={item.dispatch_status}
-          options={DISPATCH_STATUS}
-          disabled={disabled}
-          overdue={overdue("delivered")}
-          onSave={(v) => onSave({ dispatch_status: v })}
-        />
-      </Cell>
-      {/* 5 · Installation */}
-      <Cell>
-        <SelectCell
-          label="Installation status"
-          value={item.installation_status}
-          options={INSTALLATION_STATUS}
-          disabled={disabled}
-          overdue={overdue("installation")}
-          onSave={(v) => onSave({ installation_status: v })}
-        />
-      </Cell>
-      <Cell>
-        <DateCell
-          label="Installation date"
-          value={item.installation_date}
-          disabled={disabled}
-          onSave={(v) => onSave({ installation_date: v })}
-        />
-      </Cell>
-      <Cell>
-        <TextCell
-          label="Installed by"
-          value={item.installed_by}
-          disabled={disabled}
-          placeholder="Team"
-          onSave={(v) => onSave({ installed_by: v })}
-        />
-      </Cell>
-      {/* 6 · Handover */}
-      <Cell>
-        <SelectCell
-          label="Client sign-off"
-          value={item.client_sign_off}
-          options={CLIENT_SIGN_OFF}
-          disabled={disabled}
-          overdue={overdue("sign_off")}
-          onSave={(v) => onSave({ client_sign_off: v })}
-        />
-      </Cell>
-      <Cell>
-        <TextCell label="Remarks" value={item.remarks} disabled={disabled} onSave={(v) => onSave({ remarks: v })} />
-      </Cell>
-      <Cell className="text-center">
-        {!disabled && (
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label={`Delete ${item.item_code}`}
-            className="grid size-7 place-items-center rounded-md text-placeholder opacity-0 group-hover:opacity-100 hover:bg-danger-subtle hover:text-danger-primary focus-visible:opacity-100"
-          >
-            <CloseOutline className="size-3.5" />
-          </button>
-        )}
-      </Cell>
-    </tr>
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2 rounded-lg border border-subtle bg-surface-1 px-3 py-1.5 text-body-xs-semibold text-secondary shadow-raised-100 hover:bg-layer-1-hover hover:text-primary"
+    >
+      {label}
+      {hint && <span className="text-body-2xs-medium text-placeholder">{hint}</span>}
+    </button>
   );
 }
 
@@ -639,6 +933,7 @@ function Legend() {
         "bg-danger-subtle ring-1 ring-[var(--border-color-danger-strong)]",
         "Overdue against the stage target / rework"
       )}
+      <span>Hover a row for its history (clock) and delete (✕).</span>
     </div>
   );
 }

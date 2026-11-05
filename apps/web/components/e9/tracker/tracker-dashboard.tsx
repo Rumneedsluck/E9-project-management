@@ -6,13 +6,13 @@
 
 import { useMemo } from "react";
 import { cn, renderFormattedDate } from "@plane/utils";
-import { useE9Items } from "../hooks";
+import { useE9Floors, useE9Items, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
-import { getScope } from "./constants";
 import type { TStageTargetRow } from "./logic";
-import { formatMeasure, isOpenSiteIssue, scopeProgress, stageTargetRows, trackerKpis } from "./logic";
+import { floorProgress, formatMeasure, isOpenSiteIssue, scopeProgress, stageTargetRows, trackerKpis } from "./logic";
+import { floorStatusClass } from "./setup-panels";
 
 function Tile({
   label,
@@ -70,7 +70,13 @@ type Props = { workspaceSlug: string; project: TE9Project; onOpenSheet: () => vo
 export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet }: Props) {
   const { data, error, isLoading, mutate } = useE9Items(workspaceSlug, project.id);
   const items = useMemo(() => data?.items ?? [], [data]);
-  const progress = useMemo(() => scopeProgress(items), [items]);
+  const { data: scopeList } = useE9Scopes(workspaceSlug, project.id);
+  const { data: floorList } = useE9Floors(workspaceSlug, project.id);
+  const scopes = useMemo(() => (scopeList ?? []).filter((scope) => scope.enabled), [scopeList]);
+  const scopeLabel = (key: string) => scopeList?.find((scope) => scope.key === key)?.label ?? key;
+  const progress = useMemo(() => scopeProgress(items, scopes), [items, scopes]);
+  const floors = useMemo(() => floorProgress(items, floorList ?? []), [items, floorList]);
+  const today = new Date().toISOString().slice(0, 10);
   const kpis = useMemo(() => trackerKpis(items, project.e9.deadline), [items, project.e9.deadline]);
   const stages = useMemo(() => stageTargetRows(items, project.e9), [items, project.e9]);
   const issues = useMemo(() => items.filter(isOpenSiteIssue), [items]);
@@ -172,7 +178,7 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet }: Prop
                   <td className="px-4 py-2.5 font-medium">{row.label}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     {row.items}
-                    {getScope(row.scope).unit === "nos" && <span className="text-tertiary"> Nos</span>}
+                    {row.unit === "nos" && <span className="text-tertiary"> Nos</span>}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     {row.area > 0 ? row.area.toLocaleString("en-IN") : "—"}
@@ -238,10 +244,90 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet }: Prop
           </table>
         </div>
         <p className="px-4 py-2.5 text-body-2xs-regular text-placeholder">
-          Walls, glass and hand paintings count each item; signages, frames and 3D items count their quantity (Nos).
-          Rows left blank are not counted.
+          Sq-ft scopes count each item; Nos scopes (signages, frames, 3D …) count their quantity. Rows left blank are
+          not counted.
         </p>
       </E9Panel>
+
+      {floors.length > 0 && (
+        <E9Panel title={`Progress by floor · ${floors.length}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-body-xs-regular">
+              <thead>
+                <tr className="border-b border-subtle text-body-2xs-semibold text-tertiary">
+                  {[
+                    "Floor",
+                    "Floor status",
+                    "Target date",
+                    "Rows",
+                    "Items / Qty",
+                    "Nos",
+                    "Area (sq ft)",
+                    "Delivered",
+                    "Installed",
+                    "Signed off",
+                    "% done",
+                  ].map((heading, index) => (
+                    <th key={heading} className={cn("px-4 py-2.5 font-semibold", index > 2 && "text-right")}>
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-subtle text-primary">
+                {floors.map((row) => {
+                  const status = row.floor?.status;
+                  const target = row.floor?.target_date ?? null;
+                  const late = !!target && target < today && status !== "Handed Over";
+                  return (
+                    <tr key={row.name} className={cn(late && "bg-danger-subtle/50")}>
+                      <td className="px-4 py-2.5 font-medium">
+                        {row.name}
+                        {row.floor?.notes && (
+                          <span className="block max-w-[220px] truncate text-body-2xs-regular text-tertiary">
+                            {row.floor.notes}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {status ? (
+                          <span
+                            className={cn("rounded-full px-2 py-0.5 text-body-2xs-semibold", floorStatusClass(status))}
+                          >
+                            {status}
+                          </span>
+                        ) : (
+                          <span className="text-placeholder">Not in floor list</span>
+                        )}
+                      </td>
+                      <td className={cn("px-4 py-2.5 tabular-nums", late && "font-semibold text-danger-primary")}>
+                        {target ? renderFormattedDate(target) : "—"}
+                        {late && " · late"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{row.rows}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{row.items}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{row.nos || "—"}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        {row.area > 0 ? row.area.toLocaleString("en-IN") : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{row.delivered}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{row.installed}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{row.signedOff}</td>
+                      <td className="px-4 py-2.5">
+                        <Percent value={row.rows > 0 ? row.percentItems : null} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="px-4 py-2.5 text-body-2xs-regular text-placeholder">
+            Set each floor&apos;s status, target date and notes on the Tracker sheet › Floors. A floor turns red when
+            its target date has passed and it isn&apos;t handed over.
+          </p>
+        </E9Panel>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <E9Panel title="Stage targets & overdue" className="lg:col-span-2">
@@ -296,7 +382,7 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet }: Prop
               {issues.slice(0, 12).map((item) => (
                 <li key={item.id} className="flex flex-col gap-0.5 px-5 py-2.5">
                   <span className="text-body-xs-semibold text-primary">
-                    {item.item_code} · {item.floor_area || item.description || getScope(item.scope).label}
+                    {item.item_code} · {item.floor_area || item.description || scopeLabel(item.scope)}
                   </span>
                   <span className="text-body-xs-regular text-[#C2410C] dark:text-[#FB923C]">{item.site_issue}</span>
                 </li>

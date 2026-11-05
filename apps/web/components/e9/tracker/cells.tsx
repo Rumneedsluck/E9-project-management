@@ -21,7 +21,8 @@ export function TextCell({
   overdue,
   label,
   placeholder,
-}: TCommon & { value: string; onSave: (value: string) => void; placeholder?: string }) {
+  listId,
+}: TCommon & { value: string; onSave: (value: string) => void; placeholder?: string; listId?: string }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   const commit = () => {
@@ -31,6 +32,7 @@ export function TextCell({
     <input
       aria-label={label}
       className={cn(base, overdue && "bg-danger-subtle")}
+      list={listId}
       value={draft}
       disabled={disabled}
       placeholder={disabled ? "" : placeholder}

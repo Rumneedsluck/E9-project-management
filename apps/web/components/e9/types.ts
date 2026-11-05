@@ -39,6 +39,7 @@ export type TE9ProjectProfile = {
   target_delivered: string | null;
   target_installation: string | null;
   target_sign_off: string | null;
+  hidden_columns: string[];
   updated_at: string | null;
 };
 
