@@ -196,7 +196,7 @@ class TestE9DemoClear:
         call_command("e9_demo_setup", "--email", "owner@example.com", "--password", "Demo-pass-123")
         workspace = Workspace.objects.get(slug="e9-creative")
         owner = User.objects.get(email="owner@example.com")
-        real = Project.objects.create(name="Baker Tilly Bangalore", identifier="BTB", workspace=workspace)
+        real = Project.objects.create(name="Cedar Lane Office", identifier="CLO", workspace=workspace)
 
         # dry run changes nothing
         call_command("e9_demo_clear")

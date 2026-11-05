@@ -53,7 +53,7 @@ const item = (values: Partial<TE9ScopeItem>): TE9ScopeItem => {
   };
 };
 
-// Six measured walls like the Baker Tilly tracker, two of them installed
+// Six measured walls like a real 4th-floor tracker, two of them installed
 const walls = [
   item({ floor_area: "4th Floor", area_sqft: "92.23", site_audit_status: "Measured" }),
   item({ floor_area: "4th Floor", area_sqft: "376.17", site_audit_status: "Measured" }),
