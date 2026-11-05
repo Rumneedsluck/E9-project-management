@@ -88,7 +88,7 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1180px] text-left text-body-xs-regular">
+              <table className="w-full min-w-[1320px] text-left text-body-xs-regular">
                 <thead>
                   <tr className="border-b border-subtle text-body-2xs-semibold text-tertiary">
                     {[
@@ -101,6 +101,7 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
                       "Received?",
                       "Received date",
                       "E-proof sent on",
+                      "JC copy (PDF / photo)",
                       "Mail",
                     ].map((heading) => (
                       <th key={heading} className="px-3 py-2.5 font-semibold">
@@ -173,8 +174,19 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
                             onSave={(v) => save("jc", jc.number, "eproof_sent_on", v)}
                           />
                         </td>
+                        <td className="px-3 py-2">
+                          <E9RefFiles
+                            slug={workspaceSlug}
+                            projectId={project.id}
+                            kind="document"
+                            label={`JC ${jc.number}`}
+                            canUpload={!disabled}
+                            addText="Attach JC"
+                          />
+                        </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <a
+                            title="Searches your Gmail for this JC number (you must be signed in to Gmail in this browser)"
                             href={`https://mail.google.com/mail/u/0/#search/${encodeURIComponent(jc.number)}`}
                             target="_blank"
                             rel="noopener noreferrer"

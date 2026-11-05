@@ -16,6 +16,7 @@ import { e9BillsKey, e9SummaryKey, useE9Boq, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
+import { NumberCell, TextCell } from "../tracker/cells";
 import { E9Modal } from "../tracker/modal";
 import {
   E9RefFiles,
@@ -75,6 +76,38 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
 
   if (isLoading && !data) return <E9LoadingState />;
   if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+
+  /** Add blank BOQ lines (BO next numbers) straight into the sheet. */
+  const quickAdd = async (poId: string, count: number) => {
+    const used = data.lines.map((line) => Number(line.line_no.replace(/\D/g, ""))).filter(Number.isFinite);
+    let next = used.length ? Math.max(...used) + 1 : 1;
+    for (let index = 0; index < count; index += 1) {
+      const ok = await send("Couldn't add the line", () =>
+        e9ProjectService.boqCreate(workspaceSlug, project.id, "lines", {
+          po: poId,
+          line_no: `BO${next}`,
+          unit: "nos",
+          qty: "0",
+        })
+      );
+      if (!ok) break;
+      next += 1;
+    }
+  };
+  const patchLine = (line: TE9BoqLine, patch: object) =>
+    send(`Couldn't save ${line.line_no}`, () =>
+      e9ProjectService.boqUpdate(workspaceSlug, project.id, "lines", line.id, patch)
+    );
+  const startBoq = async () => {
+    const ok = await send("Couldn't start the BOQ", () =>
+      e9ProjectService.boqCreate(workspaceSlug, project.id, "pos", { kind: "original" })
+    );
+    if (ok) {
+      const fresh = await e9ProjectService.getBoq(workspaceSlug, project.id);
+      const po = fresh.pos[0];
+      if (po) await quickAdd(po.id, 3);
+    }
+  };
 
   const linesByPo = (poId: string) => data.lines.filter((line) => line.po === poId);
   const linkedGroups = data.unlinked.filter((group) => !group.missing);
@@ -143,8 +176,8 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-strong bg-surface-1 px-6 py-12 text-center">
           <p className="text-body-md-semibold text-primary">No BOQ yet</p>
           <p className="max-w-lg text-body-sm-regular text-tertiary">
-            Add the client&apos;s BOQ / PO and its lines (BO1, BO2…). Tracker rows count against a line through their
-            BOQ No. “Import from Excel” on the Tracker also reads your BOQ sheet.
+            Type the client&apos;s BOQ here like a sheet: BO1, BO2… with description, unit and quantity. Tracker rows
+            count against a line through their BOQ No. (“Import from Excel” on the Tracker also reads your BOQ sheet.)
           </p>
           {data.can_edit && (
             <Button
@@ -152,8 +185,8 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
               size="md"
               stretch="auto"
               icon={<AddOutline className="size-4" />}
-              label="Add the BOQ / PO"
-              onClick={() => setModal({ type: "po" })}
+              label="Start the BOQ"
+              onClick={startBoq}
             />
           )}
         </div>
@@ -171,6 +204,9 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
               onEdit={() => setModal({ type: "po", po })}
               onDelete={() => remove("pos", po.id, po.label)}
               onAddLine={(amendmentId) => setModal({ type: "line", poId: po.id, amendmentId })}
+              onQuickAdd={(count) => quickAdd(po.id, count)}
+              onPatchLine={patchLine}
+              scopes={(scopes ?? []).map((scope) => ({ key: scope.key, label: scope.label, unit: scope.unit_mode }))}
               onEditLine={(line) => setModal({ type: "line", poId: po.id, line })}
               onDeleteLine={(line) => remove("lines", line.id, line.line_no)}
               onAddAmendment={() => setModal({ type: "amendment", po })}
@@ -325,6 +361,9 @@ type TPOCardProps = {
   onEdit: () => void;
   onDelete: () => void;
   onAddLine: (amendmentId?: string) => void;
+  onQuickAdd: (count: number) => void;
+  onPatchLine: (line: TE9BoqLine, patch: object) => void;
+  scopes: { key: string; label: string; unit: string }[];
   onEditLine: (line: TE9BoqLine) => void;
   onDeleteLine: (line: TE9BoqLine) => void;
   onAddAmendment: () => void;
@@ -374,9 +413,10 @@ function POCard(props: TPOCardProps) {
       action={
         canEdit ? (
           <span className="flex gap-1">
-            <SmallButton onClick={() => props.onAddLine()}>
-              <AddOutline className="size-3.5" /> Line
+            <SmallButton onClick={() => props.onQuickAdd(1)}>
+              <AddOutline className="size-3.5" /> Add line
             </SmallButton>
+            <SmallButton onClick={() => props.onQuickAdd(5)}>Add 5 lines</SmallButton>
             <SmallButton onClick={props.onAddAmendment}>
               <AddOutline className="size-3.5" /> Amendment (client mail)
             </SmallButton>
@@ -419,28 +459,98 @@ function POCard(props: TPOCardProps) {
           <tbody className="divide-y divide-subtle text-primary">
             {lines.length === 0 && (
               <tr>
-                <td colSpan={15} className="px-5 py-6 text-center text-tertiary">
-                  No lines yet. {canEdit ? "Click “+ Line” to add BO1, BO2…" : ""}
+                <td colSpan={16} className="px-5 py-6 text-center text-tertiary">
+                  No lines yet. {canEdit ? "Click “+ Add line” and type straight into the row." : ""}
                 </td>
               </tr>
             )}
             {lines.map((line) => (
               <tr key={line.id} className={STATUS_META[line.status].row}>
                 <td className="px-3 py-2.5 font-semibold whitespace-nowrap">
-                  {line.line_no}
+                  {canEdit ? (
+                    <span className="block w-20">
+                      <TextCell
+                        label="BOQ No."
+                        value={line.line_no}
+                        onSave={(value) => value && props.onPatchLine(line, { line_no: value.toUpperCase() })}
+                      />
+                    </span>
+                  ) : (
+                    line.line_no
+                  )}
                   {line.amendment && (
                     <span className="ml-1 rounded bg-layer-2 px-1 text-body-2xs-medium text-tertiary">amendment</span>
                   )}
                 </td>
-                <td className="max-w-[260px] px-3 py-2.5">
-                  <span className="line-clamp-2">{line.description || "—"}</span>
-                  {line.scope && <span className="text-body-2xs-regular text-tertiary">{scopeLabel(line.scope)}</span>}
+                <td className="max-w-[300px] min-w-[220px] px-3 py-2.5">
+                  {canEdit ? (
+                    <>
+                      <TextCell
+                        label="Description"
+                        value={line.description}
+                        placeholder="e.g. Printed vinyl wall graphics"
+                        onSave={(value) => props.onPatchLine(line, { description: value })}
+                      />
+                      <select
+                        aria-label="Scope"
+                        className="mt-0.5 h-7 w-full rounded-md bg-transparent px-1.5 text-body-2xs-regular text-tertiary hover:bg-layer-1-hover"
+                        value={line.scope}
+                        onChange={(event) => {
+                          const chosen = props.scopes.find((scope) => scope.key === event.target.value);
+                          props.onPatchLine(line, {
+                            scope: event.target.value,
+                            ...(chosen && chosen.unit !== "either" ? { unit: chosen.unit } : {}),
+                          });
+                        }}
+                      >
+                        <option value="">Scope: —</option>
+                        {props.scopes.map((scope) => (
+                          <option key={scope.key} value={scope.key}>
+                            {scope.label}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <span className="line-clamp-2">{line.description || "—"}</span>
+                      {line.scope && (
+                        <span className="text-body-2xs-regular text-tertiary">{scopeLabel(line.scope)}</span>
+                      )}
+                    </>
+                  )}
                 </td>
                 <td className="px-3 py-2.5">
                   <StatusPill status={line.status} />
                 </td>
-                <td className="px-3 py-2.5 whitespace-nowrap">{unitText(line.unit)}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{fmt(line.qty)}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  {canEdit ? (
+                    <select
+                      aria-label="Unit"
+                      className="h-8 rounded-md bg-transparent px-1.5 text-body-xs-regular hover:bg-layer-1-hover"
+                      value={line.unit}
+                      onChange={(event) => props.onPatchLine(line, { unit: event.target.value })}
+                    >
+                      <option value="sqft">sq ft</option>
+                      <option value="nos">Nos</option>
+                    </select>
+                  ) : (
+                    unitText(line.unit)
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {canEdit ? (
+                    <span className="ml-auto block w-24">
+                      <NumberCell
+                        label="BOQ qty"
+                        value={line.qty}
+                        onSave={(value) => props.onPatchLine(line, { qty: value ?? "0" })}
+                      />
+                    </span>
+                  ) : (
+                    fmt(line.qty)
+                  )}
+                </td>
                 <td className="px-3 py-2.5 text-right text-success-primary tabular-nums">
                   {isPositive(line.confirmed_change) ? `+${fmt(line.confirmed_change)}` : "—"}
                 </td>
@@ -477,12 +587,26 @@ function POCard(props: TPOCardProps) {
                 <td className="px-3 py-2.5 text-right tabular-nums">
                   {isPositive(line.client_reprints) ? fmt(line.client_reprints) : "—"}
                 </td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{line.rate ? money(line.rate) : "—"}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {canEdit ? (
+                    <span className="ml-auto block w-24" title="Rate ₹ per sq ft / per Nos (optional)">
+                      <NumberCell
+                        label="Rate"
+                        value={line.rate}
+                        onSave={(value) => props.onPatchLine(line, { rate: value })}
+                      />
+                    </span>
+                  ) : line.rate ? (
+                    money(line.rate)
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-2 py-2.5 text-right whitespace-nowrap">
                   {canEdit && (
                     <>
                       <SmallButton tone="neutral" onClick={() => props.onEditLine(line)}>
-                        Edit
+                        More
                       </SmallButton>
                       <SmallButton tone="danger" onClick={() => props.onDeleteLine(line)}>
                         ✕
@@ -752,7 +876,10 @@ function POModal({
           <input type="date" className={inputClass} value={poDate} onChange={(e) => setPoDate(e.target.value)} />
         </FormField>
         <div className="sm:col-span-2">
-          <FormField label="Link (Drive / mail)" hint="You can also attach the PDF on the PO card after saving.">
+          <FormField
+            label="Link (optional)"
+            hint="Not needed: the BOQ is typed on the BOQ tab. Attach the PO PDF there too if you like."
+          >
             <input
               className={inputClass}
               value={link}
