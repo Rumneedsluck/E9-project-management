@@ -43,7 +43,6 @@ from .views_cert import (
     E9AnnouncementListEndpoint,
     E9CertificationDetailEndpoint,
     E9CertificationListEndpoint,
-    E9CertificationSettingsEndpoint,
 )
 from .views_snags import E9SnagDetailEndpoint, E9SnagListEndpoint
 
@@ -108,11 +107,6 @@ urlpatterns = [
     path(f"{P}/logs/<str:kind>/", E9LogEntryEndpoint.as_view(), name="e9-log-entry"),
     # Billing
     path(f"{P}/certifications/", E9CertificationListEndpoint.as_view(), name="e9-certifications"),
-    path(
-        f"{P}/certifications/settings/",
-        E9CertificationSettingsEndpoint.as_view(),
-        name="e9-certification-settings",
-    ),
     path(
         f"{P}/certifications/<uuid:cert_id>/",
         E9CertificationDetailEndpoint.as_view(),

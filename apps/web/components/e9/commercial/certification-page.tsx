@@ -9,10 +9,12 @@
  *   1. Print the JMC sheet from the tracker, take it to site.
  *   2. Type the certified sizes / quantities into the tracker.
  *   3. Upload the signed JMC (photo or PDF) and mark it signed  ->  billing opens below.
- * Big jobs can certify floor by floor or scope by scope. Admins can allow part billing early.
+ * Step 2 (billing) stays locked until a JMC is signed. Big jobs can sign a JMC per floor or scope
+ * and bill that part.
  */
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { AddOutline, DocumentationOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { cn, renderFormattedDate } from "@plane/utils";
@@ -21,20 +23,13 @@ import { refreshE9Commercial, useE9Certifications, useE9Items, useE9Scopes } fro
 import { E9ErrorState, E9LoadingState } from "../states";
 import { E9Modal } from "../tracker/modal";
 import type { TE9Project } from "../types";
-import { E9Panel, E9ProgressBar } from "../ui";
+import { E9ProgressBar } from "../ui";
 import { E9BillingPage } from "./billing-page";
 import { printJmcSheet } from "./jmc-sheet";
 import { E9RefFiles, FormField, SmallButton, inputClass, showError } from "./shared";
 import type { TE9Certification, TE9Certifications, TE9Readiness } from "./types";
 
 type Props = { workspaceSlug: string; project: TE9Project };
-
-const STATE_TONE: Record<TE9Certifications["state"], string> = {
-  in_progress: "text-tertiary",
-  jmc_pending: "text-warning-primary",
-  part_certified: "text-accent-primary",
-  certified: "text-success-primary",
-};
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -63,6 +58,7 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
   const { data: scopes } = useE9Scopes(workspaceSlug, project.id);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<TE9Certification | null>(null);
+  const [completing, setCompleting] = useState<TE9Certification | null>(null);
 
   const send = async (title: string, request: () => Promise<TE9Certifications>) => {
     try {
@@ -90,17 +86,42 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
       filled,
     });
 
+  const certs = data.certifications;
+  const signed = certs.filter((cert) => cert.done_on);
+  const measured = certs.some((cert) => cert.jmc_date) || signed.length > 0;
+  const typedAll = data.overall.rows > 0 && data.overall.certified >= data.overall.rows;
+  const step1Done = data.state === "certified" || data.state === "part_certified";
+  const trackerHref = `/${workspaceSlug}/e9/projects/${project.id}?view=tracker`;
+
+  const startWhole = () =>
+    void send("Couldn't start the JMC", () =>
+      e9ProjectService.createCertification(workspaceSlug, project.id, { floor: "", scope: "" })
+    );
+
   return (
     <div className="flex flex-col gap-5">
-      {/* status */}
+      {/* the two steps at a glance */}
+      <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <StepHeader
+          number={1}
+          title="Certification"
+          state={step1Done ? "done" : "current"}
+          text={step1Done ? `Done · ${signed.map((cert) => partLabel(cert)).join(", ")}` : data.state_text}
+        />
+        <StepHeader
+          number={2}
+          title="Billing"
+          state={data.billing_open ? "current" : "locked"}
+          text={data.billing_open ? "Open – start a bill below" : "Starts after certification is done"}
+        />
+      </ol>
+
+      {/* STEP 1 */}
       <section className="flex flex-col gap-5 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <span className="text-body-xs-semibold tracking-[0.14em] text-tertiary uppercase">Certification</span>
-            <span className={cn("text-h4-semibold", STATE_TONE[data.state])}>{data.state_text}</span>
-            <span className="text-body-xs-regular text-tertiary">
-              {data.billing_open ? "Billing is open for this project." : "Billing opens once a JMC is marked signed."}
-            </span>
+            <span className="text-body-xs-semibold tracking-[0.14em] text-tertiary uppercase">Step 1</span>
+            <h2 className="text-h5-semibold text-primary">Certification (JMC)</h2>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -111,83 +132,83 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
               label="Print blank JMC sheet"
               onClick={() => print({ floor: "", scope: "" }, false)}
             />
-            {data.can_edit && (
-              <Button
-                stretch="auto"
-                variant="primary"
-                size="md"
-                icon={<AddOutline className="size-4" />}
-                label="Add JMC"
-                onClick={() => setAdding(true)}
-              />
-            )}
+            <Button
+              stretch="auto"
+              variant="secondary"
+              size="md"
+              label="Print with certified qty"
+              onClick={() => print({ floor: "", scope: "" }, true)}
+            />
           </div>
         </div>
 
-        <ol className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {[
-            ["Print & measure", "Print the JMC sheet, measure on site with the client."],
-            ["Type certified qty", "Fill the Certified columns in the Tracker tab."],
-            ["Upload signed JMC", "Attach the signed sheet and mark it signed. Billing opens."],
-          ].map(([title, text], index) => (
-            <li key={title} className="rounded-lg bg-layer-1 px-3 py-2">
-              <span className="text-body-xs-semibold text-primary">
-                {index + 1} · {title}
-              </span>
-              <p className="text-body-2xs-regular text-tertiary">{text}</p>
-            </li>
-          ))}
+        <ol className="flex flex-col divide-y divide-subtle rounded-lg border border-subtle">
+          <CheckRow
+            done={measured}
+            title="Measure on site with the client"
+            text="Take the printed JMC sheet to site."
+          />
+          <CheckRow
+            done={typedAll}
+            title="Type the certified qty in the Tracker"
+            text={`${data.overall.certified} of ${data.overall.rows} rows filled (Certified columns).`}
+            action={
+              <a href={trackerHref} className="text-body-xs-semibold text-accent-primary hover:underline">
+                Open Tracker →
+              </a>
+            }
+          />
+          <CheckRow
+            done={step1Done}
+            title="Client signs the JMC → Certification done"
+            text="Upload the signed sheet and press “Certification done”. Billing opens."
+          />
         </ol>
 
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <Readiness value={data.overall} />
-          {data.can_edit && (
-            <label className="flex items-center gap-2 text-body-xs-medium text-secondary">
-              <input
-                type="checkbox"
-                checked={data.allow_part_billing}
-                onChange={(event) => {
-                  const allow = event.target.checked;
-                  const question = allow
-                    ? "Allow billing before the JMC is signed (running / part bills)?"
-                    : "Stop part billing? Bills already raised stay.";
-                  if (!window.confirm(question)) return;
-                  void send("Couldn't change part billing", () =>
-                    e9ProjectService.setPartBilling(workspaceSlug, project.id, allow)
-                  );
-                }}
+        {certs.length === 0 ? (
+          data.can_edit ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                stretch="auto"
+                variant="primary"
+                size="lg"
+                icon={<AddOutline className="size-4" />}
+                label="Start JMC for the whole project"
+                onClick={startWhole}
               />
-              Allow part billing before JMC <span className="text-tertiary">(admins)</span>
-            </label>
-          )}
-        </div>
-      </section>
-
-      {/* JMC list */}
-      <E9Panel title={`JMCs · ${data.certifications.length}`}>
-        {data.certifications.length === 0 ? (
-          <p className="px-5 py-10 text-center text-body-sm-regular text-tertiary">
-            No JMC yet. {data.can_edit ? "Click “Add JMC” for the whole project, or one per floor / scope." : ""}
-          </p>
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="text-body-sm-semibold text-accent-primary hover:underline"
+              >
+                or one floor / scope (part bill)
+              </button>
+            </div>
+          ) : (
+            <p className="text-body-sm-regular text-tertiary">No JMC started yet.</p>
+          )
         ) : (
-          <ul className="divide-y divide-subtle">
-            {data.certifications.map((cert) => (
-              <li key={cert.id} className="flex flex-col gap-3 px-5 py-4">
+          <ul className="flex flex-col gap-3">
+            {certs.map((cert) => (
+              <li
+                key={cert.id}
+                className={cn(
+                  "flex flex-col gap-3 rounded-xl border p-4",
+                  cert.done_on ? "border-subtle bg-layer-1" : "border-strong"
+                )}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex flex-col gap-1">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-body-sm-semibold text-primary">{partLabel(cert)}</span>
+                      <span className="text-body-md-semibold text-primary">JMC · {partLabel(cert)}</span>
                       {cert.done_on ? (
                         <span className="rounded-full bg-success-subtle px-2 py-0.5 text-body-2xs-semibold text-success-primary">
-                          Signed {renderFormattedDate(cert.done_on)}
+                          ✓ Certification done {renderFormattedDate(cert.done_on)}
                         </span>
                       ) : (
                         <span className="rounded-full bg-warning-subtle px-2 py-0.5 text-body-2xs-semibold text-warning-primary">
-                          Not signed yet
+                          Waiting for client signature
                         </span>
-                      )}
-                      {cert.done_on && cert.files === 0 && !cert.link && (
-                        <span className="text-body-2xs-semibold text-warning-primary">Signed copy missing</span>
                       )}
                     </span>
                     <span className="text-body-xs-regular text-tertiary">
@@ -198,29 +219,25 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
                         cert.bills > 0 && `${cert.bills} bill${cert.bills === 1 ? "" : "s"}`,
                       ]
                         .filter(Boolean)
-                        .join(" · ") || "No details yet"}
+                        .join(" · ") || "Fill in the details with Edit"}
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {data.can_edit && !cert.done_on && (
+                      <Button
+                        stretch="auto"
+                        variant="primary"
+                        size="md"
+                        label="Certification done"
+                        onClick={() => setCompleting(cert)}
+                      />
+                    )}
                     <SmallButton tone="neutral" onClick={() => print(cert, false)}>
                       Print blank
                     </SmallButton>
                     <SmallButton tone="neutral" onClick={() => print(cert, true)}>
-                      Print with certified qty
+                      Print filled
                     </SmallButton>
-                    {data.can_edit && !cert.done_on && (
-                      <SmallButton
-                        onClick={() =>
-                          void send("Couldn't mark it signed", () =>
-                            e9ProjectService.updateCertification(workspaceSlug, project.id, cert.id, {
-                              done_on: todayIso(),
-                            })
-                          )
-                        }
-                      >
-                        Mark signed today
-                      </SmallButton>
-                    )}
                     {data.can_edit && (
                       <SmallButton tone="neutral" onClick={() => setEditing(cert)}>
                         Edit
@@ -267,12 +284,41 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
                 </div>
               </li>
             ))}
+            {data.can_edit && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setAdding(true)}
+                  className="text-body-xs-semibold text-accent-primary hover:underline"
+                >
+                  + Another JMC (a floor or scope for a part bill)
+                </button>
+              </li>
+            )}
           </ul>
         )}
-      </E9Panel>
+      </section>
 
-      {/* billing, below the JMCs */}
-      <E9BillingPage workspaceSlug={workspaceSlug} project={project} />
+      {/* STEP 2 */}
+      <section
+        className={cn(
+          "flex flex-col gap-4 rounded-xl border p-5 sm:p-6",
+          data.billing_open ? "border-subtle bg-surface-1 shadow-raised-100" : "border-dashed border-strong"
+        )}
+      >
+        <div className="flex flex-col gap-1">
+          <span className="text-body-xs-semibold tracking-[0.14em] text-tertiary uppercase">Step 2</span>
+          <h2 className={cn("text-h5-semibold", data.billing_open ? "text-primary" : "text-placeholder")}>Billing</h2>
+        </div>
+        {data.billing_open ? (
+          <E9BillingPage workspaceSlug={workspaceSlug} project={project} />
+        ) : (
+          <p className="flex items-center gap-2 text-body-sm-regular text-tertiary">
+            <span aria-hidden>🔒</span>
+            Billing starts after certification is done. Finish Step 1 first.
+          </p>
+        )}
+      </section>
 
       {(adding || editing) && (
         <JmcModal
@@ -291,7 +337,166 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
           }
         />
       )}
+      {completing && (
+        <DoneModal
+          cert={completing}
+          label={partLabel(completing)}
+          slug={workspaceSlug}
+          projectId={project.id}
+          onClose={() => setCompleting(null)}
+          onSave={(body) =>
+            send("Couldn't mark certification done", () =>
+              e9ProjectService.updateCertification(workspaceSlug, project.id, completing.id, body)
+            )
+          }
+        />
+      )}
     </div>
+  );
+}
+
+function StepHeader({
+  number,
+  title,
+  state,
+  text,
+}: {
+  number: number;
+  title: string;
+  state: "done" | "current" | "locked";
+  text: string;
+}) {
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-3 rounded-xl border px-4 py-3",
+        state === "done" && "border-transparent bg-success-subtle",
+        state === "current" && "border-strong bg-surface-1",
+        state === "locked" && "border-dashed border-strong opacity-70"
+      )}
+    >
+      <span
+        className={cn(
+          "grid size-8 shrink-0 place-items-center rounded-full text-body-sm-semibold",
+          state === "done"
+            ? "bg-success-primary text-white"
+            : state === "current"
+              ? "bg-[#0B0B0B] text-white"
+              : "bg-layer-3 text-tertiary"
+        )}
+      >
+        {state === "done" ? "✓" : state === "locked" ? "🔒" : number}
+      </span>
+      <span className="flex min-w-0 flex-col">
+        <span className="text-body-sm-semibold text-primary">
+          Step {number} · {title}
+        </span>
+        <span className="truncate text-body-xs-regular text-tertiary">{text}</span>
+      </span>
+    </li>
+  );
+}
+
+function CheckRow({ done, title, text, action }: { done: boolean; title: string; text: string; action?: ReactNode }) {
+  return (
+    <li className="flex items-center gap-3 px-4 py-3">
+      <span
+        className={cn(
+          "grid size-6 shrink-0 place-items-center rounded-full text-body-2xs-semibold",
+          done ? "bg-success-primary text-white" : "border border-strong text-transparent"
+        )}
+      >
+        ✓
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={cn("text-body-sm-semibold", done ? "text-primary" : "text-secondary")}>{title}</span>
+        <span className="text-body-xs-regular text-tertiary">{text}</span>
+      </span>
+      {action}
+    </li>
+  );
+}
+
+/** "Certification done": the signed date, who signed, and the signed copy. */
+function DoneModal({
+  cert,
+  label,
+  slug,
+  projectId,
+  onClose,
+  onSave,
+}: {
+  cert: TE9Certification;
+  label: string;
+  slug: string;
+  projectId: string;
+  onClose: () => void;
+  onSave: (body: object) => Promise<boolean>;
+}) {
+  const [doneOn, setDoneOn] = useState(todayIso());
+  const [signatory, setSignatory] = useState(cert.client_signatory);
+  const [jmcNumber, setJmcNumber] = useState(cert.jmc_number);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    const ok = await onSave({ done_on: doneOn, client_signatory: signatory, jmc_number: jmcNumber });
+    setBusy(false);
+    if (ok) onClose();
+  };
+  return (
+    <E9Modal
+      open
+      onClose={onClose}
+      title={`Certification done · ${label}`}
+      description="The client has signed the JMC. Billing opens as soon as you save."
+      footer={
+        <>
+          <Button variant="secondary" size="md" stretch="auto" label="Cancel" onClick={onClose} />
+          <Button
+            variant="primary"
+            size="md"
+            stretch="auto"
+            label="Certification done"
+            loading={busy}
+            disabled={!doneOn}
+            onClick={save}
+          />
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 px-5 py-4">
+        <FormField label="JMC signed on">
+          <input
+            type="date"
+            className={inputClass}
+            value={doneOn}
+            max={todayIso()}
+            onChange={(e) => setDoneOn(e.target.value)}
+          />
+        </FormField>
+        <FormField label="Signed by (client)">
+          <input
+            className={inputClass}
+            placeholder="Name & designation"
+            value={signatory}
+            onChange={(e) => setSignatory(e.target.value)}
+          />
+        </FormField>
+        <FormField label="JMC no. (optional)">
+          <input className={inputClass} value={jmcNumber} onChange={(e) => setJmcNumber(e.target.value)} />
+        </FormField>
+        <FormField label="Signed copy (photo or PDF)">
+          <E9RefFiles
+            slug={slug}
+            projectId={projectId}
+            kind="jmc"
+            refId={cert.id}
+            canUpload
+            addText="Upload signed JMC"
+          />
+        </FormField>
+      </div>
+    </E9Modal>
   );
 }
 

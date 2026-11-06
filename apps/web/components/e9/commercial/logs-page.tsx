@@ -26,6 +26,7 @@ import {
   saveMailSettings,
   showError,
 } from "./shared";
+import { E9ProductionSent } from "./production-sent";
 import type { TE9Challan, TE9JobCard, TE9LogItem, TE9Logs } from "./types";
 
 type Props = { workspaceSlug: string; project: TE9Project };
@@ -70,7 +71,7 @@ function Items({
 
 export function E9LogsPage({ workspaceSlug, project }: Props) {
   const { data, error, isLoading, mutate } = useE9Logs(workspaceSlug, project.id);
-  const [tab, setTab] = useState<"jc" | "dc">("jc");
+  const [tab, setTab] = useState<"jc" | "dc" | "sent">("jc");
   const [mailOpen, setMailOpen] = useState(false);
   const [, setMailVersion] = useState(0);
 
@@ -95,6 +96,7 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
             [
               ["jc", `JC Log · ${data.job_cards.length}`],
               ["dc", `DC Log · ${data.challans.length}`],
+              ["sent", "Production sent"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -136,7 +138,9 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
         />
       )}
 
-      {tab === "jc" ? (
+      {tab === "sent" ? (
+        <E9ProductionSent slug={workspaceSlug} projectId={project.id} logs={data} />
+      ) : tab === "jc" ? (
         <E9Panel>
           {data.job_cards.length === 0 ? (
             <p className="px-5 py-10 text-center text-body-sm-regular text-tertiary">

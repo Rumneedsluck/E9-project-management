@@ -33,6 +33,7 @@ import {
   trackerHref,
   unitText,
 } from "./shared";
+import { E9VariancePanel } from "./variance";
 import type { TE9Amendment, TE9Boq, TE9BoqLine, TE9PO } from "./types";
 
 type Props = { workspaceSlug: string; project: TE9Project };
@@ -234,6 +235,7 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
               />
             </div>
           )}
+          <E9VariancePanel lines={data.lines} />
         </>
       )}
 
@@ -543,7 +545,7 @@ function POCard(props: TPOCardProps) {
                     <span
                       className={cn(
                         "rounded px-1.5 text-body-2xs-semibold",
-                        line.is_amended ? "bg-accent-subtle text-accent-primary" : "bg-layer-2 text-tertiary"
+                        line.is_amended ? "border border-strong text-primary" : "bg-layer-2 text-tertiary"
                       )}
                       title={line.amended_note || undefined}
                     >

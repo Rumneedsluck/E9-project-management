@@ -357,3 +357,21 @@ a:hover .e9-link,
     animation: none;
   }
 }
+
+/* ---- work-done pie: the red share sweeps in ---- */
+@keyframes e9-pie-sweep {
+  from {
+    stroke-dashoffset: var(--e9-pie-len);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.e9-pie-fill {
+  animation: e9-pie-sweep 1.1s var(--e9-ease) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .e9-pie-fill {
+    animation: none;
+  }
+}

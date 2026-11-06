@@ -285,12 +285,6 @@ export class E9ProjectService extends APIService {
     return this.call(this.delete(`${this.base(workspaceSlug, projectId)}/certifications/${certId}/`));
   }
 
-  setPartBilling(workspaceSlug: string, projectId: string, allow: boolean): Promise<TE9Certifications> {
-    return this.call(
-      this.patch(`${this.base(workspaceSlug, projectId)}/certifications/settings/`, { allow_part_billing: allow })
-    );
-  }
-
   // ---- announcements ----
   getAnnouncements(workspaceSlug: string): Promise<TE9Announcements> {
     return this.call(this.get(`/api/workspaces/${workspaceSlug}/e9/announcements/`));

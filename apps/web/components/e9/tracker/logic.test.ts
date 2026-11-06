@@ -6,7 +6,15 @@
 
 import { describe, expect, it } from "vitest";
 import type { TE9ScopeItem } from "./logic";
-import { floorProgress, isFilled, isStageOverdue, scopeProgress, stageTargetRows, trackerKpis } from "./logic";
+import {
+  floorProgress,
+  isFilled,
+  isStageOverdue,
+  parsePastedDate,
+  scopeProgress,
+  stageTargetRows,
+  trackerKpis,
+} from "./logic";
 import type { TE9Floor } from "./logic";
 
 const TODAY = new Date(2026, 10, 5); // 5 Nov 2026
@@ -180,5 +188,16 @@ describe("floor-wise totals", () => {
     expect(fourth.percentItems).toBe(33);
     const unassigned = rows.find((row) => row.name === "No floor set")!;
     expect(unassigned.nos).toBe(10); // the frames have no floor typed (description only)
+  });
+});
+
+describe("pasting dates from Excel", () => {
+  it("reads day-first Indian dates and ISO dates", () => {
+    expect(parsePastedDate("12/11/2026")).toBe("2026-11-12");
+    expect(parsePastedDate("5-1-26")).toBe("2026-01-05");
+    expect(parsePastedDate("2026-11-12")).toBe("2026-11-12");
+    expect(parsePastedDate("12 Nov 2026")).toBe("2026-11-12");
+    expect(parsePastedDate("31/02/2026")).toBeNull();
+    expect(parsePastedDate("soon")).toBeNull();
   });
 });

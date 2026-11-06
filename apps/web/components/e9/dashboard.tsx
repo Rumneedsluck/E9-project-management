@@ -15,10 +15,10 @@ import { useAppRouter } from "@/hooks/use-app-router";
 // local
 import { E9Announcements } from "./announcements";
 import { E9_BRAND } from "./brand";
-import { E9Ring } from "./charts";
+import { E9DonePie, E9Ring } from "./charts";
 import type { TRingSegment } from "./charts";
 import { E9_STATUSES } from "./constants";
-import { getAttentionProjects, summarizeProjects } from "./helpers";
+import { getAttentionProjects, sortProjects, summarizeProjects } from "./helpers";
 import { useCanCreateE9Project, useE9Projects, useE9Summary } from "./hooks";
 import { CountUp, Reveal } from "./motion";
 import { E9ErrorState, E9LoadingState } from "./states";
@@ -123,7 +123,7 @@ function TeamPanel({ projects }: { projects: TE9Project[] }) {
 }
 
 const BILL_STAGES = [
-  { stage: 0, label: "Certification with client" },
+  { stage: 0, label: "Certified – to Accounts" },
   { stage: 1, label: "PI with Accounts" },
   { stage: 2, label: "PI to sign & submit" },
   { stage: 3, label: "Waiting for WCC" },
@@ -177,6 +177,51 @@ function BillingPanel({ workspaceSlug }: { workspaceSlug: string }) {
       <div className="px-5 py-5">
         <E9Ring segments={segments} totalLabel="in bills" format={rupees} emptyText="No bills yet" />
       </div>
+    </E9Panel>
+  );
+}
+
+/** One small pie per active project: how much of its tracker is installed. */
+function ProjectPiesPanel({ projects, workspaceSlug }: { projects: TE9Project[]; workspaceSlug: string }) {
+  const active = sortProjects(
+    projects.filter((project) => project.e9.status !== "completed"),
+    "deadline"
+  );
+  return (
+    <E9Panel title="Work done per project">
+      {active.length === 0 ? (
+        <p className="px-5 py-8 text-center text-body-sm-regular text-tertiary">No active projects.</p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {active.map((project) => {
+            const progress = project.tracker;
+            const hasRows = !!progress && progress.rows > 0;
+            return (
+              <li key={project.id}>
+                <Link
+                  href={`/${workspaceSlug}/e9/projects/${project.id}`}
+                  className="e9-lift flex h-full flex-col items-center gap-3 rounded-xl border border-subtle p-4 text-center hover:border-strong"
+                >
+                  {hasRows ? (
+                    <E9DonePie percent={progress.percent} size={96} label="done" />
+                  ) : (
+                    <span className="grid size-24 place-items-center rounded-full border border-dashed border-strong text-body-2xs-medium text-tertiary">
+                      No tracker
+                    </span>
+                  )}
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="line-clamp-2 text-body-xs-semibold text-primary">{project.name}</span>
+                    <span className="text-body-2xs-regular text-tertiary">
+                      {project.identifier}
+                      {project.e9.city ? ` · ${project.e9.city}` : ""}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </E9Panel>
   );
 }
@@ -253,6 +298,8 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
               />
             </Reveal>
           </div>
+
+          <ProjectPiesPanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <StagesPanel projects={projects ?? []} />

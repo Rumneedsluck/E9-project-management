@@ -977,16 +977,11 @@ class E9BillListEndpoint(BaseAPIView):
             return Response({"po": "Choose the PO you are billing."}, status=400)
         certs = list(E9Certification.objects.filter(project=project))
         if not certification.billing_open(getattr(project, "e9_profile", None), certs):
-            message = (
-                "Billing opens after the JMC is signed. Mark the certification done first "
-                "(or ask an admin to allow part billing)."
-            )
+            message = "Billing starts after certification. Finish Step 1: mark the JMC as signed."
             return Response({"error": message}, status=400)
-        cert = None
-        if request.data.get("certification"):
-            cert = next((c for c in certs if str(c.id) == str(request.data["certification"]) and c.done_on), None)
-            if cert is None:
-                return Response({"certification": "Choose a JMC that is signed."}, status=400)
+        cert = next((c for c in certs if str(c.id) == str(request.data.get("certification") or "") and c.done_on), None)
+        if cert is None:
+            return Response({"certification": "Choose the signed JMC this bill is for."}, status=400)
         bill = E9Bill(project=project, workspace_id=project.workspace_id, po=po, certification=cert)
         try:
             with transaction.atomic():

@@ -56,6 +56,8 @@ export const describeDeadline = (project: TE9Project, today: Date = startOfToday
  * has any; otherwise falls back to how far along the job stages it is.
  */
 export const getProgressPercent = (project: TE9Project): number => {
+  // the tracker (installed share, like the Excel dashboard) wins when the project has rows
+  if (project.tracker && project.tracker.rows > 0) return project.tracker.percent;
   if (project.e9.status === "completed") return 100;
   const { total, completed } = project.work_items;
   if (total > 0) return Math.round((completed / total) * 100);

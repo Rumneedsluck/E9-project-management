@@ -12,8 +12,19 @@ import { useE9Floors, useE9Items, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
-import type { TStageTargetRow } from "./logic";
-import { floorProgress, formatMeasure, isOpenSiteIssue, scopeProgress, stageTargetRows, trackerKpis } from "./logic";
+import { E9DonePie, E9StagePie } from "../charts";
+import type { TE9ScopeItem, TStageTargetRow } from "./logic";
+import {
+  STAGE_PIES,
+  floorProgress,
+  formatMeasure,
+  isFilled,
+  isOpenSiteIssue,
+  scopeProgress,
+  stageTargetRows,
+  trackerKpis,
+  workDone,
+} from "./logic";
 import { floorStatusClass } from "./setup-panels";
 
 function Tile({
@@ -74,6 +85,53 @@ type Props = {
   onOpenView?: (view: "boq" | "billing" | "snags") => void;
 };
 
+/** Big work-done pie and the 5 stage pies, like the Excel dashboard and scope sheets. */
+function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
+  const done = workDone(items);
+  const rows = items.filter(isFilled);
+  const fmtNum = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  return (
+    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,22rem)_1fr]">
+      <div className="flex flex-col items-center gap-5 rounded-xl border border-subtle bg-surface-1 p-6 shadow-raised-100">
+        <span className="self-start text-body-xs-semibold tracking-[0.14em] text-tertiary uppercase">Work done</span>
+        <E9DonePie percent={done.percent} label="installed" />
+        <dl className="grid w-full grid-cols-2 gap-3 text-center">
+          {done.sqftTotal > 0 && (
+            <div className="rounded-lg bg-layer-1 px-3 py-2">
+              <dt className="text-body-2xs-medium text-tertiary">Sq ft installed</dt>
+              <dd className="text-body-sm-semibold text-primary tabular-nums">
+                {fmtNum(done.sqftDone)} / {fmtNum(done.sqftTotal)}
+              </dd>
+            </div>
+          )}
+          {done.nosTotal > 0 && (
+            <div className="rounded-lg bg-layer-1 px-3 py-2">
+              <dt className="text-body-2xs-medium text-tertiary">Nos installed</dt>
+              <dd className="text-body-sm-semibold text-primary tabular-nums">
+                {fmtNum(done.nosDone)} / {fmtNum(done.nosTotal)}
+              </dd>
+            </div>
+          )}
+        </dl>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+        {STAGE_PIES.map((pie) => (
+          <E9StagePie
+            key={pie.title}
+            title={pie.title}
+            segments={pie.statuses.map((status) => ({
+              key: status.value || "blank",
+              label: status.label,
+              value: rows.filter((item) => String(item[pie.field] ?? "") === status.value).length,
+              color: status.problem ? "var(--brand-default)" : undefined,
+            }))}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpenView }: Props) {
   const { data, error, isLoading, mutate } = useE9Items(workspaceSlug, project.id);
   const items = useMemo(() => data?.items ?? [], [data]);
@@ -126,7 +184,8 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <WorkDonePies items={items} />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile
           label="Total items / qty"
           value={kpis.totalItems.toLocaleString("en-IN")}
@@ -136,11 +195,6 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
           label="Total area"
           value={formatMeasure(kpis.totalArea, "sqft")}
           hint={`${formatMeasure(kpis.installedArea, "sqft")} installed`}
-        />
-        <Tile
-          label="Work done (installed)"
-          value={`${kpis.percentDone}%`}
-          tone={kpis.percentDone === 100 ? "success" : undefined}
         />
         <Tile
           label="Days to deadline"

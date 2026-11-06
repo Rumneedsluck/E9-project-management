@@ -7,8 +7,8 @@
 Flow on a site:  work finished -> joint measurement with the client (JMC) -> certified quantities typed
 into the tracker -> client signs the JMC sheet -> certification done -> billing opens.
 
-Big jobs can certify one floor or one scope at a time (running bills), and an admin can open
-billing early for a project ("allow part billing").
+Big jobs can certify one floor or one scope at a time (running / part bills): each part has its
+own signed JMC, so every bill is backed by a signature.
 """
 
 from .models import E9Attachment, E9Certification, E9Floor, E9ProjectStatus, E9ScopeItem
@@ -45,10 +45,8 @@ def state(profile, certifications):
 
 
 def billing_open(profile, certifications):
-    """Bills can be started once any JMC is signed, or when an admin allowed part billing."""
-    if any(cert.done_on for cert in certifications):
-        return True
-    return bool(profile is not None and profile.allow_part_billing)
+    """Billing opens once a JMC is signed: the whole project, or a floor / scope for a part bill."""
+    return any(cert.done_on for cert in certifications)
 
 
 def project_states(projects):
@@ -104,7 +102,6 @@ def payload(project, can_edit, scopes):
         "state": state(profile, certs),
         "state_text": STATE_TEXT[state(profile, certs)],
         "billing_open": billing_open(profile, certs),
-        "allow_part_billing": bool(profile and profile.allow_part_billing),
         "floors": floors,
         "scopes": [{"key": key, "label": scope.label} for key, scope in scopes.items() if scope.enabled],
         "overall": readiness(items),

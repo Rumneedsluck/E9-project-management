@@ -20,22 +20,24 @@ import type { TE9Bill, TE9Bills } from "./types";
 
 type Props = { workspaceSlug: string; project: TE9Project };
 
+/** A bill only exists once its JMC is signed, so step 1 is always done. Backend stage: 0 = with us … 4 = WCC done. */
 export const BILL_STEPS = [
-  { title: "Certification", text: "Certification sheet signed off by the client, then given to Accounts" },
+  { title: "Certification done", text: "JMC signed by the client (Step 1)" },
+  { title: "Given to Accounts", text: "Certified quantities handed to Accounts" },
   { title: "Proforma invoice", text: "Accounts make the PI" },
   { title: "PI signed & submitted", text: "The client signs the PI; we submit it" },
   { title: "Work completion", text: "WCC created and acknowledged by the client" },
 ];
 
-/** 4 dots: done / current / later */
+/** 5 bars: done / current / later */
 export function BillStepper({ stage, compact = false }: { stage: number; compact?: boolean }) {
   return (
     <ol className={cn("flex w-full items-start", compact ? "gap-1" : "gap-2")}>
       {BILL_STEPS.map((step, index) => {
-        const done = stage > index;
-        const current = stage === index;
+        const done = index === 0 || stage >= index;
+        const current = !done && stage + 1 === index;
         return (
-          <li key={step.title} className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <li key={step.title} className="flex min-w-0 flex-1 flex-col gap-1.5" title={step.title}>
             <span
               className={cn(
                 "h-1.5 rounded-full",
@@ -82,38 +84,23 @@ export function E9BillingPage({ workspaceSlug, project }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <section className="flex flex-col gap-3 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-body-md-semibold text-primary">Bills</h2>
-            <p className="text-body-xs-regular text-tertiary">
-              {data.billing_open
-                ? "One bill per PO (a new PO is billed separately). Each stage opens only when the one before it is done. Only approved quantity (BOQ, amended BOQ, confirmed amendments) and client-change reprints can be billed."
-                : "Locked until a JMC is signed above. An admin can allow part billing for running bills."}
-            </p>
-          </div>
-          {data.can_edit && data.pos.length > 0 && data.billing_open && (
-            <Button
-              variant="primary"
-              size="md"
-              stretch="auto"
-              icon={<AddOutline className="size-4" />}
-              label="Start a bill"
-              onClick={() => setCreating("new")}
-            />
-          )}
-        </div>
-        <ol className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-          {BILL_STEPS.map((step, index) => (
-            <li key={step.title} className="rounded-lg bg-layer-1 px-3 py-2">
-              <span className="text-body-xs-semibold text-primary">
-                {index + 1} · {step.title}
-              </span>
-              <p className="text-body-2xs-regular text-tertiary">{step.text}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-3xl text-body-xs-regular text-tertiary">
+          Each bill belongs to a signed JMC and moves: certification done → given to Accounts → proforma invoice → PI
+          signed &amp; submitted → WCC. Only approved quantity (BOQ, amended BOQ, confirmed amendments) and
+          client-change reprints can be billed.
+        </p>
+        {data.can_edit && data.pos.length > 0 && data.billing_open && (
+          <Button
+            variant="primary"
+            size="md"
+            stretch="auto"
+            icon={<AddOutline className="size-4" />}
+            label="Start a bill"
+            onClick={() => setCreating("new")}
+          />
+        )}
+      </div>
 
       {data.pos.length === 0 && (
         <p className="rounded-xl border border-dashed border-strong px-6 py-10 text-center text-body-sm-regular text-tertiary">
@@ -242,29 +229,22 @@ function BillCard({
 
   const blocks = [
     {
-      title: "1 · Certification",
+      title: "1 · Certification done → Accounts",
       done: bill.stage > 0,
       body: (
         <>
-          <TextField
-            label="Certification no."
-            value={bill.cert_number}
-            disabled={!open(0)}
-            onSave={save("cert_number")}
-          />
-          <DateField
-            label="Signed off by the client on"
-            value={bill.cert_signed_on}
-            disabled={!open(0)}
-            onSave={save("cert_signed_on")}
-          />
+          <p className="rounded-lg bg-success-subtle px-3 py-2 text-body-xs-semibold text-success-primary">
+            ✓ Certification done
+            {bill.certification_label ? ` · ${bill.certification_label}` : ""}
+            {bill.cert_signed_on ? ` · JMC signed ${renderFormattedDate(bill.cert_signed_on)}` : ""}
+            {bill.cert_number ? ` · ${bill.cert_number}` : ""}
+          </p>
           <DateField
             label="Given to Accounts on"
             value={bill.cert_to_accounts_on}
-            disabled={!open(0) || !bill.cert_signed_on}
+            disabled={!open(0)}
             onSave={save("cert_to_accounts_on")}
           />
-          <FileRow label="Signed certification sheet" kind="certificate" {...{ slug, projectId, bill, canEdit }} />
         </>
       ),
     },
@@ -537,7 +517,6 @@ function CertifyModal({
                   {cert.label}
                 </option>
               ))}
-              <option value="">None (part billing)</option>
             </select>
           </FormField>
         )}

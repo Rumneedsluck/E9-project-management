@@ -5,8 +5,8 @@
  */
 
 /*
- * Billing (company-wide). Only sites whose billing is open: JMC signed (whole project, a floor or a
- * scope) or part billing allowed by an admin. Extra-over-BOQ lives inside each project's BOQ tab.
+ * Billing (company-wide). Only sites whose billing is open: a JMC signed for the whole project, or for a
+ * floor / scope (part bill). Extra-over-BOQ lives inside each project's BOQ tab.
  */
 
 import Link from "next/link";
@@ -19,8 +19,8 @@ import { money } from "./shared";
 import type { TE9SummaryProject } from "./types";
 
 const CERT_TEXT: Record<TE9SummaryProject["cert_state"], string> = {
-  in_progress: "Part billing allowed",
-  jmc_pending: "Part billing allowed",
+  in_progress: "Part certified",
+  jmc_pending: "Part certified",
   part_certified: "Part certified",
   certified: "Certified",
 };
