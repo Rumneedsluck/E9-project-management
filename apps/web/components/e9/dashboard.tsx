@@ -19,6 +19,8 @@ import { E9_BRAND } from "./brand";
 import { E9_ON_HOLD, E9_STAGES } from "./constants";
 import { getAttentionProjects, getProgressPercent, sortProjects, summarizeProjects } from "./helpers";
 import { useCanCreateE9Project, useE9Projects } from "./hooks";
+import { CountUp, Reveal } from "./motion";
+import { E9ProjectCards } from "./project-cards";
 import { E9ErrorState, E9LoadingState } from "./states";
 import type { TE9Project } from "./types";
 import {
@@ -53,7 +55,7 @@ function StatTile({ label, value, hint, href, tone = "default" }: TStatTileProps
   return (
     <Link
       href={href}
-      className="group flex flex-col gap-3 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 transition-colors hover:border-strong"
+      className="e9-lift group flex h-full flex-col gap-3 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 hover:border-strong"
     >
       <span className="flex items-center justify-between text-body-xs-medium text-tertiary">
         {label}
@@ -67,7 +69,7 @@ function StatTile({ label, value, hint, href, tone = "default" }: TStatTileProps
           tone === "success" && "text-success-primary"
         )}
       >
-        {value}
+        <CountUp value={value} />
       </span>
       <span className="text-body-xs-regular text-placeholder">{hint}</span>
     </Link>
@@ -273,33 +275,41 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            <StatTile
-              label="Active projects"
-              value={summary.active}
-              hint={`${summary.onHold} on hold`}
-              href={`/${workspaceSlug}/e9/projects`}
-            />
-            <StatTile
-              label="Due this week"
-              value={summary.dueSoon}
-              hint="Handover within 7 days"
-              href={`/${workspaceSlug}/e9/projects?sort=deadline`}
-              tone="warning"
-            />
-            <StatTile
-              label="Overdue"
-              value={summary.overdue}
-              hint="Past handover deadline"
-              href={`/${workspaceSlug}/e9/projects?sort=deadline`}
-              tone="danger"
-            />
-            <StatTile
-              label="Completed"
-              value={summary.completed}
-              hint={`of ${summary.total} projects`}
-              href={`/${workspaceSlug}/e9/projects?status=completed`}
-              tone="success"
-            />
+            <Reveal delay={0.0}>
+              <StatTile
+                label="Active projects"
+                value={summary.active}
+                hint={`${summary.onHold} on hold`}
+                href={`/${workspaceSlug}/e9/projects`}
+              />
+            </Reveal>
+            <Reveal delay={0.06}>
+              <StatTile
+                label="Due this week"
+                value={summary.dueSoon}
+                hint="Handover within 7 days"
+                href={`/${workspaceSlug}/e9/projects?sort=deadline`}
+                tone="warning"
+              />
+            </Reveal>
+            <Reveal delay={0.12}>
+              <StatTile
+                label="Overdue"
+                value={summary.overdue}
+                hint="Past handover deadline"
+                href={`/${workspaceSlug}/e9/projects?sort=deadline`}
+                tone="danger"
+              />
+            </Reveal>
+            <Reveal delay={0.18}>
+              <StatTile
+                label="Completed"
+                value={summary.completed}
+                hint={`of ${summary.total} projects`}
+                href={`/${workspaceSlug}/e9/projects?status=completed`}
+                tone="success"
+              />
+            </Reveal>
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -308,6 +318,8 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
             <ActiveProjectsPanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
             <TeamPanel projects={projects ?? []} />
           </div>
+
+          <E9ProjectCards projects={projects ?? []} workspaceSlug={workspaceSlug} />
         </>
       )}
     </E9PageBody>
