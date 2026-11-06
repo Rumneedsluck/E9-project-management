@@ -4,7 +4,7 @@
 
 """BOQ maths: what is allowed, what the tracker has, what is extra, what can be billed.
 
-allowed  = BOQ qty (+ confirmed amendments)
+allowed  = BOQ qty, or the amended qty when the client sent an amended BOQ (+ confirmed amendments)
 pending  = quantity asked for by mail but not confirmed yet
 on tracker = sum of the tracker rows that carry this BOQ No. (sq ft or Nos, by the line's unit)
 extra    = on tracker - allowed            (amber while a pending mail covers it, red otherwise)
@@ -101,10 +101,11 @@ def line_rows(project):
     rows = []
     for line in lines:
         base, pending = ZERO, ZERO
+        line_qty = line.amended_qty if line.amended_qty is not None else line.qty
         if line.amendment is None or line.amendment.status == CONFIRMED:
-            base = line.qty
+            base = line_qty
         elif line.amendment.status == REQUESTED:
-            pending += line.qty
+            pending += line_qty
         confirmed_change = ZERO
         for change in line.amendment_changes.all():
             if change.amendment.deleted_at:
@@ -155,6 +156,9 @@ def line_rows(project):
                 "description": line.description,
                 "unit": unit,
                 "qty": q2(line.qty),
+                "amended_qty": q2(line.amended_qty) if line.amended_qty is not None else None,
+                "amended_note": line.amended_note,
+                "is_amended": (line.amended_qty is not None and line.amended_qty != line.qty) or confirmed_change != 0,
                 "rate": q2(line.rate) if line.rate is not None else None,
                 "remarks": line.remarks,
                 "confirmed_change": q2(confirmed_change),
@@ -196,16 +200,30 @@ def unlinked_items(project, lines, items, scopes):
     ]
 
 
+def bill_amount(bill):
+    """Certified quantity x BOQ rate (the proforma amount when it is typed)."""
+    if bill.pi_amount is not None:
+        return bill.pi_amount
+    return sum(
+        (line.certified_qty * line.boq_line.rate for line in bill.lines.all() if line.boq_line.rate is not None),
+        ZERO,
+    )
+
+
 def bill_rows(project):
-    bills = E9Bill.objects.filter(project=project).select_related("po").prefetch_related("lines")
+    bills = (
+        E9Bill.objects.filter(project=project).select_related("po", "certification").prefetch_related("lines__boq_line")
+    )
     return [
         {
             "id": str(bill.id),
             "po": str(bill.po_id),
             "po_label": str(bill.po),
             "title": bill.title,
+            "certification_label": str(bill.certification) if bill.certification_id else "",
             "stage": bill_stage(bill),
             "stage_text": STAGE_TEXT[bill_stage(bill)],
+            "amount": q2(bill_amount(bill)),
         }
         for bill in bills
     ]

@@ -38,6 +38,13 @@ from .views_boq import (
     E9SummaryEndpoint,
 )
 
+from .views_cert import (
+    E9AnnouncementDetailEndpoint,
+    E9AnnouncementListEndpoint,
+    E9CertificationDetailEndpoint,
+    E9CertificationListEndpoint,
+    E9CertificationSettingsEndpoint,
+)
 from .views_snags import E9SnagDetailEndpoint, E9SnagListEndpoint
 
 P = "workspaces/<str:slug>/e9/projects/<uuid:project_id>"
@@ -100,8 +107,25 @@ urlpatterns = [
     path(f"{P}/logs/", E9LogsEndpoint.as_view(), name="e9-logs"),
     path(f"{P}/logs/<str:kind>/", E9LogEntryEndpoint.as_view(), name="e9-log-entry"),
     # Billing
+    path(f"{P}/certifications/", E9CertificationListEndpoint.as_view(), name="e9-certifications"),
+    path(
+        f"{P}/certifications/settings/",
+        E9CertificationSettingsEndpoint.as_view(),
+        name="e9-certification-settings",
+    ),
+    path(
+        f"{P}/certifications/<uuid:cert_id>/",
+        E9CertificationDetailEndpoint.as_view(),
+        name="e9-certification-detail",
+    ),
     path(f"{P}/bills/", E9BillListEndpoint.as_view(), name="e9-bills"),
     path(f"{P}/bills/<uuid:bill_id>/", E9BillDetailEndpoint.as_view(), name="e9-bill-detail"),
     # Company summary
     path("workspaces/<str:slug>/e9/summary/", E9SummaryEndpoint.as_view(), name="e9-summary"),
+    path("workspaces/<str:slug>/e9/announcements/", E9AnnouncementListEndpoint.as_view(), name="e9-announcements"),
+    path(
+        "workspaces/<str:slug>/e9/announcements/<uuid:announcement_id>/",
+        E9AnnouncementDetailEndpoint.as_view(),
+        name="e9-announcement-detail",
+    ),
 ]

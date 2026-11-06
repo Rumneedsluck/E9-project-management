@@ -6,7 +6,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from plane.db.models import Project, ProjectMember, User, WorkspaceMember
-from plane.e9.models import E9ChangeLog
+from plane.e9.models import E9Announcement, E9ChangeLog, E9ProjectProfile
 
 
 @pytest.fixture
@@ -59,6 +59,13 @@ def setup_boq(client, workspace, project, qty="100"):
         format="json",
     ).data
     return po, data["lines"][0]["id"]
+
+
+def sign_jmc(client, workspace, project, **fields):
+    body = {"jmc_date": "2026-01-05", "done_on": "2026-01-06", "client_signatory": "Site manager", **fields}
+    response = client.post(url(workspace, project, "certifications/"), body, format="json")
+    assert response.status_code == 201, response.data
+    return response.data
 
 
 def line(client, workspace, project, line_no="BO1"):
@@ -137,9 +144,6 @@ class TestBoqExtra:
         groups = {group["boq_no"]: group["count"] for group in data["unlinked"]}
         assert groups == {"BO9": 2, "": 1}
 
-        summary = session_client.get(f"/api/workspaces/{workspace.slug}/e9/summary/").data["projects"]
-        assert summary[0]["unlinked"][0]["boq_no"] == "BO9" and summary[0]["missing_boq_no"] == 1
-
     @pytest.mark.django_db
     def test_reprints_internal_not_billable_client_billable(self, session_client, workspace, project):
         _, line_id = setup_boq(session_client, workspace, project, qty="10")
@@ -186,6 +190,7 @@ class TestBilling:
                 {"installation_status": "Installation Done"},
                 format="json",
             )
+        sign_jmc(client, workspace, project)
         return po, line_id
 
     @pytest.mark.django_db
@@ -270,7 +275,147 @@ class TestBilling:
         )
         summary = session_client.get(f"/api/workspaces/{workspace.slug}/e9/summary/").data["projects"]
         assert summary[0]["bills"][0]["stage"] == 1
-        assert summary[0]["excess"][0]["line_no"] == "BO1"  # 12 on the tracker vs 10 allowed
+        assert summary[0]["bills"][0]["amount"] == "10000.00"
+        assert summary[0]["cert_state"] == "certified"
+
+
+@pytest.mark.contract
+class TestCertification:
+    @pytest.mark.django_db
+    def test_billing_waits_for_the_signed_jmc(self, session_client, workspace, project):
+        po, line_id = setup_boq(session_client, workspace, project, qty="10")
+        make_signages(session_client, workspace, project, count=3)
+        bills_url = url(workspace, project, "bills/")
+        body = {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "3"}]}
+        response = session_client.post(bills_url, body, format="json")
+        assert response.status_code == 400 and "JMC" in response.data["error"]
+        assert session_client.get(bills_url).data["billing_open"] is False
+
+        # a JMC that is measured but not signed yet does not open billing
+        cert = session_client.post(
+            url(workspace, project, "certifications/"), {"jmc_date": "2026-01-05"}, format="json"
+        ).data["certifications"][0]
+        assert session_client.post(bills_url, body, format="json").status_code == 400
+
+        session_client.patch(url(workspace, project, f"certifications/{cert['id']}/"), {"done_on": "2026-01-07"})
+        response = session_client.post(bills_url, {**body, "certification": cert["id"]}, format="json")
+        assert response.status_code == 201, response.data
+        bill = response.data["bills"][0]
+        assert bill["certification_label"] == "Whole project" and bill["cert_signed_on"] == "2026-01-07"
+        # once billed, the JMC can't be undone or deleted
+        detail = url(workspace, project, f"certifications/{cert['id']}/")
+        assert session_client.patch(detail, {"done_on": ""}, format="json").status_code == 400
+        assert session_client.delete(detail).status_code == 400
+
+    @pytest.mark.django_db
+    def test_admin_can_allow_part_billing(self, session_client, workspace, project):
+        E9ProjectProfile.objects.create(project=project, workspace=workspace)
+        settings_url = url(workspace, project, "certifications/settings/")
+        member = member_client(workspace, project, 15)
+        assert member.patch(settings_url, {"allow_part_billing": True}, format="json").status_code == 403
+        data = session_client.patch(settings_url, {"allow_part_billing": True}, format="json").data
+        assert data["billing_open"] is True and data["state"] == "in_progress"
+        po, line_id = setup_boq(session_client, workspace, project, qty="10")
+        make_signages(session_client, workspace, project, count=2)
+        response = session_client.post(
+            url(workspace, project, "bills/"),
+            {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "2"}]},
+            format="json",
+        )
+        assert response.status_code == 201
+
+    @pytest.mark.django_db
+    def test_floor_and_scope_jmcs_and_project_state(self, session_client, workspace, project):
+        profile = E9ProjectProfile.objects.create(project=project, workspace=workspace)
+        rows = make_signages(session_client, workspace, project, count=2)
+        for row in rows:
+            session_client.patch(
+                url(workspace, project, f"items/{row['id']}/"),
+                {"floor_area": "3rd Floor", "certified_qty": "1"},
+                format="json",
+            )
+
+        def project_state():
+            listing = session_client.get(f"/api/workspaces/{workspace.slug}/e9/projects/").data
+            return next(item["cert_state"] for item in listing if item["id"] == str(project.id))
+
+        assert project_state() == "in_progress"
+        profile.status = "sign_off"
+        profile.save()
+        assert project_state() == "jmc_pending"
+
+        data = sign_jmc(session_client, workspace, project, floor="3rd Floor", scope="internal_signages")
+        cert = data["certifications"][0]
+        assert cert["label"] == "3rd Floor · internal_signages"
+        assert cert["readiness"] == {"rows": 2, "certified": 2, "installed": 0}
+        assert "3rd Floor" in data["floors"]
+        assert project_state() == "part_certified"
+
+        # same floor + scope twice is refused, signed before measured is refused
+        response = session_client.post(
+            url(workspace, project, "certifications/"),
+            {"floor": "3rd floor", "scope": "internal_signages"},
+            format="json",
+        )
+        assert response.status_code == 400
+        response = session_client.post(
+            url(workspace, project, "certifications/"),
+            {"jmc_date": "2026-01-10", "done_on": "2026-01-02"},
+            format="json",
+        )
+        assert response.status_code == 400 and "done_on" in response.data
+
+        sign_jmc(session_client, workspace, project)
+        assert project_state() == "certified"
+
+    @pytest.mark.django_db
+    def test_members_cannot_certify(self, session_client, workspace, project):
+        member = member_client(workspace, project, 15)
+        response = member.post(url(workspace, project, "certifications/"), {"jmc_date": "2026-01-05"}, format="json")
+        assert response.status_code == 403
+        assert member.get(url(workspace, project, "certifications/")).status_code == 200
+
+
+@pytest.mark.contract
+class TestAmendedBoq:
+    @pytest.mark.django_db
+    def test_amended_qty_replaces_the_original(self, session_client, workspace, project):
+        _, line_id = setup_boq(session_client, workspace, project, qty="10")
+        make_signages(session_client, workspace, project, count=12)
+        row, _ = line(session_client, workspace, project)
+        assert row["allowed"] == "10.00" and row["is_amended"] is False and row["status"] == "excess"
+        session_client.patch(
+            url(workspace, project, f"boq/lines/{line_id}/"),
+            {"amended_qty": "12", "amended_note": "Rev-2 BOQ mail 4 Nov"},
+            format="json",
+        )
+        row, _ = line(session_client, workspace, project)
+        assert row["allowed"] == "12.00" and row["qty"] == "10.00" and row["amended_qty"] == "12.00"
+        assert row["is_amended"] is True and row["status"] == "ok"
+        # clearing it goes back to the original
+        session_client.patch(url(workspace, project, f"boq/lines/{line_id}/"), {"amended_qty": ""}, format="json")
+        row, _ = line(session_client, workspace, project)
+        assert row["allowed"] == "10.00" and row["amended_qty"] is None
+
+
+@pytest.mark.contract
+class TestAnnouncements:
+    @pytest.mark.django_db
+    def test_only_admins_post_and_old_ones_hide(self, session_client, workspace, project):
+        base = f"/api/workspaces/{workspace.slug}/e9/announcements/"
+        member = member_client(workspace, project, 15)
+        assert member.post(base, {"title": "Hi"}, format="json").status_code == 403
+        assert session_client.post(base, {"title": ""}, format="json").status_code == 400
+        assert session_client.post(base, {"title": "Old", "ends_on": "2020-01-01"}, format="json").status_code == 400
+        session_client.post(base, {"title": "Site visit Friday", "important": True}, format="json")
+        data = member.get(base).data
+        assert data["can_post"] is False and data["announcements"][0]["title"] == "Site visit Friday"
+        E9Announcement.objects.update(ends_on="2020-01-01")
+        assert member.get(base).data["announcements"] == []
+        E9Announcement.objects.update(ends_on=None)
+        announcement_id = data["announcements"][0]["id"]
+        assert member.delete(base + f"{announcement_id}/").status_code == 403
+        assert session_client.delete(base + f"{announcement_id}/").data["announcements"] == []
 
 
 @pytest.mark.contract

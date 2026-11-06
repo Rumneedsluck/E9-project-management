@@ -11,6 +11,7 @@ from plane.app.permissions import ROLE, allow_permission
 from plane.app.views.base import BaseAPIView
 from plane.db.models import Issue, Project, ProjectMember, StateGroup, WorkspaceMember
 
+from . import certification
 from .models import E9ProjectProfile, E9ScopeItem
 from .serializers import (
     ITEM_EDITABLE_FIELDS,
@@ -84,6 +85,7 @@ def _serialize_projects(projects, user, slug):
             ).values_list("project_id", flat=True)
         )
 
+    cert_states = certification.project_states(projects)
     results = []
     for project in projects:
         profile = getattr(project, "e9_profile", None)
@@ -106,6 +108,9 @@ def _serialize_projects(projects, user, slug):
                     "completed": counts.get("completed", 0),
                 },
                 "e9": E9ProjectProfileSerializer(profile).data if profile else default_profile_data(),
+                "cert_state": cert_states[project.id][0],
+                "billing_open": cert_states[project.id][1],
+                "allow_part_billing": bool(profile and profile.allow_part_billing),
             }
         )
     return results

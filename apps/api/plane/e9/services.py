@@ -180,6 +180,16 @@ def as_text(value):
 
 FIELD_LABELS.update(
     {
+        "jmc_number": "JMC no.",
+        "jmc_date": "JMC (measurement) date",
+        "done_on": "JMC signed on",
+        "allow_part_billing": "Part billing allowed",
+        "amended_qty": "Amended qty",
+        "amended_note": "Amended BOQ ref",
+    }
+)
+FIELD_LABELS.update(
+    {
         "line_no": "BOQ Item No.",
         "unit": "Unit",
         "rate": "Rate",
