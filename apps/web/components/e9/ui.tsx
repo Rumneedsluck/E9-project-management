@@ -13,6 +13,7 @@ import { useMember } from "@/hooks/store/use-member";
 // local
 import { E9_STAGES, getPriorityMeta, getStageIndex, getStatusMeta } from "./constants";
 import { describeDeadline, getDeadlineState, getInitials } from "./helpers";
+import { RevealText, useInView } from "./motion";
 import type { TE9Project, TE9ProjectPriority, TE9ProjectStatus } from "./types";
 
 export function E9StatusBadge({ status, className }: { status: TE9ProjectStatus; className?: string }) {
@@ -73,7 +74,7 @@ export function E9ProgressBar({ value, className }: { value: number; className?:
       aria-valuenow={clamped}
       className={cn("h-1.5 w-full overflow-hidden rounded-full bg-layer-3", className)}
     >
-      <div className="h-full rounded-full bg-inverse transition-all" style={{ width: `${clamped}%` }} />
+      <div className="e9-grow h-full rounded-full bg-inverse transition-all" style={{ width: `${clamped}%` }} />
     </div>
   );
 }
@@ -163,7 +164,9 @@ export function E9PageHeader({ eyebrow, title, description, actions }: TPageHead
         {eyebrow && (
           <span className="text-body-xs-semibold tracking-[0.14em] text-accent-primary uppercase">{eyebrow}</span>
         )}
-        <h1 className="text-h3-semibold tracking-tight text-primary">{title}</h1>
+        <h1 className="text-h3-semibold tracking-tight text-primary">
+          {typeof title === "string" ? <RevealText text={title} /> : title}
+        </h1>
         {description && <p className="text-body-sm-regular text-tertiary">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
@@ -182,8 +185,16 @@ export function E9Panel({
   children: ReactNode;
   className?: string;
 }) {
+  const { ref, inView } = useInView<HTMLElement>();
   return (
-    <section className={cn("flex flex-col rounded-xl border border-subtle bg-surface-1 shadow-raised-100", className)}>
+    <section
+      ref={ref}
+      className={cn(
+        "e9-reveal flex flex-col rounded-xl border border-subtle bg-surface-1 shadow-raised-100",
+        inView && "is-in",
+        className
+      )}
+    >
       {(title || action) && (
         <header className="flex items-center justify-between gap-3 border-b border-subtle px-5 py-3.5">
           {title && <h2 className="text-body-sm-semibold text-primary">{title}</h2>}
