@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from plane.app.permissions import allow_permission
 from plane.app.views.base import BaseAPIView
 
-from . import boq, tracker
+from . import boq, certification, tracker
 from .models import (
     E9Amendment,
     E9AmendmentChange,
@@ -23,6 +23,7 @@ from .models import (
     E9BillLine,
     E9BoqLine,
     E9BoqUnit,
+    E9Certification,
     E9Challan,
     E9JobCard,
     E9POKind,
@@ -130,6 +131,8 @@ LINE_SPEC = {
     "description": _text(5000),
     "unit": _choice(E9BoqUnit.values),
     "qty": _decimal(),
+    "amended_qty": _decimal(),
+    "amended_note": _text(255),
     "rate": _decimal(),
     "remarks": _text(5000),
 }
@@ -870,6 +873,8 @@ def _bill_payload(bill):
         "id": str(bill.id),
         "po": str(bill.po_id),
         "po_label": str(bill.po),
+        "certification": str(bill.certification_id) if bill.certification_id else None,
+        "certification_label": str(bill.certification) if bill.certification_id else "",
         "stage": boq.bill_stage(bill),
         "stage_text": boq.STAGE_TEXT[boq.bill_stage(bill)],
         "created_at": bill.created_at.isoformat(),
@@ -904,8 +909,14 @@ def _bill_payload(bill):
 def bills_payload(project, user, slug):
     lines, _ = boq.line_rows(project)
     bills = E9Bill.objects.filter(project=project).select_related("po").prefetch_related("lines__boq_line")
+    certs = list(E9Certification.objects.filter(project=project))
+    profile = getattr(project, "e9_profile", None)
     return {
         "can_edit": _can_edit(user, slug, project.id),
+        "billing_open": certification.billing_open(profile, certs),
+        "certifications": [
+            {"id": str(cert.id), "label": str(cert), "done_on": _iso(cert.done_on)} for cert in certs if cert.done_on
+        ],
         "pos": [{"id": str(po.id), "label": str(po)} for po in E9PurchaseOrder.objects.filter(project=project)],
         "bills": [_bill_payload(bill) for bill in bills],
         "lines": lines,
@@ -964,10 +975,25 @@ class E9BillListEndpoint(BaseAPIView):
         po = E9PurchaseOrder.objects.filter(project=project, pk=request.data.get("po")).first()
         if po is None:
             return Response({"po": "Choose the PO you are billing."}, status=400)
-        bill = E9Bill(project=project, workspace_id=project.workspace_id, po=po)
+        certs = list(E9Certification.objects.filter(project=project))
+        if not certification.billing_open(getattr(project, "e9_profile", None), certs):
+            message = (
+                "Billing opens after the JMC is signed. Mark the certification done first "
+                "(or ask an admin to allow part billing)."
+            )
+            return Response({"error": message}, status=400)
+        cert = None
+        if request.data.get("certification"):
+            cert = next((c for c in certs if str(c.id) == str(request.data["certification"]) and c.done_on), None)
+            if cert is None:
+                return Response({"certification": "Choose a JMC that is signed."}, status=400)
+        bill = E9Bill(project=project, workspace_id=project.workspace_id, po=po, certification=cert)
         try:
             with transaction.atomic():
                 _apply(bill, request.data, BILL_SPEC)
+                if cert is not None:
+                    bill.cert_number = bill.cert_number or cert.jmc_number
+                    bill.cert_signed_on = bill.cert_signed_on or cert.done_on
                 _check_bill_order(bill)
                 if not bill.title:
                     bill.title = f"Bill {E9Bill.objects.filter(po=po).count() + 1} · {po}"
@@ -1029,34 +1055,44 @@ class E9BillDetailEndpoint(BaseAPIView):
 
 
 class E9SummaryEndpoint(BaseAPIView):
+    """Billing across all projects. Only projects whose billing is open (JMC signed or part billing allowed)."""
+
     @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
     def get(self, request, slug):
-        projects = list(_visible_projects(request.user, slug).order_by("name"))
-        with_boq = set(
-            E9BoqLine.objects.filter(project__in=projects).values_list("project_id", flat=True).distinct()
-        ) | set(E9Bill.objects.filter(project__in=projects).values_list("project_id", flat=True).distinct())
+        projects = list(_visible_projects(request.user, slug).select_related("e9_profile").order_by("name"))
+        states = certification.project_states(projects)
         rows = []
         for project in projects:
-            items_with_boq_no = E9ScopeItem.objects.filter(project=project).exclude(boq_item_no="").exists()
-            if project.id not in with_boq and not items_with_boq_no:
+            state, is_open = states[project.id]
+            if not is_open:
                 continue
-            scopes = scope_map(project)
-            lines, items = boq.line_rows(project)
-            unlinked = boq.unlinked_items(project, lines, items, scopes)
+            lines, _ = boq.line_rows(project)
             bills = boq.bill_rows(project)
             rows.append(
                 {
                     "id": str(project.id),
                     "name": project.name,
                     "identifier": project.identifier,
-                    "excess": [line for line in lines if line["status"] == "excess"],
-                    "pending": [line for line in lines if line["status"] == "pending"],
-                    "unlinked": [group for group in unlinked if not group["missing"]],
-                    "missing_boq_no": sum(group["count"] for group in unlinked if group["missing"]),
+                    "cert_state": state,
                     "bills": bills,
                     "lines": len(lines),
                     "billable_now": str(sum(Decimal(line["billable_now"]) for line in lines)),
                     "certified": str(sum(Decimal(line["certified"]) for line in lines)),
+                    "billable_amount": str(
+                        sum(
+                            (
+                                Decimal(line["billable_now"]) * Decimal(line["rate"])
+                                for line in lines
+                                if line["rate"] is not None
+                            ),
+                            Decimal("0"),
+                        ).quantize(Decimal("0.01"))
+                    ),
                 }
             )
-        return Response({"projects": rows})
+        waiting = [
+            {"id": str(project.id), "name": project.name, "identifier": project.identifier}
+            for project in projects
+            if states[project.id][0] == "jmc_pending"
+        ]
+        return Response({"projects": rows, "waiting_for_jmc": waiting})

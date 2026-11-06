@@ -71,6 +71,8 @@ class E9ProjectProfile(BaseModel):
     target_sign_off = models.DateField(null=True, blank=True)
     # Tracker columns this project does not use (their data is kept)
     hidden_columns = models.JSONField(default=list, blank=True)
+    # Billing normally waits for the signed JMC; an admin can open it early for running bills
+    allow_part_billing = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "E9 Project Profile"
@@ -268,6 +270,7 @@ class E9AttachmentKind(models.TextChoices):
     PI = "pi", "Proforma invoice"
     WCC = "wcc", "Work completion certificate"
     SNAG = "snag", "Snag photo"
+    JMC = "jmc", "Signed JMC (joint measurement certificate)"
 
 
 class E9Attachment(BaseModel):
@@ -406,6 +409,9 @@ class E9BoqLine(BaseModel):
     description = models.TextField(blank=True, default="")
     unit = models.CharField(max_length=6, choices=E9BoqUnit.choices, default=E9BoqUnit.NOS)
     qty = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # client sent an amended BOQ for this line: the new quantity replaces qty (blank = same as original)
+    amended_qty = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    amended_note = models.CharField(max_length=255, blank=True, default="", help_text="Amended BOQ ref / mail")
     rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     remarks = models.TextField(blank=True, default="")
     sort_order = models.FloatField(default=65535)
@@ -545,6 +551,9 @@ class E9Bill(BaseModel):
     project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_bills")
     workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_bills")
     po = models.ForeignKey(E9PurchaseOrder, on_delete=models.CASCADE, related_name="bills")
+    certification = models.ForeignKey(
+        "E9Certification", on_delete=models.SET_NULL, related_name="bills", null=True, blank=True
+    )
     title = models.CharField(max_length=160, blank=True, default="")
     # 1 · Certification
     cert_number = models.CharField(max_length=80, blank=True, default="")
@@ -619,3 +628,55 @@ class E9Snag(BaseModel):
         verbose_name_plural = "E9 Snags"
         db_table = "e9_snags"
         ordering = ("sort_order", "created_at")
+
+
+class E9Certification(BaseModel):
+    """A JMC (joint measurement certificate) signed with the client.
+
+    Whole project when floor and scope are blank; otherwise one floor and/or one scope
+    (for running bills on big jobs). Billing opens once a certification is done.
+    """
+
+    project = models.ForeignKey("db.Project", on_delete=models.CASCADE, related_name="e9_certifications")
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_certifications")
+    floor = models.CharField(max_length=255, blank=True, default="", help_text="Blank = every floor")
+    scope = models.CharField(max_length=40, blank=True, default="", help_text="Blank = every scope")
+    jmc_number = models.CharField(max_length=80, blank=True, default="")
+    jmc_date = models.DateField(null=True, blank=True, help_text="Joint measurement done on")
+    client_signatory = models.CharField(max_length=120, blank=True, default="")
+    done_on = models.DateField(null=True, blank=True, help_text="Signed JMC received = certification done")
+    link = models.CharField(max_length=1000, blank=True, default="", help_text="Link to the signed JMC")
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 Certification"
+        verbose_name_plural = "E9 Certifications"
+        db_table = "e9_certifications"
+        ordering = ("created_at",)
+
+    @property
+    def is_whole(self):
+        return not self.floor and not self.scope
+
+    def __str__(self):
+        parts = [self.floor, self.scope]
+        return " · ".join(part for part in parts if part) or "Whole project"
+
+
+class E9Announcement(BaseModel):
+    """Notice for the whole team on Home and the Dashboard. Only workspace admins post."""
+
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_announcements")
+    title = models.CharField(max_length=160)
+    body = models.TextField(blank=True, default="")
+    important = models.BooleanField(default=False)
+    ends_on = models.DateField(null=True, blank=True, help_text="Hidden after this day")
+
+    class Meta:
+        verbose_name = "E9 Announcement"
+        verbose_name_plural = "E9 Announcements"
+        db_table = "e9_announcements"
+        ordering = ("-created_at",)
+
+    def __str__(self):
+        return self.title
