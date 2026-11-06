@@ -13,6 +13,7 @@ import { useMember } from "@/hooks/store/use-member";
 // local
 import { E9_STAGES, getPriorityMeta, getStageIndex, getStatusMeta } from "./constants";
 import { describeDeadline, getDeadlineState, getInitials } from "./helpers";
+import { E9Intro } from "./intro";
 import { RevealText, useInView } from "./motion";
 import type { TE9Project, TE9ProjectPriority, TE9ProjectStatus } from "./types";
 
@@ -215,6 +216,7 @@ export function E9PageBody({ children, wide = false }: { children: ReactNode; wi
         wide ? "max-w-none" : "max-w-[1280px]"
       )}
     >
+      <E9Intro />
       {children}
     </div>
   );

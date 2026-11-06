@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { cityName, groupByCity } from "./cities";
 import { validateE9Form } from "./form-validation";
 import type { TE9FormValues } from "./form-validation";
 import {
@@ -231,5 +232,28 @@ describe("project form validation", () => {
 
   it("rejects a deadline before the start date", () => {
     expect(validateE9Form({ ...valid, deadline: "2026-11-01" }).deadline).toBeDefined();
+  });
+});
+
+describe("home: sites by city", () => {
+  it("merges different spellings of the same city", () => {
+    expect(cityName("bangalore")).toBe("Bengaluru");
+    expect(cityName(" BENGALURU ")).toBe("Bengaluru");
+    expect(cityName("new delhi")).toBe("Delhi");
+    expect(cityName("navi mumbai")).toBe("Navi Mumbai");
+    expect(cityName("")).toBe("No city set");
+  });
+
+  it("groups active sites per city, busiest city first, and skips finished ones", () => {
+    const cities = groupByCity([
+      makeProject({ id: "a" }, { city: "Bangalore", status: "production" }),
+      makeProject({ id: "b" }, { city: "Bengaluru", status: "installation" }),
+      makeProject({ id: "c" }, { city: "Pune", status: "pre_press" }),
+      makeProject({ id: "d" }, { city: "Jaipur", status: "completed" }),
+    ]);
+    expect(cities.map((city) => [city.name, city.active.length])).toEqual([
+      ["Bengaluru", 2],
+      ["Pune", 1],
+    ]);
   });
 });
