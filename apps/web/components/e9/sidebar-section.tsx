@@ -7,7 +7,7 @@
 import { observer } from "mobx-react";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
-import { BillingsOutline, DashboardsOutline, ProjectsOutline } from "@makeplane/propel/icons";
+import { BillingsOutline, DashboardsOutline, HomeOutline, ProjectsOutline } from "@makeplane/propel/icons";
 import { ListItem, ListItemLabel } from "@makeplane/propel/components/list";
 import { ListItemLink } from "@makeplane/propel/elements/list";
 // hooks
@@ -16,7 +16,8 @@ import { useAppTheme } from "@/hooks/store/use-app-theme";
 import { E9_BRAND } from "./brand";
 
 const LINKS = [
-  { key: "dashboard", label: "Dashboard", path: "e9", icon: DashboardsOutline, exact: true },
+  { key: "home", label: "Home", path: "e9", icon: HomeOutline, exact: true },
+  { key: "dashboard", label: "Dashboard", path: "e9/dashboard", icon: DashboardsOutline, exact: true },
   { key: "projects", label: "E9 Projects", path: "e9/projects", icon: ProjectsOutline, exact: false },
   { key: "summary", label: "Extra & Billing", path: "e9/summary", icon: BillingsOutline, exact: true },
 ];

@@ -9,21 +9,21 @@ import { useParams } from "next/navigation";
 import { ContentWrapper } from "@/components/core/content-wrapper";
 import { PageHead } from "@/components/core/page-title";
 import { E9_BRAND } from "@/components/e9/brand";
-import { E9Dashboard } from "@/components/e9/dashboard";
 import { E9Header } from "@/components/e9/header";
+import { E9Home } from "@/components/e9/home";
 
-function E9DashboardPage() {
+function E9HomePage() {
   const { workspaceSlug } = useParams();
   const slug = workspaceSlug?.toString() ?? "";
   return (
     <>
-      <PageHead title={`Dashboard - ${E9_BRAND.name}`} />
-      <E9Header workspaceSlug={slug} section="dashboard" />
+      <PageHead title={`Home - ${E9_BRAND.name}`} />
+      <E9Header workspaceSlug={slug} section="home" />
       <ContentWrapper>
-        <E9Dashboard workspaceSlug={slug} />
+        <E9Home workspaceSlug={slug} />
       </ContentWrapper>
     </>
   );
 }
 
-export default observer(E9DashboardPage);
+export default observer(E9HomePage);

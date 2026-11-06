@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { BillingsOutline, DashboardsOutline, ProjectsOutline } from "@makeplane/propel/icons";
+import { BillingsOutline, DashboardsOutline, HomeOutline, ProjectsOutline } from "@makeplane/propel/icons";
 import { Breadcrumbs } from "@plane/blocks/breadcrumb";
 import { Header } from "@plane/blocks/layout";
 import { BreadcrumbLink } from "@/components/common/breadcrumb-link";
@@ -15,7 +15,7 @@ type TCrumb = { label: string; href?: string };
 type Props = {
   workspaceSlug: string;
   /** "dashboard" or "projects": decides the first breadcrumb */
-  section: "dashboard" | "projects" | "summary";
+  section: "home" | "dashboard" | "projects" | "summary";
   /** Extra breadcrumbs after the section, e.g. the project name */
   trail?: TCrumb[];
 };
@@ -23,23 +23,25 @@ type Props = {
 /** Top bar for every E9 page (breadcrumbs). Uses Plane's own header so mobile menus keep working. */
 export function E9Header({ workspaceSlug, section, trail = [] }: Props) {
   const root =
-    section === "dashboard"
-      ? {
-          label: "Dashboard",
-          href: `/${workspaceSlug}/e9`,
-          icon: <DashboardsOutline className="size-4 text-tertiary" />,
-        }
-      : section === "summary"
+    section === "home"
+      ? { label: "Home", href: `/${workspaceSlug}/e9`, icon: <HomeOutline className="size-4 text-tertiary" /> }
+      : section === "dashboard"
         ? {
-            label: "Extra & Billing",
-            href: `/${workspaceSlug}/e9/summary`,
-            icon: <BillingsOutline className="size-4 text-tertiary" />,
+            label: "Dashboard",
+            href: `/${workspaceSlug}/e9/dashboard`,
+            icon: <DashboardsOutline className="size-4 text-tertiary" />,
           }
-        : {
-            label: "E9 Projects",
-            href: `/${workspaceSlug}/e9/projects`,
-            icon: <ProjectsOutline className="size-4 text-tertiary" />,
-          };
+        : section === "summary"
+          ? {
+              label: "Extra & Billing",
+              href: `/${workspaceSlug}/e9/summary`,
+              icon: <BillingsOutline className="size-4 text-tertiary" />,
+            }
+          : {
+              label: "E9 Projects",
+              href: `/${workspaceSlug}/e9/projects`,
+              icon: <ProjectsOutline className="size-4 text-tertiary" />,
+            };
   return (
     <AppHeader
       header={
