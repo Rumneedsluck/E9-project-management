@@ -10,7 +10,6 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeftOutline, EditOutline, NewTabArrowOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
-import { Logo } from "@plane/blocks/emoji-icon-picker";
 import { cn, renderFormattedDate } from "@plane/utils";
 // hooks
 import { useAppRouter } from "@/hooks/use-app-router";
@@ -20,7 +19,7 @@ import { getProgressPercent } from "./helpers";
 import { useE9Project } from "./hooks";
 import { E9ErrorState, E9LoadingState } from "./states";
 import { E9DeleteProjectButton } from "./delete-project";
-import { E9BillingPage } from "./commercial/billing-page";
+import { E9CertificationPage } from "./commercial/certification-page";
 import { E9BoqPage } from "./commercial/boq-page";
 import { E9LogsPage } from "./commercial/logs-page";
 import { E9ReprintsPage } from "./commercial/reprints-page";
@@ -29,6 +28,8 @@ import { E9ProjectHistory, E9SiteAuditPanel } from "./tracker/project-docs";
 import { E9TrackerDashboard } from "./tracker/tracker-dashboard";
 import { E9TrackerSheet } from "./tracker/tracker-sheet";
 import {
+  E9CertSteps,
+  E9CodeTile,
   E9DeadlineText,
   E9MemberAvatar,
   E9PageBody,
@@ -52,25 +53,86 @@ const empty = <span className="text-placeholder">Not set</span>;
 
 type Props = { workspaceSlug: string; projectId: string };
 
-type TView = "overview" | "tracker" | "dashboard" | "boq" | "logs" | "reprints" | "snags" | "billing" | "history";
+type TView = "tracker" | "boq" | "logs" | "issues" | "certification" | "info";
+type TSub = "reprints" | "snags" | "overview" | "details" | "history";
 const VIEWS: { key: TView; label: string }[] = [
   { key: "tracker", label: "Tracker" },
-  { key: "dashboard", label: "Dashboard" },
   { key: "boq", label: "BOQ" },
   { key: "logs", label: "JC & DC" },
-  { key: "reprints", label: "Reprints & Extras" },
-  { key: "snags", label: "Snag List" },
-  { key: "billing", label: "Billing" },
-  { key: "overview", label: "Project info" },
-  { key: "history", label: "History" },
+  { key: "issues", label: "Site issues" },
+  { key: "certification", label: "Certification & Billing" },
+  { key: "info", label: "Info" },
 ];
+const SUBS: Record<"issues" | "info", { key: TSub; label: string }[]> = {
+  issues: [
+    { key: "reprints", label: "Reprints & Extras" },
+    { key: "snags", label: "Snag list" },
+  ],
+  info: [
+    { key: "overview", label: "Overview" },
+    { key: "details", label: "Project details" },
+    { key: "history", label: "History" },
+  ],
+};
+/** old links (?view=billing, ?view=snags …) still land on the right place */
+const LEGACY: Record<string, [TView, TSub?]> = {
+  dashboard: ["info", "overview"],
+  overview: ["info", "details"],
+  history: ["info", "history"],
+  reprints: ["issues", "reprints"],
+  snags: ["issues", "snags"],
+  billing: ["certification"],
+};
+
+const resolveView = (view: string | null, sub: string | null): [TView, TSub | undefined] => {
+  if (view && LEGACY[view]) return [LEGACY[view][0], LEGACY[view][1]];
+  const main = (VIEWS.find((entry) => entry.key === view)?.key ?? "tracker") as TView;
+  if (main === "issues" || main === "info") {
+    const options = SUBS[main];
+    return [main, (options.find((option) => option.key === sub) ?? options[0]).key];
+  }
+  return [main, undefined];
+};
+
+function SubTabs({
+  options,
+  value,
+  onChange,
+}: {
+  options: { key: TSub; label: string }[];
+  value?: TSub;
+  onChange: (key: TSub) => void;
+}) {
+  return (
+    <div role="tablist" className="flex w-fit gap-1 rounded-lg border border-subtle bg-surface-1 p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          role="tab"
+          aria-selected={value === option.key}
+          onClick={() => onChange(option.key)}
+          className={cn(
+            "rounded-md px-3 py-1 text-body-xs-semibold transition-colors",
+            value === option.key ? "bg-[#0B0B0B] text-white" : "text-tertiary hover:text-primary"
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug, projectId }: Props) {
   const router = useAppRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const view: TView = (VIEWS.find((entry) => entry.key === searchParams.get("view"))?.key ?? "tracker") as TView;
-  const setView = (next: TView) => router.replace(`${pathname}?view=${next}`);
+  const [view, sub] = resolveView(searchParams.get("view"), searchParams.get("sub"));
+  const setView = (next: string, nextSub?: TSub) => {
+    const [main, resolvedSub] = resolveView(next, nextSub ?? null);
+    router.replace(`${pathname}?view=${main}${resolvedSub ? `&sub=${resolvedSub}` : ""}`);
+  };
   const { data: project, error, isLoading, mutate } = useE9Project(workspaceSlug, projectId);
 
   if (isLoading && !project)
@@ -91,31 +153,28 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
   const team = project.member_ids.filter((id) => id !== project.project_lead);
 
   return (
-    <E9PageBody
-      wide={view === "tracker" || view === "boq" || view === "logs" || view === "reprints" || view === "snags"}
-    >
+    <E9PageBody wide={view === "tracker" || view === "boq" || view === "logs" || view === "issues"}>
       <Link
         href={`/${workspaceSlug}/e9/projects`}
         className="inline-flex w-fit items-center gap-1.5 text-body-xs-medium text-tertiary hover:text-primary"
       >
         <ArrowLeftOutline className="size-3.5" />
-        All projects
+        Projects
       </Link>
 
       {/* Title block */}
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-4">
-          <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-layer-2">
-            <Logo logo={project.logo_props} size={28} />
-          </span>
+          <E9CodeTile code={project.identifier} size="lg" className="h-14 w-16 rounded-2xl" />
           <div className="flex min-w-0 flex-col gap-1.5">
-            <span className="text-body-xs-semibold tracking-[0.14em] text-accent-primary uppercase">
-              {project.identifier}
-            </span>
             <h1 className="text-h3-semibold tracking-tight break-words text-primary">{project.name}</h1>
             <p className="text-body-sm-regular text-tertiary">
               {[e9.client_name, e9.city].filter(Boolean).join(" · ") || "No client added yet"}
             </p>
+            <span className="flex flex-wrap items-center gap-3">
+              <E9StatusBadge status={e9.status} />
+              <E9CertSteps project={project} compact />
+            </span>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -168,8 +227,12 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
         ))}
       </div>
 
+      {(view === "issues" || view === "info") && (
+        <SubTabs options={SUBS[view]} value={sub} onChange={(next) => setView(view, next)} />
+      )}
+
       {view === "tracker" && <E9TrackerSheet workspaceSlug={workspaceSlug} project={project} />}
-      {view === "dashboard" && (
+      {view === "info" && sub === "overview" && (
         <E9TrackerDashboard
           workspaceSlug={workspaceSlug}
           project={project}
@@ -179,11 +242,13 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
       )}
       {view === "boq" && <E9BoqPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "logs" && <E9LogsPage workspaceSlug={workspaceSlug} project={project} />}
-      {view === "reprints" && <E9ReprintsPage workspaceSlug={workspaceSlug} project={project} />}
-      {view === "snags" && <E9SnagsPage workspaceSlug={workspaceSlug} project={project} />}
-      {view === "billing" && <E9BillingPage workspaceSlug={workspaceSlug} project={project} />}
-      {view === "history" && <E9ProjectHistory workspaceSlug={workspaceSlug} projectId={project.id} />}
-      {view === "overview" && (
+      {view === "issues" && sub === "reprints" && <E9ReprintsPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "issues" && sub === "snags" && <E9SnagsPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "certification" && <E9CertificationPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "info" && sub === "history" && (
+        <E9ProjectHistory workspaceSlug={workspaceSlug} projectId={project.id} />
+      )}
+      {view === "info" && sub === "details" && (
         <>
           {/* Status strip */}
           <section className="flex flex-col gap-5 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 sm:p-6">

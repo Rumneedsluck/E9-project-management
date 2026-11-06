@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useId, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { AddOutline, ClockOutline, CloseOutline, SearchOutline } from "@makeplane/propel/icons";
@@ -12,7 +13,7 @@ import { Button } from "@makeplane/propel/components/button";
 import { setToast } from "@plane/blocks/toast";
 import { cn } from "@plane/utils";
 import { e9ProjectService } from "@/services/e9/project.service";
-import { useE9Boq, useE9Floors, useE9Items, useE9Photos, useE9Scopes } from "../hooks";
+import { useE9Boq, useE9Certifications, useE9Floors, useE9Items, useE9Photos, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { DateCell, NumberCell, SelectCell, TextCell } from "./cells";
@@ -692,6 +693,46 @@ const ACTIONS_WIDTH = 64;
 type TOpenPanel = "scopes" | "floors" | "columns" | "import" | null;
 type Props = { workspaceSlug: string; project: TE9Project };
 
+/** One line above the sheet: where certification stands and how many rows have certified qty. */
+function CertificationStrip({ workspaceSlug, project }: Props) {
+  const { data } = useE9Certifications(workspaceSlug, project.id);
+  if (!data) return null;
+  const signed = data.certifications.filter((cert) => cert.done_on);
+  const tone =
+    data.state === "certified"
+      ? "text-success-primary"
+      : data.state === "jmc_pending"
+        ? "text-warning-primary"
+        : data.state === "part_certified"
+          ? "text-accent-primary"
+          : "text-tertiary";
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-subtle bg-surface-1 px-4 py-2 text-body-xs-regular text-tertiary">
+      <span>
+        Certification: <span className={cn("font-semibold", tone)}>{data.state_text}</span>
+      </span>
+      <span>
+        Certified qty typed:{" "}
+        <span className="font-semibold text-primary">
+          {data.overall.certified}/{data.overall.rows}
+        </span>{" "}
+        rows
+      </span>
+      {signed.length > 0 && (
+        <span>
+          JMC signed: <span className="font-semibold text-primary">{signed.map((cert) => cert.label).join(", ")}</span>
+        </span>
+      )}
+      <Link
+        href={`/${workspaceSlug}/e9/projects/${project.id}?view=certification`}
+        className="ml-auto font-semibold text-accent-primary hover:underline"
+      >
+        Certification & Billing →
+      </Link>
+    </div>
+  );
+}
+
 export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const { data, error, isLoading, mutate } = useE9Items(workspaceSlug, project.id);
   const { data: scopes } = useE9Scopes(workspaceSlug, project.id);
@@ -888,6 +929,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
+      <CertificationStrip workspaceSlug={workspaceSlug} project={project} />
       <datalist id={boqListId}>
         {[...(boq?.lines ?? [])]
           // oxlint-disable-next-line unicorn/no-array-sort -- copied array

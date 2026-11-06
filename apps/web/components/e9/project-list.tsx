@@ -4,14 +4,13 @@
  * See the LICENSE file for details.
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AddOutline, SearchOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
-import { Logo } from "@plane/blocks/emoji-icon-picker";
-import { renderFormattedDate } from "@plane/utils";
+import { cn, renderFormattedDate } from "@plane/utils";
 // hooks
 import { useAppRouter } from "@/hooks/use-app-router";
 // local
@@ -19,9 +18,12 @@ import { E9_PRIORITIES, E9_STATUSES } from "./constants";
 import { DEFAULT_E9_FILTERS, filterProjects, getProgressPercent, sortProjects } from "./helpers";
 import type { TE9ProjectFilters, TE9SortKey } from "./helpers";
 import { useCanCreateE9Project, useE9Projects } from "./hooks";
+import { E9Showcase } from "./showcase";
 import { E9EmptyState, E9ErrorState, E9LoadingState } from "./states";
-import type { TE9Project } from "./types";
+import type { TE9CertState, TE9Project } from "./types";
 import {
+  E9CertSteps,
+  E9CodeTile,
   E9DeadlineText,
   E9MemberStack,
   E9PageBody,
@@ -30,6 +32,21 @@ import {
   E9ProgressBar,
   E9StatusBadge,
 } from "./ui";
+
+type TCertFilter = "all" | TE9CertState | "billing_open";
+const CERT_FILTERS: { key: TCertFilter; label: string }[] = [
+  { key: "all", label: "Any certification" },
+  { key: "in_progress", label: "Work in progress" },
+  { key: "jmc_pending", label: "Waiting for JMC" },
+  { key: "part_certified", label: "Part certified" },
+  { key: "certified", label: "Certified" },
+  { key: "billing_open", label: "Billing open" },
+];
+const matchesCert = (project: TE9Project, filter: TCertFilter) =>
+  filter === "all" || (filter === "billing_open" ? project.billing_open : project.cert_state === filter);
+
+type TView = "slider" | "list";
+const VIEW_KEY = "e9-projects-view";
 
 const SORT_OPTIONS: { key: TE9SortKey; label: string }[] = [
   { key: "deadline", label: "Deadline" },
@@ -47,9 +64,7 @@ const isStatusFilter = (value: string | null): value is TE9ProjectFilters["statu
 function ProjectIdentity({ project }: { project: TE9Project }) {
   return (
     <span className="flex min-w-0 items-center gap-3">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-layer-2">
-        <Logo logo={project.logo_props} size={18} />
-      </span>
+      <E9CodeTile code={project.identifier} />
       <span className="flex min-w-0 flex-col">
         <span className="truncate text-body-sm-semibold text-primary">{project.name}</span>
         <span className="truncate text-body-xs-regular text-tertiary">
@@ -69,11 +84,11 @@ function ProjectTable({ projects, workspaceSlug }: { projects: TE9Project[]; wor
       <table className="w-full table-fixed border-collapse text-left">
         <thead className="border-b border-subtle bg-layer-1">
           <tr className="text-body-xs-medium text-tertiary">
-            <th className="w-[34%] px-5 py-3 font-medium">Project</th>
-            <th className="w-[15%] px-3 py-3 font-medium">Stage</th>
-            <th className="w-[9%] px-3 py-3 font-medium">Priority</th>
-            <th className="w-[15%] px-3 py-3 font-medium">Deadline</th>
-            <th className="w-[12%] px-3 py-3 font-medium">Team</th>
+            <th className="w-[31%] px-5 py-3 font-medium">Project</th>
+            <th className="w-[14%] px-3 py-3 font-medium">Stage</th>
+            <th className="w-[14%] px-3 py-3 font-medium">Deadline</th>
+            <th className="w-[16%] px-3 py-3 font-medium">Certification</th>
+            <th className="w-[10%] px-3 py-3 font-medium">Team</th>
             <th className="w-[15%] px-5 py-3 font-medium">Progress</th>
           </tr>
         </thead>
@@ -97,15 +112,15 @@ function ProjectTable({ projects, workspaceSlug }: { projects: TE9Project[]; wor
                   <E9StatusBadge status={project.e9.status} />
                 </td>
                 <td className="px-3 py-3.5">
-                  <E9PriorityBadge priority={project.e9.priority} />
-                </td>
-                <td className="px-3 py-3.5">
                   <span className="flex flex-col gap-0.5">
                     <span className="text-body-sm-regular text-primary">
                       {renderFormattedDate(project.e9.deadline) ?? "—"}
                     </span>
                     <E9DeadlineText project={project} />
                   </span>
+                </td>
+                <td className="px-3 py-3.5">
+                  <E9CertSteps project={project} />
                 </td>
                 <td className="px-3 py-3.5">
                   <E9MemberStack userIds={project.member_ids} max={3} />
@@ -141,6 +156,7 @@ function ProjectCards({ projects, workspaceSlug }: { projects: TE9Project[]; wor
                 <E9StatusBadge status={project.e9.status} />
                 <E9PriorityBadge priority={project.e9.priority} />
               </span>
+              <E9CertSteps project={project} compact />
               <span className="flex items-center gap-3">
                 <E9ProgressBar value={progress} />
                 <span className="text-body-xs-medium text-tertiary tabular-nums">{progress}%</span>
@@ -165,6 +181,28 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
 
   const initialStatus = searchParams.get("status");
   const initialSort = searchParams.get("sort");
+  const initialCert = searchParams.get("cert");
+  const [certFilter, setCertFilter] = useState<TCertFilter>(
+    CERT_FILTERS.some((option) => option.key === initialCert) ? (initialCert as TCertFilter) : "all"
+  );
+  // a link to a certification filter (e.g. from the Dashboard) opens the list, not the slider
+  const [view, setView] = useState<TView>(initialCert ? "list" : "slider");
+  useEffect(() => {
+    if (initialCert) return;
+    try {
+      if (window.localStorage.getItem(VIEW_KEY) === "list") setView("list");
+    } catch {
+      // storage blocked: keep the slider
+    }
+  }, [initialCert]);
+  const chooseView = (next: TView) => {
+    setView(next);
+    try {
+      window.localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // storage blocked: the choice lasts for this visit only
+    }
+  };
   const [filters, setFilters] = useState<TE9ProjectFilters>({
     ...DEFAULT_E9_FILTERS,
     status: isStatusFilter(initialStatus) ? initialStatus : DEFAULT_E9_FILTERS.status,
@@ -174,10 +212,15 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
   );
 
   const visible = useMemo(
-    () => sortProjects(filterProjects(projects ?? [], filters), sortKey),
-    [projects, filters, sortKey]
+    () =>
+      sortProjects(
+        filterProjects(projects ?? [], filters).filter((project) => matchesCert(project, certFilter)),
+        sortKey
+      ),
+    [projects, filters, sortKey, certFilter]
   );
   const isFiltered =
+    certFilter !== "all" ||
     filters.search !== "" ||
     filters.status !== DEFAULT_E9_FILTERS.status ||
     filters.priority !== DEFAULT_E9_FILTERS.priority;
@@ -186,8 +229,8 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
     <E9PageBody>
       <E9PageHeader
         eyebrow="Projects"
-        title="All projects"
-        description="Every awarded site, its stage, deadline and team."
+        title="Projects"
+        description="Every site with its stage, deadline and certification."
         actions={
           canCreate && (
             <Button
@@ -250,7 +293,21 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
               ))}
             </select>
           </label>
-          <label className="col-span-2 flex min-w-0 flex-col">
+          <label className="flex min-w-0 flex-col">
+            <span className="sr-only">Certification</span>
+            <select
+              className={selectClass}
+              value={certFilter}
+              onChange={(event) => setCertFilter(event.target.value as TCertFilter)}
+            >
+              {CERT_FILTERS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex min-w-0 flex-col">
             <span className="sr-only">Sort by</span>
             <select
               className={selectClass}
@@ -286,7 +343,10 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
                 stretch="auto"
                 variant="secondary"
                 label="Clear filters"
-                onClick={() => setFilters(DEFAULT_E9_FILTERS)}
+                onClick={() => {
+                  setFilters(DEFAULT_E9_FILTERS);
+                  setCertFilter("all");
+                }}
               />
             ) : (
               canCreate && (
@@ -303,11 +363,36 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
         />
       ) : (
         <>
-          <p className="-mb-2 text-body-xs-regular text-tertiary">
-            Showing {visible.length} of {projects?.length ?? 0} projects
-          </p>
-          <ProjectTable projects={visible} workspaceSlug={workspaceSlug} />
-          <ProjectCards projects={visible} workspaceSlug={workspaceSlug} />
+          <div className="-mb-2 flex items-center justify-between gap-3">
+            <p className="text-body-xs-regular text-tertiary">
+              Showing {visible.length} of {projects?.length ?? 0} projects
+            </p>
+            <div role="tablist" aria-label="View" className="flex rounded-lg border border-subtle bg-surface-1 p-0.5">
+              {(["slider", "list"] as TView[]).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === option}
+                  onClick={() => chooseView(option)}
+                  className={cn(
+                    "rounded-md px-3 py-1 text-body-xs-semibold capitalize transition-colors",
+                    view === option ? "bg-[#0B0B0B] text-white" : "text-tertiary hover:text-primary"
+                  )}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+          {view === "slider" ? (
+            <E9Showcase projects={visible} workspaceSlug={workspaceSlug} />
+          ) : (
+            <>
+              <ProjectTable projects={visible} workspaceSlug={workspaceSlug} />
+              <ProjectCards projects={visible} workspaceSlug={workspaceSlug} />
+            </>
+          )}
         </>
       )}
     </E9PageBody>

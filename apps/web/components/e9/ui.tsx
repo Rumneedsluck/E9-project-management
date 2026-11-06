@@ -15,7 +15,7 @@ import { E9_STAGES, getPriorityMeta, getStageIndex, getStatusMeta } from "./cons
 import { describeDeadline, getDeadlineState, getInitials } from "./helpers";
 import { E9Intro } from "./intro";
 import { RevealText, useInView } from "./motion";
-import type { TE9Project, TE9ProjectPriority, TE9ProjectStatus } from "./types";
+import type { TE9CertState, TE9Project, TE9ProjectPriority, TE9ProjectStatus } from "./types";
 
 export function E9StatusBadge({ status, className }: { status: TE9ProjectStatus; className?: string }) {
   const meta = getStatusMeta(status);
@@ -204,6 +204,81 @@ export function E9Panel({
       )}
       {children}
     </section>
+  );
+}
+
+/** Professional project mark: the project code on a black tile (no emojis). */
+export function E9CodeTile({
+  code,
+  size = "md",
+  inverse = false,
+  className,
+}: {
+  code: string;
+  size?: "sm" | "md" | "lg";
+  /** white tile with black letters (for dark backgrounds) */
+  inverse?: boolean;
+  className?: string;
+}) {
+  const text = (code || "E9").slice(0, 5).toUpperCase();
+  return (
+    <span
+      aria-hidden
+      // colours inline: the class merger drops a plain text colour next to an arbitrary font size
+      style={{ backgroundColor: inverse ? "#FFFFFF" : "#0B0B0B", color: inverse ? "#0B0B0B" : "#FFFFFF" }}
+      className={cn(
+        "grid shrink-0 place-items-center rounded-lg font-semibold tracking-wide ring-1 ring-white/10",
+        size === "sm" && "h-7 w-10 text-[length:9px]",
+        size === "md" && "h-10 w-12 text-[length:10px]",
+        size === "lg" && "h-12 w-14 text-[length:12px]",
+        className
+      )}
+    >
+      {text}
+    </span>
+  );
+}
+
+const CERT_META: Record<TE9CertState, { label: string; className: string }> = {
+  in_progress: { label: "Work in progress", className: "text-tertiary" },
+  jmc_pending: { label: "Waiting for JMC", className: "text-warning-primary" },
+  part_certified: { label: "Part certified", className: "text-accent-primary" },
+  certified: { label: "Certified", className: "text-success-primary" },
+};
+
+export const certLabel = (state: TE9CertState) => CERT_META[state].label;
+
+/** Work → JMC → Certified → Billing, as four small steps. */
+export function E9CertSteps({ project, compact = false }: { project: TE9Project; compact?: boolean }) {
+  const state = project.cert_state ?? "in_progress";
+  const reached = {
+    work: true,
+    jmc: state !== "in_progress",
+    certified: state === "part_certified" || state === "certified",
+    billing: project.billing_open,
+  };
+  const steps: { key: keyof typeof reached; label: string }[] = [
+    { key: "work", label: "Work" },
+    { key: "jmc", label: "JMC" },
+    { key: "certified", label: "Certified" },
+    { key: "billing", label: "Billing" },
+  ];
+  return (
+    <span className="flex flex-col gap-1">
+      <span className="flex items-center gap-1" aria-hidden>
+        {steps.map((step) => (
+          <span
+            key={step.key}
+            className={cn("h-1 rounded-full", compact ? "w-4" : "w-6", reached[step.key] ? "bg-inverse" : "bg-layer-3")}
+            title={step.label}
+          />
+        ))}
+      </span>
+      <span className={cn("text-body-2xs-semibold whitespace-nowrap", CERT_META[state].className)}>
+        {CERT_META[state].label}
+        {project.billing_open && state !== "certified" && state !== "part_certified" ? " · billing open" : ""}
+      </span>
+    </span>
   );
 }
 

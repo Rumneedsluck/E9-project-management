@@ -346,7 +346,7 @@ class TestCertification:
 
         data = sign_jmc(session_client, workspace, project, floor="3rd Floor", scope="internal_signages")
         cert = data["certifications"][0]
-        assert cert["label"] == "3rd Floor · internal_signages"
+        assert cert["label"] == "3rd Floor · Internal Signages"
         assert cert["readiness"] == {"rows": 2, "certified": 2, "installed": 0}
         assert "3rd Floor" in data["floors"]
         assert project_state() == "part_certified"

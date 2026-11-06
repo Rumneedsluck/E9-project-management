@@ -41,13 +41,7 @@ export function E9BoqDashboardPanel({
                 <span className="text-body-xs-regular text-secondary">
                   <span className="font-semibold text-primary">{line.line_no}</span> {line.description} · allowed{" "}
                   {fmt(line.allowed)}, on tracker {fmt(line.on_tracker)} →{" "}
-                  <span
-                    className={
-                      line.status === "excess"
-                        ? "font-semibold text-danger-primary"
-                        : "font-semibold text-warning-primary"
-                    }
-                  >
+                  <span className="font-semibold text-warning-primary">
                     +{fmt(line.extra)} {unitText(line.unit)}
                   </span>
                 </span>

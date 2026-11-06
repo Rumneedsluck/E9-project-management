@@ -4,272 +4,151 @@
  * See the LICENSE file for details.
  */
 
-import { useEffect, useMemo, useState } from "react";
+/*
+ * Home: a calm cover page. E9 Creative, a greeting, four doors (Projects, Dashboard,
+ * Billing, New project) and the team announcements. Numbers and charts live on the Dashboard,
+ * sites live on Projects – nothing is repeated here.
+ */
+
+import { useEffect, useState } from "react";
+import type { ComponentType } from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
-import { ArrowNarrowRightOutline } from "@makeplane/propel/icons";
-import { Logo } from "@plane/blocks/emoji-icon-picker";
-import { cn, renderFormattedDate } from "@plane/utils";
-import { getStatusMeta } from "./constants";
-import { cityName, groupByCity } from "./cities";
-import type { TCity } from "./cities";
-import { sortProjects, summarizeProjects } from "./helpers";
-import { useE9Projects } from "./hooks";
-import { CountUp, Reveal, RevealText } from "./motion";
-import { E9ErrorState, E9LoadingState } from "./states";
-import { E9Showcase } from "./showcase";
-import { E9DeadlineText, E9PageBody } from "./ui";
+import {
+  AddOutline,
+  ArrowNarrowRightOutline,
+  BillingsOutline,
+  DashboardsOutline,
+  ProjectsOutline,
+} from "@makeplane/propel/icons";
+import { renderFormattedDate } from "@plane/utils";
+import { useUser } from "@/hooks/store/user";
+import { E9Announcements } from "./announcements";
+import { E9_BRAND, E9LogoMark } from "./brand";
+import { useCanCreateE9Project } from "./hooks";
+import { Reveal, RevealText } from "./motion";
+import { E9PageBody } from "./ui";
 
-/** Live clock (India time) for the top of Home. */
-function LiveClock() {
+const greeting = (hour: number) => {
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+};
+
+/** India time, refreshed every 30 s. Rendered after mount so server and browser agree. */
+function useNow() {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     setNow(new Date());
-    const timer = window.setInterval(() => setNow(new Date()), 15_000);
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
-  if (!now) return null;
-  return (
-    <span className="text-body-xs-semibold text-tertiary tabular-nums">
-      {now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })} IST ·{" "}
-      {renderFormattedDate(now, "EEE dd MMM")}
-    </span>
-  );
+  return now;
 }
 
-/** Endless strip of city names — pauses when you point at it. */
-function CityMarquee({ cities }: { cities: TCity[] }) {
-  if (cities.length === 0) return null;
-  const items = cities.map(
-    (city) => `${city.name.toUpperCase()} — ${city.active.length} SITE${city.active.length === 1 ? "" : "S"}`
-  );
-  const strip = [...items, ...items, ...items, ...items];
+type TDoor = { href: string; label: string; hint: string; icon: ComponentType<{ className?: string }> };
+
+function Door({ door, index }: { door: TDoor; index: number }) {
+  const Icon = door.icon;
   return (
-    <div
-      className="e9-marquee relative -mx-4 overflow-hidden border-y border-subtle py-3 sm:-mx-6 lg:-mx-8"
-      aria-hidden
-    >
-      <div className="e9-marquee-track flex w-max gap-10 pr-10">
-        {[0, 1].map((copy) => (
-          <div key={copy} className="flex gap-10">
-            {strip.map((text, index) => (
-              <span
-                // oxlint-disable-next-line react/no-array-index-key -- repeated decorative text
-                key={`${copy}-${index}`}
-                className="flex items-center gap-10 text-body-sm-semibold tracking-[0.18em]"
-              >
-                <span className={index % 2 ? "text-tertiary" : "text-primary"}>{text}</span>
-                <span className="size-1.5 rounded-full bg-[var(--brand-default)]" />
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CityCard({ city, workspaceSlug, index }: { city: TCity; workspaceSlug: string; index: number }) {
-  const next = city.active.find((project) => project.e9.deadline);
-  return (
-    <Reveal delay={Math.min(index, 6) * 0.06}>
-      <article className="e9-lift group flex h-full flex-col gap-5 rounded-2xl border border-subtle bg-surface-1 p-5 hover:border-strong">
-        <header className="flex items-start justify-between gap-3">
-          <div className="flex flex-col gap-1">
-            <span className="text-body-2xs-semibold tracking-[0.18em] text-tertiary uppercase">City</span>
-            <h3 className="text-h4-semibold tracking-tight text-primary">{city.name}</h3>
-          </div>
-          <div className="flex flex-col items-end">
-            <span className="text-h3-semibold leading-none text-primary tabular-nums">
-              <CountUp value={city.active.length} />
-            </span>
-            <span className="text-body-2xs-medium text-tertiary">active site{city.active.length === 1 ? "" : "s"}</span>
-          </div>
-        </header>
-
-        {/* one segment per site, coloured by its stage */}
-        <div className="flex h-1.5 gap-1 overflow-hidden rounded-full">
-          {city.active.map((project) => (
-            <span
-              key={project.id}
-              className="e9-grow h-full flex-1 rounded-full"
-              style={{ backgroundColor: getStatusMeta(project.e9.status).color }}
-              title={`${project.name} · ${getStatusMeta(project.e9.status).label}`}
-            />
-          ))}
-        </div>
-
-        <ul className="flex flex-col divide-y divide-subtle">
-          {city.active.slice(0, 4).map((project) => {
-            const stage = getStatusMeta(project.e9.status);
-            return (
-              <li key={project.id}>
-                <Link
-                  href={`/${workspaceSlug}/e9/projects/${project.id}`}
-                  className="group/row flex items-center gap-3 py-2.5"
-                >
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-layer-2">
-                    <Logo logo={project.logo_props} size={16} />
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="e9-link truncate text-body-sm-semibold text-primary">{project.name}</span>
-                    <span className="flex items-center gap-1.5 text-body-2xs-medium text-tertiary">
-                      <span className="size-1.5 rounded-full" style={{ backgroundColor: stage.color }} />
-                      {stage.label}
-                    </span>
-                  </span>
-                  <E9DeadlineText project={project} className="shrink-0 text-body-2xs-semibold" />
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-        {city.active.length > 4 && (
-          <span className="-mt-3 text-body-2xs-medium text-tertiary">+{city.active.length - 4} more</span>
-        )}
-
-        <footer className="mt-auto flex items-center justify-between gap-2 border-t border-subtle pt-3 text-body-xs-regular">
-          <span className="text-tertiary">
-            {next ? (
-              <>
-                Next handover{" "}
-                <span className="font-semibold text-primary">{renderFormattedDate(next.e9.deadline)}</span>
-              </>
-            ) : (
-              "No handover dates yet"
-            )}
+    <Reveal delay={0.25 + index * 0.06}>
+      <Link
+        href={door.href}
+        className="e9-lift group flex h-full flex-col justify-between gap-8 rounded-2xl border border-subtle bg-surface-1 p-5 hover:border-strong"
+      >
+        <span className="flex items-center justify-between">
+          <span className="grid size-10 place-items-center rounded-xl bg-layer-2 text-primary transition-colors group-hover:bg-[#0B0B0B] group-hover:text-white">
+            <Icon className="size-5" />
           </span>
-          {city.overdue > 0 ? (
-            <span className="rounded-full bg-danger-subtle px-2 py-0.5 text-body-2xs-semibold text-danger-primary">
-              {city.overdue} overdue
-            </span>
-          ) : (
-            <span className="text-body-2xs-semibold text-success-primary">On track</span>
-          )}
-        </footer>
-      </article>
+          <ArrowNarrowRightOutline className="size-4 -translate-x-1 text-placeholder opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+        </span>
+        <span className="flex flex-col gap-1">
+          <span className="text-h5-semibold tracking-tight text-primary">{door.label}</span>
+          <span className="min-h-[2lh] text-body-xs-regular text-tertiary">{door.hint}</span>
+        </span>
+      </Link>
     </Reveal>
   );
 }
 
 export const E9Home = observer(function E9Home({ workspaceSlug }: { workspaceSlug: string }) {
-  const { data: projects, error, isLoading, mutate } = useE9Projects(workspaceSlug);
-  const cities = useMemo(() => groupByCity(projects ?? []), [projects]);
-  const summary = useMemo(() => summarizeProjects(projects ?? []), [projects]);
-  const upcoming = useMemo(
-    () =>
-      sortProjects(
-        (projects ?? []).filter((project) => project.e9.deadline && project.e9.status !== "completed"),
-        "deadline"
-      ).slice(0, 6),
-    [projects]
-  );
+  const { data: currentUser } = useUser();
+  const canCreate = useCanCreateE9Project(workspaceSlug);
+  const now = useNow();
+  const hour = now
+    ? Number(now.toLocaleString("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }))
+    : 9;
+
+  const doors: TDoor[] = [
+    {
+      href: `/${workspaceSlug}/e9/projects`,
+      label: "Projects",
+      hint: "Every site, its tracker, BOQ and JMC",
+      icon: ProjectsOutline,
+    },
+    {
+      href: `/${workspaceSlug}/e9/dashboard`,
+      label: "Dashboard",
+      hint: "Stages, billing and what needs attention",
+      icon: DashboardsOutline,
+    },
+    {
+      href: `/${workspaceSlug}/e9/billing`,
+      label: "Billing",
+      hint: "Certified sites and where each bill stands",
+      icon: BillingsOutline,
+    },
+  ];
+  if (canCreate) {
+    doors.push({
+      href: `/${workspaceSlug}/e9/projects/new`,
+      label: "New project",
+      hint: "Add an awarded site",
+      icon: AddOutline,
+    });
+  }
 
   return (
     <E9PageBody>
-      {/* hero */}
-      <section className="relative flex flex-col gap-6 pt-2">
-        <div aria-hidden className="e9-dot-grid pointer-events-none absolute inset-x-0 -top-6 h-64" />
-        <div className="relative flex flex-wrap items-center justify-between gap-3">
-          <span className="flex items-center gap-2 text-body-xs-semibold tracking-[0.18em] text-accent-primary uppercase">
-            <span className="e9-live-dot size-2 rounded-full bg-[var(--brand-default)]" />
-            E9 Operations · Live
-          </span>
-          <LiveClock />
+      <section className="relative flex min-h-[36vh] flex-col justify-center gap-8 py-6">
+        <div aria-hidden className="e9-dot-grid pointer-events-none absolute inset-x-0 top-0 h-full" />
+        <div className="relative flex flex-col gap-6">
+          <Reveal>
+            <E9LogoMark className="size-16 rounded-2xl ring-1 ring-white/10 sm:size-20" />
+          </Reveal>
+          <h1 className="text-[clamp(2.6rem,7vw,5.5rem)] leading-[0.95] font-semibold tracking-[-0.035em] text-primary">
+            <RevealText text={E9_BRAND.name} />
+          </h1>
+          <Reveal delay={0.15}>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-md-regular text-tertiary">
+              <span className="text-primary">
+                {greeting(hour)}
+                {currentUser?.first_name ? `, ${currentUser.first_name}` : ""}
+              </span>
+              <span aria-hidden className="h-3 w-px bg-layer-3" />
+              <span className="tabular-nums">
+                {now
+                  ? `${renderFormattedDate(now, "EEEE, dd MMMM")} · ${now.toLocaleTimeString("en-IN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "Asia/Kolkata",
+                    })} IST`
+                  : ""}
+              </span>
+            </p>
+          </Reveal>
         </div>
-        <h1 className="relative max-w-4xl text-[clamp(2.4rem,6vw,4.75rem)] leading-[0.98] font-semibold tracking-[-0.03em] text-primary">
-          <RevealText text="Every site, every city." />
-        </h1>
-        <Reveal delay={0.25} className="relative">
-          <p className="max-w-2xl text-body-md-regular text-tertiary">
-            <span className="font-semibold text-primary">
-              <CountUp value={summary.active} /> active sites
-            </span>{" "}
-            across <span className="font-semibold text-primary">{cities.length}</span>{" "}
-            {cities.length === 1 ? "city" : "cities"} ·{" "}
-            <span className={cn(summary.overdue > 0 && "font-semibold text-danger-primary")}>
-              {summary.overdue} overdue
-            </span>{" "}
-            · {summary.dueSoon} due this week
-          </p>
-        </Reveal>
       </section>
 
-      {isLoading && !projects ? (
-        <E9LoadingState />
-      ) : error ? (
-        <E9ErrorState onRetry={() => mutate()} />
-      ) : (
-        <>
-          <E9Showcase
-            projects={sortProjects(
-              (projects ?? []).filter((project) => project.e9.status !== "completed"),
-              "deadline"
-            )}
-            workspaceSlug={workspaceSlug}
-          />
-          <CityMarquee cities={cities} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {doors.map((door, index) => (
+          <Door key={door.href} door={door} index={index} />
+        ))}
+      </div>
 
-          {cities.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-strong px-6 py-14 text-center text-body-sm-regular text-tertiary">
-              No active sites yet. Add a project with its city and it shows up here.
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {cities.map((city, index) => (
-                <CityCard key={city.name} city={city} workspaceSlug={workspaceSlug} index={index} />
-              ))}
-            </div>
-          )}
-
-          {upcoming.length > 0 && (
-            <section className="flex flex-col gap-4">
-              <Reveal className="flex items-end justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="text-body-xs-semibold tracking-[0.14em] text-accent-primary uppercase">
-                    Coming up
-                  </span>
-                  <h2 className="text-h4-semibold tracking-tight text-primary">Next handovers</h2>
-                </div>
-                <Link
-                  href={`/${workspaceSlug}/e9/dashboard`}
-                  className="group inline-flex items-center gap-1 text-body-sm-semibold text-accent-primary"
-                >
-                  Open the dashboard
-                  <ArrowNarrowRightOutline className="size-4 transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              </Reveal>
-              <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {upcoming.map((project, index) => (
-                  <Reveal key={project.id} delay={index * 0.05} as="li">
-                    <Link
-                      href={`/${workspaceSlug}/e9/projects/${project.id}`}
-                      className="e9-lift flex items-center gap-4 rounded-xl border border-subtle bg-surface-1 p-4 hover:border-strong"
-                    >
-                      <span className="flex w-14 shrink-0 flex-col items-center rounded-lg bg-layer-2 py-1.5">
-                        <span className="text-body-2xs-semibold text-tertiary uppercase">
-                          {renderFormattedDate(project.e9.deadline, "MMM")}
-                        </span>
-                        <span className="text-h5-semibold leading-none text-primary tabular-nums">
-                          {renderFormattedDate(project.e9.deadline, "dd")}
-                        </span>
-                      </span>
-                      <span className="flex min-w-0 flex-col">
-                        <span className="e9-link truncate text-body-sm-semibold text-primary">{project.name}</span>
-                        <span className="truncate text-body-2xs-regular text-tertiary">
-                          {project.e9.city ? cityName(project.e9.city) : "No city"} ·{" "}
-                          {getStatusMeta(project.e9.status).label}
-                        </span>
-                        <E9DeadlineText project={project} className="text-body-2xs-semibold" />
-                      </span>
-                    </Link>
-                  </Reveal>
-                ))}
-              </ol>
-            </section>
-          )}
-        </>
-      )}
+      <Reveal delay={0.4}>
+        <E9Announcements workspaceSlug={workspaceSlug} limit={3} />
+      </Reveal>
     </E9PageBody>
   );
 });

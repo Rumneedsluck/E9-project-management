@@ -13,11 +13,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeftOutline, ChevronRightOutline } from "@makeplane/propel/icons";
-import { Logo } from "@plane/blocks/emoji-icon-picker";
 import { getStatusMeta } from "./constants";
 import { getProgressPercent } from "./helpers";
 import { E9LogoMark } from "./brand";
 import type { TE9Project } from "./types";
+import { E9CertSteps, E9CodeTile } from "./ui";
 
 const reducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -124,9 +124,7 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
                 <E9LogoMark className="absolute -right-6 -bottom-6 size-48 opacity-10 sm:size-64" />
                 <div className="absolute inset-0 flex flex-col justify-between p-5 text-white sm:p-7">
                   <div className="flex items-start justify-between gap-3">
-                    <span className="grid size-12 place-items-center rounded-xl bg-white/95 shadow-raised-100">
-                      <Logo logo={project.logo_props} size={24} />
-                    </span>
+                    <E9CodeTile code={project.identifier} size="lg" inverse />
                     <span className="rounded-full bg-black/40 px-3 py-1 text-body-2xs-semibold tracking-[0.12em] uppercase backdrop-blur">
                       {stage.label}
                     </span>
@@ -161,6 +159,7 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
           <span key={active.id} className="e9-swap truncate text-h3-semibold tracking-tight text-primary">
             {active.name}
           </span>
+          <E9CertSteps project={active} />
         </div>
         {projects.length > 1 && (
           <div className="flex shrink-0 gap-2">

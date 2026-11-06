@@ -56,6 +56,12 @@ export type TE9Project = {
   can_edit: boolean;
   work_items: { total: number; completed: number };
   e9: TE9ProjectProfile;
+  /** JMC / certification state, worked out by the backend */
+  cert_state: TE9CertState;
+  billing_open: boolean;
+  allow_part_billing: boolean;
 };
+
+export type TE9CertState = "in_progress" | "jmc_pending" | "part_certified" | "certified";
 
 export type TE9ProfilePayload = Partial<Omit<TE9ProjectProfile, "updated_at">>;

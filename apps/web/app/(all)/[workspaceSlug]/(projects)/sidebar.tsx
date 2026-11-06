@@ -4,40 +4,20 @@
  * See the LICENSE file for details.
  */
 
-import { isEmpty } from "lodash-es";
 import { observer } from "mobx-react";
-// plane helpers
-import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
 // components
 import { SidebarWrapper } from "@/components/sidebar/sidebar-wrapper";
-import { SidebarFavoritesMenu } from "@/components/workspace/sidebar/favorites/favorites-menu";
-import { SidebarProjectsList } from "@/components/workspace/sidebar/projects-list";
-import { SidebarQuickActions } from "@/components/workspace/sidebar/quick-actions";
 import { SidebarMenuItems } from "@/components/workspace/sidebar/sidebar-menu-items";
-// hooks
-import { useFavorite } from "@/hooks/store/use-favorite";
-import { useUserPermissions } from "@/hooks/store/user";
 
+/*
+ * E9: the sidebar only carries E9's own pages plus Drafts and Your work.
+ * Plane's "New work item" button, Stickies, Workspace menu, favourites and project list are
+ * hidden here (not deleted) – their pages still work by link and from the workspace menu.
+ */
 export const AppSidebar = observer(function AppSidebar() {
-  // store hooks
-  const { allowPermissions } = useUserPermissions();
-  const { groupedFavorites } = useFavorite();
-
-  // derived values
-  const canPerformWorkspaceMemberActions = allowPermissions(
-    [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
-    EUserPermissionsLevel.WORKSPACE
-  );
-
-  const isFavoriteEmpty = isEmpty(groupedFavorites);
-
   return (
-    <SidebarWrapper title="Projects" quickActions={<SidebarQuickActions />}>
+    <SidebarWrapper title="Menu">
       <SidebarMenuItems />
-      {/* Favorites Menu */}
-      {canPerformWorkspaceMemberActions && !isFavoriteEmpty && <SidebarFavoritesMenu />}
-      {/* Projects List */}
-      <SidebarProjectsList />
     </SidebarWrapper>
   );
 });

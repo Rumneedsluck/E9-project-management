@@ -74,14 +74,15 @@ export function ItemLink({
 export const STATUS_META: Record<TE9BoqStatus, { label: string; pill: string; row: string }> = {
   ok: { label: "Within BOQ", pill: "bg-success-subtle text-success-primary", row: "" },
   pending: {
-    label: "Waiting for client confirmation",
-    pill: "bg-warning-subtle text-warning-primary",
-    row: "bg-warning-subtle/40",
+    label: "Waiting for client mail",
+    pill: "bg-layer-2 text-secondary",
+    row: "",
   },
+  // over the BOQ is marked every time, but in amber, not alarm red (some wastage extra is normal)
   excess: {
-    label: "Over BOQ – not approved",
-    pill: "bg-danger-subtle text-danger-primary",
-    row: "bg-danger-subtle/50",
+    label: "Over BOQ",
+    pill: "bg-warning-subtle text-warning-primary",
+    row: "bg-warning-subtle/30",
   },
 };
 
@@ -146,7 +147,7 @@ export function SmallButton({
 type TRefFilesProps = {
   slug: string;
   projectId: string;
-  kind: "po" | "mail" | "certificate" | "pi" | "wcc" | "dc_scan" | "document" | "snag";
+  kind: "po" | "mail" | "certificate" | "pi" | "wcc" | "dc_scan" | "document" | "snag" | "jmc";
   /** files belong to this PO / amendment / bill … */
   refId?: string;
   /** … or carry this label (DC number) */

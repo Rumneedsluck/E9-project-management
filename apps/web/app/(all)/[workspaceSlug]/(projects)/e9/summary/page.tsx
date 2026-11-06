@@ -18,7 +18,7 @@ function E9SummaryRoute() {
   const slug = workspaceSlug?.toString() ?? "";
   return (
     <>
-      <PageHead title={`Extra & Billing - ${E9_BRAND.name}`} />
+      <PageHead title={`Billing - ${E9_BRAND.name}`} />
       <E9Header workspaceSlug={slug} section="summary" />
       <ContentWrapper>
         <E9PageBody>

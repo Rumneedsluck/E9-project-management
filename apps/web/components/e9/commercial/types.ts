@@ -22,6 +22,9 @@ export type TE9BoqLine = {
   description: string;
   unit: TE9BoqUnit;
   qty: TE9Num;
+  amended_qty: TE9Num | null;
+  amended_note: string;
+  is_amended: boolean;
   rate: TE9Num | null;
   remarks: string;
   confirmed_change: TE9Num;
@@ -108,8 +111,10 @@ export type TE9BillSummary = {
   po: string;
   po_label: string;
   title: string;
+  certification_label?: string;
   stage: number;
   stage_text: string;
+  amount?: TE9Num;
 };
 
 export type TE9Boq = {
@@ -212,6 +217,8 @@ export type TE9Bill = {
 
 export type TE9Bills = {
   can_edit: boolean;
+  billing_open: boolean;
+  certifications: { id: string; label: string; done_on: string | null }[];
   pos: { id: string; label: string }[];
   bills: TE9Bill[];
   lines: TE9BoqLine[];
@@ -221,17 +228,61 @@ export type TE9SummaryProject = {
   id: string;
   name: string;
   identifier: string;
-  excess: TE9BoqLine[];
-  pending: TE9BoqLine[];
-  unlinked: TE9Unlinked[];
-  missing_boq_no: number;
+  cert_state: "in_progress" | "jmc_pending" | "part_certified" | "certified";
   bills: TE9BillSummary[];
   lines: number;
   billable_now: TE9Num;
   certified: TE9Num;
+  billable_amount: TE9Num;
 };
 
-export type TE9Summary = { projects: TE9SummaryProject[] };
+export type TE9Summary = {
+  projects: TE9SummaryProject[];
+  waiting_for_jmc: { id: string; name: string; identifier: string }[];
+};
+
+export type TE9Readiness = { rows: number; certified: number; installed: number };
+
+export type TE9Certification = {
+  id: string;
+  label: string;
+  floor: string;
+  scope: string;
+  is_whole: boolean;
+  jmc_number: string;
+  jmc_date: string | null;
+  client_signatory: string;
+  done_on: string | null;
+  link: string;
+  notes: string;
+  files: number;
+  bills: number;
+  readiness: TE9Readiness;
+};
+
+export type TE9Certifications = {
+  can_edit: boolean;
+  state: "in_progress" | "jmc_pending" | "part_certified" | "certified";
+  state_text: string;
+  billing_open: boolean;
+  allow_part_billing: boolean;
+  floors: string[];
+  scopes: { key: string; label: string }[];
+  overall: TE9Readiness;
+  certifications: TE9Certification[];
+};
+
+export type TE9Announcement = {
+  id: string;
+  title: string;
+  body: string;
+  important: boolean;
+  ends_on: string | null;
+  created_at: string;
+  author: string;
+};
+
+export type TE9Announcements = { can_post: boolean; announcements: TE9Announcement[] };
 
 export type TE9Snag = {
   id: string;
