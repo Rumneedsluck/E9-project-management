@@ -11,24 +11,19 @@ import { AddOutline, ArrowNarrowRightOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { cn, renderFormattedDate } from "@plane/utils";
 // hooks
-import { useUser } from "@/hooks/store/user";
 import { useAppRouter } from "@/hooks/use-app-router";
 // local
+import { E9Announcements } from "./announcements";
 import { E9_BRAND } from "./brand";
+import { E9Ring } from "./charts";
+import type { TRingSegment } from "./charts";
+import { E9_STATUSES } from "./constants";
 import { getAttentionProjects, summarizeProjects } from "./helpers";
-import { useCanCreateE9Project, useE9Projects } from "./hooks";
+import { useCanCreateE9Project, useE9Projects, useE9Summary } from "./hooks";
 import { CountUp, Reveal } from "./motion";
-import { E9ProjectCards } from "./project-cards";
 import { E9ErrorState, E9LoadingState } from "./states";
 import type { TE9Project } from "./types";
 import { E9DeadlineText, E9MemberAvatar, E9PageBody, E9PageHeader, E9Panel, E9ProgressBar } from "./ui";
-
-const greeting = () => {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-};
 
 type TStatTileProps = {
   label: string;
@@ -127,21 +122,80 @@ function TeamPanel({ projects }: { projects: TE9Project[] }) {
   );
 }
 
+const BILL_STAGES = [
+  { stage: 0, label: "Certification with client" },
+  { stage: 1, label: "PI with Accounts" },
+  { stage: 2, label: "PI to sign & submit" },
+  { stage: 3, label: "Waiting for WCC" },
+  { stage: 4, label: "Done (WCC received)" },
+];
+
+/** ₹ in lakh / crore so a ring centre stays short */
+const rupees = (value: number) => {
+  if (value >= 1e7) return `₹${(value / 1e7).toLocaleString("en-IN", { maximumFractionDigits: 2 })} Cr`;
+  if (value >= 1e5) return `₹${(value / 1e5).toLocaleString("en-IN", { maximumFractionDigits: 2 })} L`;
+  return `₹${Math.round(value).toLocaleString("en-IN")}`;
+};
+
+function StagesPanel({ projects }: { projects: TE9Project[] }) {
+  const segments: TRingSegment[] = E9_STATUSES.map((status) => ({
+    key: status.key,
+    label: status.label,
+    value: projects.filter((project) => project.e9.status === status.key).length,
+    // On hold is a status, not a step: it keeps its own colour
+    color: status.key === "on_hold" ? status.color : undefined,
+  }));
+  return (
+    <E9Panel title="Sites by stage">
+      <div className="px-5 py-5">
+        <E9Ring segments={segments} totalLabel={projects.length === 1 ? "site" : "sites"} emptyText="No sites yet" />
+      </div>
+    </E9Panel>
+  );
+}
+
+function BillingPanel({ workspaceSlug }: { workspaceSlug: string }) {
+  const { data } = useE9Summary(workspaceSlug);
+  const bills = (data?.projects ?? []).flatMap((project) => project.bills);
+  const segments: TRingSegment[] = BILL_STAGES.map(({ stage, label }) => ({
+    key: String(stage),
+    label,
+    value: bills.filter((bill) => bill.stage === stage).reduce((sum, bill) => sum + Number(bill.amount ?? 0), 0),
+  }));
+  return (
+    <E9Panel
+      title="Billing"
+      action={
+        <Link
+          href={`/${workspaceSlug}/e9/billing`}
+          className="text-body-xs-semibold text-accent-primary hover:underline"
+        >
+          Open billing
+        </Link>
+      }
+    >
+      <div className="px-5 py-5">
+        <E9Ring segments={segments} totalLabel="in bills" format={rupees} emptyText="No bills yet" />
+      </div>
+    </E9Panel>
+  );
+}
+
 export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { workspaceSlug: string }) {
-  const { data: currentUser } = useUser();
   const router = useAppRouter();
   const canCreate = useCanCreateE9Project(workspaceSlug);
   const { data: projects, error, isLoading, mutate } = useE9Projects(workspaceSlug);
 
   const summary = useMemo(() => summarizeProjects(projects ?? []), [projects]);
+  const waitingForJmc = (projects ?? []).filter((project) => project.cert_state === "jmc_pending").length;
   const today = renderFormattedDate(new Date(), "EEEE, dd MMMM yyyy");
 
   return (
     <E9PageBody>
       <E9PageHeader
-        eyebrow={E9_BRAND.productName}
-        title={`${greeting()}${currentUser?.first_name ? `, ${currentUser.first_name}` : ""}`}
-        description={`${today} · Here is how your signage and branding projects are tracking.`}
+        eyebrow={E9_BRAND.name}
+        title="Dashboard"
+        description={today}
         actions={
           canCreate && (
             <Button
@@ -165,7 +219,7 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <Reveal delay={0.0}>
               <StatTile
-                label="Active projects"
+                label="Active sites"
                 value={summary.active}
                 hint={`${summary.onHold} on hold`}
                 href={`/${workspaceSlug}/e9/projects`}
@@ -191,21 +245,26 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
             </Reveal>
             <Reveal delay={0.18}>
               <StatTile
-                label="Completed"
-                value={summary.completed}
-                hint={`of ${summary.total} projects`}
-                href={`/${workspaceSlug}/e9/projects?status=completed`}
-                tone="success"
+                label="Waiting for JMC"
+                value={waitingForJmc}
+                hint="Work done, certification not signed"
+                href={`/${workspaceSlug}/e9/projects?cert=jmc_pending&status=all`}
+                tone="warning"
               />
             </Reveal>
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <StagesPanel projects={projects ?? []} />
+            <BillingPanel workspaceSlug={workspaceSlug} />
+          </div>
+
+          <E9Announcements workspaceSlug={workspaceSlug} allowPosting />
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <AttentionPanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
             <TeamPanel projects={projects ?? []} />
           </div>
-
-          <E9ProjectCards projects={projects ?? []} workspaceSlug={workspaceSlug} />
         </>
       )}
     </E9PageBody>

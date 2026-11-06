@@ -659,8 +659,15 @@ class E9Certification(BaseModel):
         return not self.floor and not self.scope
 
     def __str__(self):
-        parts = [self.floor, self.scope]
-        return " · ".join(part for part in parts if part) or "Whole project"
+        scope = ""
+        if self.scope:
+            scope = (
+                E9ProjectScope.objects.filter(project_id=self.project_id, key=self.scope)
+                .values_list("label", flat=True)
+                .first()
+                or self.scope
+            )
+        return " · ".join(part for part in [self.floor, scope] if part) or "Whole project"
 
 
 class E9Announcement(BaseModel):

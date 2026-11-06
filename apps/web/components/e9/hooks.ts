@@ -85,12 +85,25 @@ export const useE9Bills = (slug: string, projectId: string) =>
 export const useE9Summary = (slug: string | undefined) =>
   useSWR(slug ? e9SummaryKey(slug) : null, () => e9ProjectService.getSummary(slug!), opts);
 
-/** BOQ, billing and the summary all depend on each other: refresh them together. */
+export const e9CertKey = (slug: string, projectId: string) => `E9_CERT_${slug}_${projectId}`;
+export const e9AnnouncementsKey = (slug: string) => `E9_ANNOUNCEMENTS_${slug}`;
+
+/** JMCs (whole project / floor / scope) and whether billing is open. */
+export const useE9Certifications = (slug: string, projectId: string) =>
+  useSWR(e9CertKey(slug, projectId), () => e9ProjectService.getCertifications(slug, projectId), opts);
+
+export const useE9Announcements = (slug: string | undefined) =>
+  useSWR(slug ? e9AnnouncementsKey(slug) : null, () => e9ProjectService.getAnnouncements(slug!), opts);
+
+/** BOQ, billing, certification and the summary all depend on each other: refresh them together. */
 export const refreshE9Commercial = async (slug: string, projectId: string) => {
   await Promise.all([
     mutate(e9BoqKey(slug, projectId)),
     mutate(e9BillsKey(slug, projectId)),
+    mutate(e9CertKey(slug, projectId)),
     mutate(e9SummaryKey(slug)),
+    mutate(e9ProjectsKey(slug)),
+    mutate(e9ProjectKey(slug, projectId)),
     mutate((key) => typeof key === "string" && key.startsWith(`E9_HISTORY_${slug}_${projectId}`)),
   ]);
 };
@@ -107,6 +120,7 @@ export const refreshE9Tracker = async (slug: string, projectId: string) => {
     mutate(e9BoqKey(slug, projectId)),
     mutate(e9LogsKey(slug, projectId)),
     mutate(e9BillsKey(slug, projectId)),
+    mutate(e9CertKey(slug, projectId)),
     mutate((key) => typeof key === "string" && key.startsWith(`E9_HISTORY_${slug}_${projectId}`)),
   ]);
 };

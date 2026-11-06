@@ -342,3 +342,18 @@ a:hover .e9-link,
     display: none;
   }
 }
+
+/* ---- ring charts: segments fade in one after another ---- */
+@keyframes e9-ring-in {
+  from {
+    opacity: 0;
+  }
+}
+.e9-ring-arc {
+  animation: e9-ring-in 0.6s var(--e9-ease) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .e9-ring-arc {
+    animation: none;
+  }
+}

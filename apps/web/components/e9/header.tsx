@@ -33,12 +33,12 @@ export function E9Header({ workspaceSlug, section, trail = [] }: Props) {
           }
         : section === "summary"
           ? {
-              label: "Extra & Billing",
-              href: `/${workspaceSlug}/e9/summary`,
+              label: "Billing",
+              href: `/${workspaceSlug}/e9/billing`,
               icon: <BillingsOutline className="size-4 text-tertiary" />,
             }
           : {
-              label: "E9 Projects",
+              label: "Projects",
               href: `/${workspaceSlug}/e9/projects`,
               icon: <ProjectsOutline className="size-4 text-tertiary" />,
             };

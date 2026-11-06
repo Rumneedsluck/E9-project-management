@@ -85,13 +85,14 @@ export function E9BillingPage({ workspaceSlug, project }: Props) {
       <section className="flex flex-col gap-3 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-body-md-semibold text-primary">Billing starts only after certification</h2>
+            <h2 className="text-body-md-semibold text-primary">Bills</h2>
             <p className="text-body-xs-regular text-tertiary">
-              One bill per PO (a new PO is billed separately). Each stage opens only when the one before it is done.
-              Only approved quantity (BOQ + confirmed amendments) and client-change reprints can be certified.
+              {data.billing_open
+                ? "One bill per PO (a new PO is billed separately). Each stage opens only when the one before it is done. Only approved quantity (BOQ, amended BOQ, confirmed amendments) and client-change reprints can be billed."
+                : "Locked until a JMC is signed above. An admin can allow part billing for running bills."}
             </p>
           </div>
-          {data.can_edit && data.pos.length > 0 && (
+          {data.can_edit && data.pos.length > 0 && data.billing_open && (
             <Button
               variant="primary"
               size="md"
@@ -119,9 +120,9 @@ export function E9BillingPage({ workspaceSlug, project }: Props) {
           Add the BOQ / PO on the BOQ tab first. Bills are made against a PO.
         </p>
       )}
-      {data.pos.length > 0 && data.bills.length === 0 && (
+      {data.pos.length > 0 && data.bills.length === 0 && data.billing_open && (
         <p className="rounded-xl border border-dashed border-strong px-6 py-10 text-center text-body-sm-regular text-tertiary">
-          No bills yet. {data.can_edit ? "Click “Start a bill” when the client is ready to certify." : ""}
+          No bills yet. {data.can_edit ? "Click “Start a bill” to raise the first one." : ""}
         </p>
       )}
 
@@ -478,6 +479,7 @@ function CertifyModal({
   onSave: (body: object) => Promise<boolean>;
 }) {
   const [poId, setPoId] = useState(bill?.po ?? bills.pos[0]?.id ?? "");
+  const [certId, setCertId] = useState(bills.certifications[0]?.id ?? "");
   const lines = useMemo(() => bills.lines.filter((line) => line.po === poId), [bills.lines, poId]);
   // what other bills already certified
   const certifiedElsewhere = (lineId: string) =>
@@ -499,7 +501,7 @@ function CertifyModal({
   const save = async () => {
     setBusy(true);
     const body = {
-      ...(bill ? {} : { po: poId }),
+      ...(bill ? {} : { po: poId, certification: certId || null }),
       lines: lines
         .filter((line) => qty[line.id] && Number(qty[line.id]) > 0)
         .map((line) => ({ boq_line: line.id, certified_qty: qty[line.id] })),
@@ -514,7 +516,7 @@ function CertifyModal({
       open
       onClose={onClose}
       size="xl"
-      title={bill ? `Certified quantities · ${bill.title}` : "Start a bill – certification sheet"}
+      title={bill ? `Certified quantities · ${bill.title}` : "Start a bill"}
       description="Type what the client is certifying. Suggested: installed quantity (up to what is approved) plus client-change reprints."
       footer={
         <>
@@ -524,6 +526,21 @@ function CertifyModal({
       }
     >
       <div className="flex flex-col gap-3 px-5 py-4">
+        {!bill && bills.certifications.length > 0 && (
+          <FormField
+            label="Signed JMC this bill is for"
+            hint="The JMC number and signed date are copied onto the bill."
+          >
+            <select className={inputClass} value={certId} onChange={(e) => setCertId(e.target.value)}>
+              {bills.certifications.map((cert) => (
+                <option key={cert.id} value={cert.id}>
+                  {cert.label}
+                </option>
+              ))}
+              <option value="">None (part billing)</option>
+            </select>
+          </FormField>
+        )}
         {!bill && (
           <FormField label="PO being billed">
             <select className={inputClass} value={poId} onChange={(e) => setPoId(e.target.value)}>

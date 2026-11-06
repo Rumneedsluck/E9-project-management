@@ -18,8 +18,8 @@ import { E9_BRAND } from "./brand";
 const LINKS = [
   { key: "home", label: "Home", path: "e9", icon: HomeOutline, exact: true },
   { key: "dashboard", label: "Dashboard", path: "e9/dashboard", icon: DashboardsOutline, exact: true },
-  { key: "projects", label: "E9 Projects", path: "e9/projects", icon: ProjectsOutline, exact: false },
-  { key: "summary", label: "Extra & Billing", path: "e9/summary", icon: BillingsOutline, exact: true },
+  { key: "projects", label: "Projects", path: "e9/projects", icon: ProjectsOutline, exact: false },
+  { key: "billing", label: "Billing", path: "e9/billing", icon: BillingsOutline, exact: true },
 ];
 
 /** "E9 Operations" links shown at the top of Plane's sidebar. */
@@ -36,9 +36,7 @@ export const E9SidebarSection = observer(function E9SidebarSection() {
 
   return (
     <div className="flex w-full flex-col gap-px">
-      <span className="px-2 pt-1 pb-1.5 text-body-xs-semibold whitespace-nowrap text-tertiary">
-        {E9_BRAND.productName}
-      </span>
+      <span className="px-2 pt-1 pb-1.5 text-body-xs-semibold whitespace-nowrap text-tertiary">{E9_BRAND.name}</span>
       {LINKS.map((link) => {
         const href = `/${workspaceSlug.toString()}/${link.path}`;
         const isActive = link.exact

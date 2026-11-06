@@ -117,13 +117,13 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
       {/* Alerts */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <AlertTile
-          tone={data.totals.excess_lines ? "danger" : "ok"}
+          tone={data.totals.excess_lines ? "warning" : "ok"}
           value={data.totals.excess_lines}
-          label="BOQ lines over the BOQ, not approved"
-          hint="Production on the tracker is more than allowed. Get a client mail and add an amendment."
+          label="Lines over the BOQ"
+          hint="More on the tracker than the BOQ allows (wastage extra counts too). Type the amended qty, or add a client-mail amendment."
         />
         <AlertTile
-          tone={data.totals.pending_lines ? "warning" : "ok"}
+          tone="ok"
           value={data.totals.pending_lines}
           label="Waiting for client confirmation"
           hint="Covered by a mail, but the amended BOQ / PO is not confirmed yet."
@@ -354,8 +354,9 @@ const HEADINGS = [
   "Description",
   "Status",
   "Unit",
-  "BOQ qty",
-  "Amended (+)",
+  "Original qty",
+  "Amended qty",
+  "Mail amendments (+)",
   "Waiting mail",
   "Allowed",
   "On tracker",
@@ -528,6 +529,38 @@ function POCard(props: TPOCardProps) {
                     fmt(line.qty)
                   )}
                 </td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  <span className="ml-auto flex w-28 flex-col items-end gap-0.5">
+                    {canEdit ? (
+                      <NumberCell
+                        label="Amended qty (empty = same as original)"
+                        value={line.amended_qty}
+                        onSave={(value) => props.onPatchLine(line, { amended_qty: value })}
+                      />
+                    ) : (
+                      <span>{line.amended_qty === null ? "—" : fmt(line.amended_qty)}</span>
+                    )}
+                    <span
+                      className={cn(
+                        "rounded px-1.5 text-body-2xs-semibold",
+                        line.is_amended ? "bg-accent-subtle text-accent-primary" : "bg-layer-2 text-tertiary"
+                      )}
+                      title={line.amended_note || undefined}
+                    >
+                      {line.is_amended ? "Amended" : "Same"}
+                    </span>
+                    {canEdit && line.amended_qty !== null && (
+                      <span className="w-full text-left">
+                        <TextCell
+                          label="Amended BOQ ref"
+                          value={line.amended_note}
+                          placeholder="Ref / mail"
+                          onSave={(value) => props.onPatchLine(line, { amended_note: value })}
+                        />
+                      </span>
+                    )}
+                  </span>
+                </td>
                 <td className="px-3 py-2.5 text-right text-success-primary tabular-nums">
                   {isPositive(line.confirmed_change) ? `+${fmt(line.confirmed_change)}` : "—"}
                 </td>
@@ -551,8 +584,8 @@ function POCard(props: TPOCardProps) {
                 <td
                   className={cn(
                     "px-3 py-2.5 text-right font-semibold tabular-nums",
-                    line.status === "excess" && "text-danger-primary",
-                    line.status === "pending" && "text-warning-primary"
+                    line.status === "excess" && "text-warning-primary",
+                    line.status === "pending" && "text-secondary"
                   )}
                 >
                   {isPositive(line.extra) ? `+${fmt(line.extra)}` : "—"}
