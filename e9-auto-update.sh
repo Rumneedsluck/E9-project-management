@@ -34,6 +34,8 @@ while true; do
       else
         echo "   Could not update automatically (files on this computer were changed by hand). Ask Claude."
       fi
+    else
+      echo "$(date '+%d %b %H:%M')  Checked GitHub – up to date."
     fi
   else
     echo "$(date '+%H:%M')  No internet / GitHub not reachable – will try again."
