@@ -118,3 +118,4 @@ packages/i18n/src/types/keys.generated.ts
 # Local security notes (not for version control)
 /security/
 e9_uploads/
+e9-auto-update.log
