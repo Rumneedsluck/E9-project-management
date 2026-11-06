@@ -280,3 +280,44 @@ def reprint_measure(unit, pieces, height, width):
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
     return count
+
+
+def progress(items, unit_modes):
+    """Work done (installed) for a list of tracker rows.
+
+    Sq-ft scopes count area, Nos scopes count quantity, like the Excel dashboard.
+    percent: by sq ft when the project has sq-ft rows, otherwise by Nos.
+    unit_modes: {scope key: "sqft" | "nos" | "either"}
+    """
+    totals = {
+        "rows": 0,
+        "sqft_total": Decimal(0),
+        "sqft_done": Decimal(0),
+        "nos_total": Decimal(0),
+        "nos_done": Decimal(0),
+    }
+    for item in items:
+        if not (item.floor_area.strip() or item.description.strip() or item.height_in or item.width_in or item.qty):
+            continue
+        mode = unit_modes.get(item.scope) or SCOPES.get(item.scope, ("", "", "either"))[2]
+        unit = item_unit(mode, item.height_in, item.width_in, item.unit_override)
+        amount = measured(item, unit)
+        done = item.installation_status == "Installation Done"
+        totals["rows"] += 1
+        totals[f"{unit}_total"] += amount
+        if done:
+            totals[f"{unit}_done"] += amount
+    if totals["sqft_total"] > 0:
+        percent = totals["sqft_done"] / totals["sqft_total"] * 100
+    elif totals["nos_total"] > 0:
+        percent = totals["nos_done"] / totals["nos_total"] * 100
+    else:
+        percent = Decimal(0)
+    return {
+        "rows": totals["rows"],
+        "sqft_total": str(totals["sqft_total"].quantize(Decimal("0.01"))),
+        "sqft_done": str(totals["sqft_done"].quantize(Decimal("0.01"))),
+        "nos_total": str(totals["nos_total"].quantize(Decimal("0.01"))),
+        "nos_done": str(totals["nos_done"].quantize(Decimal("0.01"))),
+        "percent": int(percent.quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
+    }

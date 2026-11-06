@@ -276,7 +276,6 @@ export function E9CertSteps({ project, compact = false }: { project: TE9Project;
       </span>
       <span className={cn("text-body-2xs-semibold whitespace-nowrap", CERT_META[state].className)}>
         {CERT_META[state].label}
-        {project.billing_open && state !== "certified" && state !== "part_certified" ? " · billing open" : ""}
       </span>
     </span>
   );

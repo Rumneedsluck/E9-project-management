@@ -63,7 +63,7 @@ def bill_stage(bill):
 
 
 STAGE_TEXT = {
-    0: "1 · Certification – waiting for client sign-off",
+    0: "1 · Certification done – give it to Accounts",
     1: "2 · Proforma invoice – with Accounts",
     2: "3 · PI – waiting for signature & submission",
     3: "4 · Work completion certificate – waiting for acknowledgement",

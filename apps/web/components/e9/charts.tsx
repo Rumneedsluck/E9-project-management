@@ -13,6 +13,7 @@
  */
 
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import { cn } from "@plane/utils";
 
 export type TRingSegment = { key: string; label: string; value: number; color?: string };
@@ -126,6 +127,149 @@ export function E9Ring({
             />
             <span className="flex-1 truncate text-secondary">{segment.label}</span>
             <span className="font-semibold text-primary tabular-nums">{format(segment.value)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Big "work done" pie: one filled share and the rest, % in the middle. */
+export function E9DonePie({
+  percent,
+  size = 200,
+  label = "done",
+  className,
+}: {
+  percent: number;
+  size?: number;
+  label?: string;
+  className?: string;
+}) {
+  const stroke = size * 0.16;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const value = Math.max(0, Math.min(100, percent));
+  const done = (value / 100) * circumference;
+  return (
+    <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        className="-rotate-90 text-primary"
+        role="img"
+        aria-label={`${value}% ${label}`}
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity={0.09}
+          strokeWidth={stroke}
+        />
+        {value > 0 && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="var(--brand-default)"
+            strokeWidth={stroke}
+            strokeLinecap={value < 100 ? "round" : "butt"}
+            strokeDasharray={`${done} ${circumference}`}
+            className="e9-pie-fill"
+            style={{ "--e9-pie-len": `${done}` } as CSSProperties}
+          />
+        )}
+      </svg>
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        <span
+          className="leading-none font-semibold tracking-tight text-primary tabular-nums"
+          style={{ fontSize: size * 0.2 }}
+        >
+          {value}%
+        </span>
+        <span className="mt-1 text-body-xs-medium text-tertiary">{label}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Small stage pie (Production, Material …): ordered statuses, ink light -> dark, problems in red. */
+export function E9StagePie({ title, segments }: { title: string; segments: TRingSegment[] }) {
+  const size = 92;
+  const stroke = 16;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const sum = segments.reduce((acc, segment) => acc + segment.value, 0);
+  const visible = segments.filter((segment) => segment.value > 0).length;
+  const gap = visible > 1 ? 2 : 0;
+  let offset = 0;
+  const last = segments[segments.length - 1];
+  const donePercent = sum ? Math.round(((last?.value ?? 0) / sum) * 100) : 0;
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-subtle bg-surface-1 p-4">
+      <span className="text-body-xs-semibold text-primary">{title}</span>
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg
+          viewBox={`0 0 ${size} ${size}`}
+          className="-rotate-90 text-primary"
+          role="img"
+          aria-label={`${title}: ${donePercent}% ${last?.label ?? ""}`}
+        >
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity={0.07}
+            strokeWidth={stroke}
+          />
+          {segments.map((segment, index) => {
+            const length = sum ? (segment.value / sum) * circumference : 0;
+            const start = offset;
+            offset += length;
+            if (length <= 0) return null;
+            return (
+              <circle
+                key={segment.key}
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                fill="none"
+                stroke={segment.color ?? "currentColor"}
+                strokeOpacity={segment.color ? 1 : inkStep(index, segments.length)}
+                strokeWidth={stroke}
+                strokeDasharray={`${Math.max(0, length - gap)} ${circumference}`}
+                strokeDashoffset={-start}
+                className="e9-ring-arc"
+              >
+                <title>{`${segment.label}: ${segment.value}`}</title>
+              </circle>
+            );
+          })}
+        </svg>
+        <span className="absolute inset-0 grid place-items-center text-body-sm-semibold text-primary tabular-nums">
+          {sum ? `${donePercent}%` : "–"}
+        </span>
+      </div>
+      <ul className="flex w-full flex-col gap-0.5">
+        {segments.map((segment, index) => (
+          <li
+            key={segment.key}
+            className={cn("flex items-center gap-2 text-body-2xs-regular", segment.value === 0 && "opacity-50")}
+          >
+            <span
+              className="size-2 shrink-0 rounded-sm text-primary"
+              style={{
+                backgroundColor: segment.color ?? "currentColor",
+                opacity: segment.color ? 1 : inkStep(index, segments.length),
+              }}
+            />
+            <span className="flex-1 leading-tight text-secondary">{segment.label}</span>
+            <span className="font-semibold text-primary tabular-nums">{segment.value}</span>
           </li>
         ))}
       </ul>

@@ -269,7 +269,8 @@ export const saveMailSettings = (settings: TE9MailSettings) => {
 /** Gmail search for a JC / DC number, in the mail account chosen in Mail settings. */
 export const mailSearchUrl = (number: string) => {
   const { account, words } = typeof window === "undefined" ? { account: "", words: "" } : readMailSettings();
-  const query = encodeURIComponent([words.trim(), number.trim()].filter(Boolean).join(" "));
+  // like the Excel link: search every folder (Inbox, Sent, CC'd) for the number
+  const query = encodeURIComponent(["in:anywhere", words.trim(), number.trim()].filter(Boolean).join(" "));
   return account.trim()
     ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(account.trim())}#search/${query}`
     : `https://mail.google.com/mail/u/0/#search/${query}`;

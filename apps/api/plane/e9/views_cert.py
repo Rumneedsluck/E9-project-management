@@ -15,7 +15,7 @@ from plane.app.views.base import BaseAPIView
 from plane.db.models import Workspace
 
 from . import certification
-from .models import E9Announcement, E9Certification, E9ProjectProfile
+from .models import E9Announcement, E9Certification
 from .services import record, record_changes, scope_map, snapshot
 from .views import _can_edit, _is_workspace_admin
 from .views_boq import Invalid, _apply, _bad, _date, _text
@@ -124,37 +124,6 @@ class E9CertificationDetailEndpoint(BaseAPIView):
         with transaction.atomic():
             record(project, request.user, "certification", "deleted", cert.id, f"JMC · {cert}", old=str(cert))
             cert.delete(soft=False)
-        return Response(_payload(request, slug, project))
-
-
-class E9CertificationSettingsEndpoint(BaseAPIView):
-    """Admin switch: open billing before the JMC (running / part bills)."""
-
-    @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
-    def patch(self, request, slug, project_id):
-        project, error = _editable(request, slug, project_id)
-        if error:
-            return error
-        value = request.data.get("allow_part_billing")
-        if not isinstance(value, bool):
-            return Response({"allow_part_billing": "Send true or false."}, status=400)
-        profile = E9ProjectProfile.objects.filter(project=project).first()
-        if profile is None:
-            return Response({"error": "Add the project details first."}, status=400)
-        old = profile.allow_part_billing
-        profile.allow_part_billing = value
-        profile.save(update_fields=["allow_part_billing", "updated_at"])
-        record(
-            project,
-            request.user,
-            "project",
-            "updated",
-            project.id,
-            project.name,
-            field="allow_part_billing",
-            old="Yes" if old else "No",
-            new="Yes" if value else "No",
-        )
         return Response(_payload(request, slug, project))
 
 

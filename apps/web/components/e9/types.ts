@@ -58,8 +58,16 @@ export type TE9Project = {
   e9: TE9ProjectProfile;
   /** JMC / certification state, worked out by the backend */
   cert_state: TE9CertState;
+  /** installed vs total on the tracker (sq ft first, Nos when there are no sq-ft rows) */
+  tracker?: {
+    rows: number;
+    sqft_total: string;
+    sqft_done: string;
+    nos_total: string;
+    nos_done: string;
+    percent: number;
+  };
   billing_open: boolean;
-  allow_part_billing: boolean;
 };
 
 export type TE9CertState = "in_progress" | "jmc_pending" | "part_certified" | "certified";

@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { cn } from "@plane/utils";
 import { statusTone, TONE_CLASSES } from "./constants";
 
@@ -12,6 +13,64 @@ const base =
   "h-8 w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 text-body-xs-regular text-primary outline-none placeholder:text-transparent hover:border-subtle focus:border-accent-strong focus:bg-surface-1 focus:placeholder:text-placeholder disabled:cursor-default disabled:hover:border-transparent";
 
 type TCommon = { disabled?: boolean; overdue?: boolean; label: string };
+
+/*
+ * Excel-style moving between typed cells (text and number boxes carry data-e9-nav):
+ *   Enter / ↓  -> same column, next row      ↑ -> previous row
+ *   ←  at the start of the text / →  at the end -> previous / next typed cell on the row
+ * Dropdowns are skipped on purpose (they stay click-to-open). Leaving a cell saves it.
+ */
+const NAV = "[data-e9-nav]";
+
+function navTarget(from: HTMLElement, direction: "up" | "down" | "left" | "right"): HTMLInputElement | null {
+  const cell = from.closest("td");
+  const row = cell?.parentElement;
+  if (!cell || !row) return null;
+  if (direction === "up" || direction === "down") {
+    const index = Array.prototype.indexOf.call(row.children, cell);
+    let next = (direction === "down" ? row.nextElementSibling : row.previousElementSibling) as HTMLElement | null;
+    while (next) {
+      const input = next.children[index]?.querySelector<HTMLInputElement>(NAV);
+      if (input && !input.disabled) return input;
+      next = (direction === "down" ? next.nextElementSibling : next.previousElementSibling) as HTMLElement | null;
+    }
+    return null;
+  }
+  let sibling = (direction === "right" ? cell.nextElementSibling : cell.previousElementSibling) as HTMLElement | null;
+  while (sibling) {
+    const input = sibling.querySelector<HTMLInputElement>(NAV);
+    if (input && !input.disabled) return input;
+    sibling = (
+      direction === "right" ? sibling.nextElementSibling : sibling.previousElementSibling
+    ) as HTMLElement | null;
+  }
+  return null;
+}
+
+/** Shared key handling. Returns true when the key moved (or left) the cell. */
+export function handleNavKey(event: KeyboardEvent<HTMLInputElement>): boolean {
+  const input = event.currentTarget;
+  const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+  const atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+  let direction: "up" | "down" | "left" | "right" | null = null;
+  if (event.key === "Enter" || event.key === "ArrowDown")
+    direction = event.shiftKey && event.key === "Enter" ? "up" : "down";
+  else if (event.key === "ArrowUp") direction = "up";
+  else if (event.key === "ArrowLeft" && atStart) direction = "left";
+  else if (event.key === "ArrowRight" && atEnd) direction = "right";
+  if (!direction) return false;
+  // keep the browser's own suggestion list working for ↑ ↓ while it is open
+  if (input.list && (event.key === "ArrowDown" || event.key === "ArrowUp")) return false;
+  event.preventDefault();
+  const target = navTarget(input, direction);
+  if (target) {
+    target.focus();
+    target.select();
+  } else if (event.key === "Enter") {
+    input.blur();
+  }
+  return true;
+}
 
 /** Text box that saves when you leave it (or press Enter). */
 export function TextCell({
@@ -38,9 +97,13 @@ export function TextCell({
       placeholder={disabled ? "" : placeholder}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
+      data-e9-nav=""
       onKeyDown={(event) => {
-        if (event.key === "Enter") (event.target as HTMLInputElement).blur();
-        if (event.key === "Escape") setDraft(value);
+        if (event.key === "Escape") {
+          setDraft(value);
+          return;
+        }
+        handleNavKey(event);
       }}
     />
   );
@@ -57,23 +120,37 @@ export function NumberCell({
   const [draft, setDraft] = useState(clean);
   useEffect(() => setDraft(clean), [clean]);
   const commit = () => {
-    if (draft === clean) return;
-    onSave(draft === "" ? null : draft);
+    const typed = draft.trim().replace(/,/g, "");
+    if (typed === clean) return;
+    if (typed !== "" && !Number.isFinite(Number(typed))) {
+      setDraft(clean); // not a number: put the old value back
+      return;
+    }
+    onSave(typed === "" ? null : typed);
   };
   return (
+    // plain text box (no up/down arrows), numbers only – like an Excel cell
     <input
       aria-label={label}
-      type="number"
+      type="text"
       inputMode="decimal"
-      min={0}
-      step="any"
+      autoComplete="off"
+      data-e9-nav=""
       className={cn(base, "text-right tabular-nums")}
       value={draft}
       disabled={disabled}
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (/^[0-9.,]*$/.test(next)) setDraft(next);
+      }}
+      onFocus={(event) => event.currentTarget.select()}
       onBlur={commit}
       onKeyDown={(event) => {
-        if (event.key === "Enter") (event.target as HTMLInputElement).blur();
+        if (event.key === "Escape") {
+          setDraft(clean);
+          return;
+        }
+        handleNavKey(event);
       }}
     />
   );

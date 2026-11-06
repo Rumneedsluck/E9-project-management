@@ -7,7 +7,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import type { ReactNode } from "react";
+import type { ClipboardEvent, ReactNode } from "react";
 import { AddOutline, ClockOutline, CloseOutline, SearchOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { setToast } from "@plane/blocks/toast";
@@ -32,7 +32,7 @@ import {
 } from "./constants";
 import type { TE9ScopeKey, TE9StageKey } from "./constants";
 import type { TE9Attachment, TE9ProjectScope, TE9ScopeItem } from "./logic";
-import { formatMeasure, isFilled, isStageOverdue, itemArea, itemMeasure } from "./logic";
+import { formatMeasure, isFilled, isStageOverdue, itemArea, itemMeasure, parsePastedDate } from "./logic";
 import { E9ItemHistoryModal, E9PhotoCell, E9PhotosModal } from "./photos-history";
 import { mailSearchUrl } from "../commercial/shared";
 import { E9ColumnsModal, E9FloorsModal, E9ImportModal, E9ScopesModal } from "./setup-panels";
@@ -145,6 +145,60 @@ const numberColumn = (
     />
   ),
 });
+
+/** How a pasted Excel cell lands in each typed column (calculated columns are skipped). */
+type TPasteSpec = {
+  field: keyof TE9ScopeItem;
+  kind: "text" | "upper" | "number" | "date" | "select";
+  options?: (item: TE9ScopeItem) => string[];
+};
+const PASTE: Record<string, TPasteSpec> = {
+  boq: { field: "boq_item_no", kind: "upper" },
+  floor: { field: "floor_area", kind: "text" },
+  plan: { field: "floor_plan_ref", kind: "text" },
+  desc: { field: "description", kind: "text" },
+  audit: { field: "site_audit_status", kind: "select", options: () => SITE_AUDIT_STATUS },
+  h: { field: "height_in", kind: "number" },
+  w: { field: "width_in", kind: "number" },
+  qty: { field: "qty", kind: "number" },
+  issue: { field: "site_issue", kind: "select", options: (item) => siteIssuesFor(item.scope) },
+  resolved: { field: "issue_resolved", kind: "select", options: () => ISSUE_RESOLVED },
+  prodh: { field: "production_height_in", kind: "number" },
+  prodw: { field: "production_width_in", kind: "number" },
+  prodqty: { field: "production_qty", kind: "number" },
+  prepress: { field: "pre_press", kind: "select", options: () => PRE_PRESS },
+  jc: { field: "jc_no", kind: "text" },
+  production: { field: "production_status", kind: "select", options: () => PRODUCTION_STATUS },
+  material: { field: "material_status", kind: "select", options: () => MATERIAL_STATUS },
+  qc: { field: "quality_check", kind: "select", options: () => QUALITY_CHECK },
+  qcby: { field: "qc_done_by", kind: "text" },
+  dc: { field: "dc_nos", kind: "text" },
+  dcqty: { field: "dc_qty", kind: "text" },
+  dispatch: { field: "dispatch_status", kind: "select", options: () => DISPATCH_STATUS },
+  install: { field: "installation_status", kind: "select", options: () => INSTALLATION_STATUS },
+  installdate: { field: "installation_date", kind: "date" },
+  installedby: { field: "installed_by", kind: "text" },
+  certh: { field: "certified_height_in", kind: "number" },
+  certw: { field: "certified_width_in", kind: "number" },
+  certqty: { field: "certified_qty", kind: "number" },
+  signoff: { field: "client_sign_off", kind: "select", options: () => CLIENT_SIGN_OFF },
+  remarks: { field: "remarks", kind: "text" },
+};
+
+/** One pasted text -> the value to save, or undefined when it does not fit the column. */
+export const pastedValue = (spec: TPasteSpec, raw: string, item: TE9ScopeItem): string | null | undefined => {
+  const value = raw.trim();
+  if (spec.kind === "text") return value;
+  if (spec.kind === "upper") return value.toUpperCase();
+  if (spec.kind === "number") {
+    const clean = value.replace(/,/g, "");
+    if (clean === "") return null;
+    return Number.isFinite(Number(clean)) && Number(clean) >= 0 ? clean : undefined;
+  }
+  if (spec.kind === "date") return value === "" ? null : (parsePastedDate(value) ?? undefined);
+  const options = spec.options?.(item) ?? [];
+  return options.find((option) => option.toLowerCase() === value.toLowerCase());
+};
 
 const COLUMNS: TColumn[] = [
   {
@@ -431,26 +485,34 @@ const COLUMNS: TColumn[] = [
     width: 110,
     band: "2 · Pre-press",
     render: (ctx) => (
-      <div className="flex items-center">
-        <TextCell
-          label="JC number"
-          value={ctx.item.jc_no}
-          disabled={ctx.disabled}
-          onSave={(v) => ctx.save({ jc_no: v })}
-        />
-        {ctx.item.jc_no && (
-          <a
-            href={mailSearchUrl(ctx.item.jc_no)}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Find the e-proof mail in Gmail"
-            className="px-1 text-body-2xs-semibold text-accent-primary"
-          >
-            Mail
-          </a>
-        )}
-      </div>
+      <TextCell
+        label="JC number"
+        value={ctx.item.jc_no}
+        disabled={ctx.disabled}
+        onSave={(v) => ctx.save({ jc_no: v })}
+      />
     ),
+  },
+  {
+    key: "eproof",
+    hideKey: "jc_no",
+    label: "E-Proof mail",
+    width: 130,
+    band: "2 · Pre-press",
+    render: (ctx) =>
+      ctx.item.jc_no ? (
+        <a
+          href={mailSearchUrl(ctx.item.jc_no)}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Opens Gmail and searches every folder for this JC number"
+          className="block truncate px-2 text-body-xs-semibold text-accent-primary hover:underline"
+        >
+          ✉ {ctx.item.jc_no} · open mail
+        </a>
+      ) : (
+        <span className="px-2 text-placeholder">—</span>
+      ),
   },
   {
     key: "production",
@@ -865,6 +927,77 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     }
   };
 
+  /** Paste a block copied from Excel: fills across and down from the cell you are in, adding rows if needed. */
+  const pasteBlock = async (event: ClipboardEvent<HTMLTableElement>) => {
+    if (!canEdit || !scopeKey) return;
+    const raw = event.clipboardData.getData("text/plain").replace(/\r/g, "").replace(/\n$/, "");
+    if (!raw.includes("\t") && !raw.includes("\n")) return; // one value: normal paste into the cell
+    const cell = (event.target as HTMLElement).closest<HTMLElement>("td[data-col]");
+    const rowId = cell?.closest<HTMLElement>("tr[data-item]")?.dataset.item;
+    if (!cell || !rowId) return;
+    event.preventDefault();
+    const matrix = raw.split("\n").map((line) => line.split("\t"));
+    const startRow = rows.findIndex((row) => row.id === rowId);
+    const startCol = columns.findIndex((column) => column.key === cell.dataset.col);
+    if (startRow < 0 || startCol < 0) return;
+    let targets = rows.slice(startRow);
+    let added = 0;
+    try {
+      if (matrix.length > targets.length) {
+        const created = await e9ProjectService.addItems(
+          workspaceSlug,
+          project.id,
+          scopeKey,
+          matrix.length - targets.length
+        );
+        added = created.length;
+        targets = [...targets, ...created];
+      }
+      let filled = 0;
+      let skipped = 0;
+      const jobs: Promise<unknown>[] = [];
+      matrix.forEach((line, r) => {
+        const item = targets[r];
+        if (!item) return;
+        const patch: Partial<Record<keyof TE9ScopeItem, string | null>> = {};
+        line.forEach((text, c) => {
+          const column = columns[startCol + c];
+          const spec = column ? PASTE[column.key] : undefined;
+          if (!spec) {
+            if (text.trim()) skipped += 1;
+            return;
+          }
+          const value = pastedValue(spec, text, item);
+          if (value === undefined) skipped += 1;
+          else {
+            patch[spec.field] = value;
+            filled += 1;
+          }
+        });
+        if (added && r >= targets.length - added && floorFilter && floorFilter !== "all" && !patch.floor_area)
+          patch.floor_area = floorFilter;
+        if (Object.keys(patch).length)
+          jobs.push(e9ProjectService.updateItem(workspaceSlug, project.id, item.id, patch as Partial<TE9ScopeItem>));
+      });
+      await Promise.all(jobs);
+      await mutate();
+      setToast({
+        type: skipped ? "warning" : "success",
+        title: `Pasted ${filled} cell${filled === 1 ? "" : "s"}${added ? `, added ${added} row${added === 1 ? "" : "s"}` : ""}`,
+        message: skipped
+          ? `${skipped} cell(s) skipped: calculated columns, or text that is not one of the column's options / not a number.`
+          : undefined,
+      });
+    } catch {
+      await mutate();
+      setToast({
+        type: "error",
+        title: "Couldn't paste everything",
+        message: "Some cells may not be saved. Please check.",
+      });
+    }
+  };
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // forget ticks when switching scope / floor / search
   useEffect(() => setSelected(new Set()), [scopeKey, floorFilter, search]);
@@ -1097,7 +1230,11 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
           {/* Sheet */}
           <div className="overflow-hidden rounded-xl border border-subtle bg-surface-1 shadow-raised-100">
             <div className="max-h-[70vh] overflow-auto">
-              <table className="table-fixed border-separate border-spacing-0 text-left" style={{ width: tableWidth }}>
+              <table
+                className="table-fixed border-separate border-spacing-0 text-left"
+                style={{ width: tableWidth }}
+                onPaste={pasteBlock}
+              >
                 <colgroup>
                   <col style={{ width: CODE_WIDTH }} />
                   {columns.map((column) => (
@@ -1184,7 +1321,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                         projectId: project.id,
                       };
                       return (
-                        <tr key={item.id} className={cn("group", ctx.empty && "opacity-70")}>
+                        <tr key={item.id} data-item={item.id} className={cn("group", ctx.empty && "opacity-70")}>
                           <td
                             className={cn(
                               "sticky left-0 z-[2] border-b border-subtle bg-surface-1 px-2 py-1 align-middle text-body-xs-semibold text-primary group-hover:bg-layer-1",
@@ -1207,6 +1344,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                           {columns.map((column) => (
                             <td
                               key={column.key}
+                              data-col={column.key}
                               className={cn("border-b border-subtle px-1 py-1 align-middle", column.className)}
                             >
                               {column.render(ctx)}

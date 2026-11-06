@@ -190,7 +190,7 @@ class TestBilling:
                 {"installation_status": "Installation Done"},
                 format="json",
             )
-        sign_jmc(client, workspace, project)
+        self.cert = sign_jmc(client, workspace, project)["certifications"][0]["id"]
         return po, line_id
 
     @pytest.mark.django_db
@@ -199,7 +199,9 @@ class TestBilling:
         bills_url = url(workspace, project, "bills/")
         # 12 installed but only 10 approved: unapproved extra cannot be certified
         response = session_client.post(
-            bills_url, {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "12"}]}, format="json"
+            bills_url,
+            {"po": po, "certification": self.cert, "lines": [{"boq_line": line_id, "certified_qty": "12"}]},
+            format="json",
         )
         assert response.status_code == 400 and "amended" in response.data["lines"]
         # a PI cannot come before certification
@@ -207,6 +209,7 @@ class TestBilling:
             bills_url,
             {
                 "po": po,
+                "certification": self.cert,
                 "pi_number": "PI-1",
                 "pi_date": "2026-11-10",
                 "lines": [{"boq_line": line_id, "certified_qty": "10"}],
@@ -216,15 +219,17 @@ class TestBilling:
         assert response.status_code == 400 and "Certification" in response.data["pi_number"]
 
         data = session_client.post(
-            bills_url, {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "10"}]}, format="json"
+            bills_url,
+            {"po": po, "certification": self.cert, "lines": [{"boq_line": line_id, "certified_qty": "10"}]},
+            format="json",
         ).data
         bill = data["bills"][0]
         assert bill["stage"] == 0 and bill["certified_amount"] == "10000.00"
         detail = bills_url + f"{bill['id']}/"
 
         steps = [
-            ({"cert_to_accounts_on": "2026-11-06"}, 400),  # needs the client's sign-off first
-            ({"cert_signed_on": "2026-11-05", "cert_to_accounts_on": "2026-11-06"}, 1),
+            # the signed JMC already filled the sign-off date; next is handing it to Accounts
+            ({"cert_to_accounts_on": "2026-11-06"}, 1),
             ({"pi_number": "PI-77", "pi_date": "2026-11-08", "pi_amount": "11800"}, 2),
             ({"wcc_date": "2026-11-12"}, 400),  # WCC only after the PI is signed and submitted
             ({"pi_signed_on": "2026-11-09", "pi_submitted_on": "2026-11-10"}, 3),
@@ -249,14 +254,20 @@ class TestBilling:
         po, line_id = self._bill(session_client, workspace, project)
         bills_url = url(workspace, project, "bills/")
         session_client.post(
-            bills_url, {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "6"}]}, format="json"
+            bills_url,
+            {"po": po, "certification": self.cert, "lines": [{"boq_line": line_id, "certified_qty": "6"}]},
+            format="json",
         )
         response = session_client.post(
-            bills_url, {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "5"}]}, format="json"
+            bills_url,
+            {"po": po, "certification": self.cert, "lines": [{"boq_line": line_id, "certified_qty": "5"}]},
+            format="json",
         )
         assert response.status_code == 400
         response = session_client.post(
-            bills_url, {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "4"}]}, format="json"
+            bills_url,
+            {"po": po, "certification": self.cert, "lines": [{"boq_line": line_id, "certified_qty": "4"}]},
+            format="json",
         )
         assert response.status_code == 201
 
@@ -267,6 +278,7 @@ class TestBilling:
             url(workspace, project, "bills/"),
             {
                 "po": po,
+                "certification": self.cert,
                 "cert_signed_on": "2026-11-05",
                 "cert_to_accounts_on": "2026-11-06",
                 "lines": [{"boq_line": line_id, "certified_qty": "10"}],
@@ -308,21 +320,20 @@ class TestCertification:
         assert session_client.delete(detail).status_code == 400
 
     @pytest.mark.django_db
-    def test_admin_can_allow_part_billing(self, session_client, workspace, project):
-        E9ProjectProfile.objects.create(project=project, workspace=workspace)
-        settings_url = url(workspace, project, "certifications/settings/")
-        member = member_client(workspace, project, 15)
-        assert member.patch(settings_url, {"allow_part_billing": True}, format="json").status_code == 403
-        data = session_client.patch(settings_url, {"allow_part_billing": True}, format="json").data
-        assert data["billing_open"] is True and data["state"] == "in_progress"
+    def test_a_signed_floor_jmc_opens_part_billing_and_bills_need_a_jmc(self, session_client, workspace, project):
         po, line_id = setup_boq(session_client, workspace, project, qty="10")
         make_signages(session_client, workspace, project, count=2)
-        response = session_client.post(
-            url(workspace, project, "bills/"),
-            {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "2"}]},
-            format="json",
-        )
+        data = sign_jmc(session_client, workspace, project, floor="2nd Floor")
+        assert data["billing_open"] is True and data["state"] == "part_certified"
+        bills_url = url(workspace, project, "bills/")
+        body = {"po": po, "lines": [{"boq_line": line_id, "certified_qty": "2"}]}
+        response = session_client.post(bills_url, body, format="json")
+        assert response.status_code == 400 and "certification" in response.data
+        cert = data["certifications"][0]["id"]
+        response = session_client.post(bills_url, {**body, "certification": cert}, format="json")
         assert response.status_code == 201
+        assert response.data["bills"][0]["certification_label"] == "2nd Floor"
+        assert response.data["bills"][0]["stage"] == 0  # next: give it to Accounts
 
     @pytest.mark.django_db
     def test_floor_and_scope_jmcs_and_project_state(self, session_client, workspace, project):
@@ -374,6 +385,28 @@ class TestCertification:
         response = member.post(url(workspace, project, "certifications/"), {"jmc_date": "2026-01-05"}, format="json")
         assert response.status_code == 403
         assert member.get(url(workspace, project, "certifications/")).status_code == 200
+
+
+@pytest.mark.contract
+class TestProgress:
+    @pytest.mark.django_db
+    def test_project_list_reports_installed_share_by_sq_ft(self, session_client, workspace, project):
+        walls = session_client.post(
+            url(workspace, project, "items/"), {"scope": "wall_graphics", "count": 2}, format="json"
+        ).data
+        # 144 x 144 in = 144 sq ft each; the first is installed
+        for index, row in enumerate(walls):
+            body = {"height_in": "144", "width_in": "144", "qty": "1"}
+            if index == 0:
+                body["installation_status"] = "Installation Done"
+            session_client.patch(url(workspace, project, f"items/{row['id']}/"), body, format="json")
+        make_signages(session_client, workspace, project, count=1, qty_each=4)
+        listing = session_client.get(f"/api/workspaces/{workspace.slug}/e9/projects/").data
+        progress = next(item["tracker"] for item in listing if item["id"] == str(project.id))
+        assert progress["rows"] == 3
+        assert progress["sqft_total"] == "288.00" and progress["sqft_done"] == "144.00"
+        assert progress["nos_total"] == "4.00" and progress["nos_done"] == "0.00"
+        assert progress["percent"] == 50
 
 
 @pytest.mark.contract

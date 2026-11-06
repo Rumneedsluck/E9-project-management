@@ -38,7 +38,6 @@ const makeProject = (overrides: Partial<TE9Project> = {}, e9: Partial<TE9Project
   work_items: { total: 0, completed: 0 },
   cert_state: "in_progress",
   billing_open: false,
-  allow_part_billing: false,
   ...overrides,
   e9: {
     client_name: "",
@@ -103,6 +102,8 @@ describe("progress", () => {
 
   it("falls back to the stage when there are no work items", () => {
     expect(getProgressPercent(makeProject({}, { status: "awarded" }))).toBe(0);
+    const tracker = { rows: 3, sqft_total: "288", sqft_done: "144", nos_total: "4", nos_done: "0", percent: 50 };
+    expect(getProgressPercent(makeProject({ tracker, work_items: { total: 6, completed: 6 } }))).toBe(50);
     expect(getProgressPercent(makeProject({}, { status: "installation" }))).toBe(71);
     expect(getProgressPercent(makeProject({}, { status: "on_hold" }))).toBe(0);
   });

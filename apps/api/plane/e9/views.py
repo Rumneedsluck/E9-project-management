@@ -11,8 +11,8 @@ from plane.app.permissions import ROLE, allow_permission
 from plane.app.views.base import BaseAPIView
 from plane.db.models import Issue, Project, ProjectMember, StateGroup, WorkspaceMember
 
-from . import certification
-from .models import E9ProjectProfile, E9ScopeItem
+from . import certification, tracker
+from .models import E9ProjectProfile, E9ProjectScope, E9ScopeItem
 from .serializers import (
     ITEM_EDITABLE_FIELDS,
     PROFILE_FIELDS,
@@ -86,6 +86,13 @@ def _serialize_projects(projects, user, slug):
         )
 
     cert_states = certification.project_states(projects)
+    # tracker progress (installed vs total) for the pies, in two queries
+    unit_modes = {}
+    for scope in E9ProjectScope.objects.filter(project_id__in=project_ids):
+        unit_modes.setdefault(scope.project_id, {})[scope.key] = scope.unit_mode
+    items_by_project = {}
+    for item in E9ScopeItem.objects.filter(project_id__in=project_ids):
+        items_by_project.setdefault(item.project_id, []).append(item)
     results = []
     for project in projects:
         profile = getattr(project, "e9_profile", None)
@@ -108,9 +115,9 @@ def _serialize_projects(projects, user, slug):
                     "completed": counts.get("completed", 0),
                 },
                 "e9": E9ProjectProfileSerializer(profile).data if profile else default_profile_data(),
+                "tracker": tracker.progress(items_by_project.get(project.id, []), unit_modes.get(project.id, {})),
                 "cert_state": cert_states[project.id][0],
                 "billing_open": cert_states[project.id][1],
-                "allow_part_billing": bool(profile and profile.allow_part_billing),
             }
         )
     return results

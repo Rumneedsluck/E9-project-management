@@ -38,6 +38,8 @@ export type TE9BoqLine = {
   status: TE9BoqStatus;
   internal_reprints: TE9Num;
   client_reprints: TE9Num;
+  extras: TE9Num;
+  certified_on_site: TE9Num;
   billable_now: TE9Num;
   max_billable: TE9Num;
   certified: TE9Num;
@@ -202,6 +204,8 @@ export type TE9Bill = {
   created_at: string;
   lines: TE9BillLine[];
   certified_amount: TE9Num;
+  certification: string | null;
+  certification_label: string;
   cert_number: string;
   cert_signed_on: string | null;
   cert_to_accounts_on: string | null;
@@ -265,7 +269,6 @@ export type TE9Certifications = {
   state: "in_progress" | "jmc_pending" | "part_certified" | "certified";
   state_text: string;
   billing_open: boolean;
-  allow_part_billing: boolean;
   floors: string[];
   scopes: { key: string; label: string }[];
   overall: TE9Readiness;

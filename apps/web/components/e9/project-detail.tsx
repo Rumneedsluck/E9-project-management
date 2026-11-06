@@ -25,6 +25,7 @@ import { E9LogsPage } from "./commercial/logs-page";
 import { E9ReprintsPage } from "./commercial/reprints-page";
 import { E9SnagsPage } from "./commercial/snags-page";
 import { E9ProjectHistory, E9SiteAuditPanel } from "./tracker/project-docs";
+import { E9SiteIssuesPage } from "./tracker/site-issues";
 import { E9TrackerDashboard } from "./tracker/tracker-dashboard";
 import { E9TrackerSheet } from "./tracker/tracker-sheet";
 import {
@@ -53,9 +54,10 @@ const empty = <span className="text-placeholder">Not set</span>;
 
 type Props = { workspaceSlug: string; projectId: string };
 
-type TView = "tracker" | "boq" | "logs" | "issues" | "certification" | "info";
-type TSub = "reprints" | "snags" | "overview" | "details" | "history";
+type TView = "overview" | "tracker" | "boq" | "logs" | "issues" | "certification" | "info";
+type TSub = "reprints" | "snags" | "site_issues" | "details" | "history";
 const VIEWS: { key: TView; label: string }[] = [
+  { key: "overview", label: "Overview" },
   { key: "tracker", label: "Tracker" },
   { key: "boq", label: "BOQ" },
   { key: "logs", label: "JC & DC" },
@@ -65,19 +67,18 @@ const VIEWS: { key: TView; label: string }[] = [
 ];
 const SUBS: Record<"issues" | "info", { key: TSub; label: string }[]> = {
   issues: [
+    { key: "site_issues", label: "Open site issues" },
     { key: "reprints", label: "Reprints & Extras" },
     { key: "snags", label: "Snag list" },
   ],
   info: [
-    { key: "overview", label: "Overview" },
     { key: "details", label: "Project details" },
     { key: "history", label: "History" },
   ],
 };
 /** old links (?view=billing, ?view=snags …) still land on the right place */
 const LEGACY: Record<string, [TView, TSub?]> = {
-  dashboard: ["info", "overview"],
-  overview: ["info", "details"],
+  dashboard: ["overview"],
   history: ["info", "history"],
   reprints: ["issues", "reprints"],
   snags: ["issues", "snags"],
@@ -86,7 +87,7 @@ const LEGACY: Record<string, [TView, TSub?]> = {
 
 const resolveView = (view: string | null, sub: string | null): [TView, TSub | undefined] => {
   if (view && LEGACY[view]) return [LEGACY[view][0], LEGACY[view][1]];
-  const main = (VIEWS.find((entry) => entry.key === view)?.key ?? "tracker") as TView;
+  const main = (VIEWS.find((entry) => entry.key === view)?.key ?? "overview") as TView;
   if (main === "issues" || main === "info") {
     const options = SUBS[main];
     return [main, (options.find((option) => option.key === sub) ?? options[0]).key];
@@ -153,7 +154,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
   const team = project.member_ids.filter((id) => id !== project.project_lead);
 
   return (
-    <E9PageBody wide={view === "tracker" || view === "boq" || view === "logs" || view === "issues"}>
+    <E9PageBody wide={view !== "info" && view !== "certification"}>
       <Link
         href={`/${workspaceSlug}/e9/projects`}
         className="inline-flex w-fit items-center gap-1.5 text-body-xs-medium text-tertiary hover:text-primary"
@@ -232,7 +233,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
       )}
 
       {view === "tracker" && <E9TrackerSheet workspaceSlug={workspaceSlug} project={project} />}
-      {view === "info" && sub === "overview" && (
+      {view === "overview" && (
         <E9TrackerDashboard
           workspaceSlug={workspaceSlug}
           project={project}
@@ -242,6 +243,9 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
       )}
       {view === "boq" && <E9BoqPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "logs" && <E9LogsPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "issues" && sub === "site_issues" && (
+        <E9SiteIssuesPage workspaceSlug={workspaceSlug} project={project} />
+      )}
       {view === "issues" && sub === "reprints" && <E9ReprintsPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "issues" && sub === "snags" && <E9SnagsPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "certification" && <E9CertificationPage workspaceSlug={workspaceSlug} project={project} />}

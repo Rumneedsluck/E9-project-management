@@ -334,3 +334,101 @@ export const stageTargetRows = (
 /** sq ft or Nos label for a number in a scope's own unit. */
 export const formatMeasure = (value: number, unit: "sqft" | "nos" | "mixed") =>
   `${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}${unit === "sqft" ? " sq ft" : unit === "nos" ? " Nos" : ""}`;
+
+/** Work done (installed) the way the Excel dashboard counts it: sq ft for sq-ft rows, Nos for the rest. */
+export const workDone = (items: TE9ScopeItem[]) => {
+  const rows = items.filter(isFilled);
+  let sqftTotal = 0;
+  let sqftDone = 0;
+  let nosTotal = 0;
+  let nosDone = 0;
+  for (const item of rows) {
+    const done = item.installation_status === "Installation Done";
+    if (item.unit === "sqft") {
+      const area = toNumber(item.area_sqft);
+      sqftTotal += area;
+      if (done) sqftDone += area;
+    } else {
+      const qty = toNumber(item.qty) || 1;
+      nosTotal += qty;
+      if (done) nosDone += qty;
+    }
+  }
+  const percent = sqftTotal > 0 ? (sqftDone / sqftTotal) * 100 : nosTotal > 0 ? (nosDone / nosTotal) * 100 : 0;
+  return { rows: rows.length, sqftTotal, sqftDone, nosTotal, nosDone, percent: Math.round(percent) };
+};
+
+/** The 5 stage pies of the Excel scope sheets (counts of rows per status). */
+export const STAGE_PIES: {
+  title: string;
+  field: keyof TE9ScopeItem;
+  statuses: { value: string; label: string; problem?: boolean }[];
+}[] = [
+  {
+    title: "Production",
+    field: "production_status",
+    statuses: [
+      { value: "Not Started", label: "Not started" },
+      { value: "In Production", label: "In production" },
+      { value: "Production Done", label: "Production done" },
+    ],
+  },
+  {
+    title: "Material",
+    field: "material_status",
+    statuses: [
+      { value: "", label: "Not raised yet" },
+      { value: "JC Raised", label: "JC raised" },
+      { value: "Partial Received", label: "Partial received" },
+      { value: "Material Received", label: "Material received" },
+    ],
+  },
+  {
+    title: "Quality check",
+    field: "quality_check",
+    statuses: [
+      { value: "Needs Revision", label: "Needs revision", problem: true },
+      { value: "Pending", label: "Pending" },
+      { value: "Passed", label: "Passed" },
+    ],
+  },
+  {
+    title: "Dispatch",
+    field: "dispatch_status",
+    statuses: [
+      { value: "Not Dispatched", label: "Not dispatched" },
+      { value: "Partially Dispatched", label: "Partly dispatched" },
+      { value: "Dispatched", label: "Dispatched" },
+      { value: "Delivered at Site", label: "Delivered at site" },
+    ],
+  },
+  {
+    title: "Installation",
+    field: "installation_status",
+    statuses: [
+      { value: "Not Started", label: "Not started" },
+      { value: "In Progress", label: "In progress" },
+      { value: "Installation Done", label: "Installation done" },
+    ],
+  },
+];
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+/** Excel dates come as 12/11/2026, 12-11-2026, 2026-11-12 or 12 Nov 2026 (day first, Indian style). */
+export const parsePastedDate = (raw: string): string | null => {
+  const value = raw.trim();
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
+  const dmy = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/.exec(value);
+  const named = /^(\d{1,2})[\s-]+([a-z]{3})[a-z]*[\s-,]+(\d{2,4})$/i.exec(value);
+  let year: number;
+  let month: number;
+  let day: number;
+  if (iso) [year, month, day] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  else if (dmy) [day, month, year] = [Number(dmy[1]), Number(dmy[2]), Number(dmy[3])];
+  else if (named) [day, month, year] = [Number(named[1]), MONTHS.indexOf(named[2].toLowerCase()) + 1, Number(named[3])];
+  else return null;
+  if (year < 100) year += 2000;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (month < 1 || month > 12 || date.getUTCDate() !== day) return null;
+  return date.toISOString().slice(0, 10);
+};
