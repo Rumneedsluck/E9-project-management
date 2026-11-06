@@ -3,6 +3,7 @@
 #
 #     bash ~/E9-project-management/e9-start.sh
 #
+# 0. Starts the database + server containers in Docker (needed after every laptop restart).
 # 1. Gets the latest version from GitHub (and updates the database if needed).
 # 2. Keeps checking GitHub every 5 minutes in the background (notes go to e9-auto-update.log).
 # 3. Starts ONLY the E9 website (port 3000) – not Plane's admin / space apps – so the laptop
@@ -13,6 +14,13 @@
 {
 cd "$(dirname "$0")" || exit 1
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+echo "E9: starting the database and server (Docker)…"
+if docker compose -f docker-compose-local.yml up -d >/dev/null 2>&1; then
+  echo "E9: database and server are running."
+else
+  echo "E9: could not start Docker containers. Is Docker Desktop open and showing 'Engine running'?"
+fi
 
 echo "E9: getting the latest version…"
 BEFORE=$(git rev-parse HEAD)
