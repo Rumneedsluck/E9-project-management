@@ -324,6 +324,25 @@ def item_code(item, scopes):
     return f"{prefix}{item.item_number}"
 
 
+PARKED_FROM = 5_000_000
+
+
+def park_item(item):
+    """Delete a tracker row so it can be brought back: hidden (deleted_at) and given a spare number."""
+    from django.db.models import Max
+    from django.utils import timezone
+
+    highest = (
+        E9ScopeItem.all_objects.filter(project_id=item.project_id, scope=item.scope).aggregate(top=Max("item_number"))[
+            "top"
+        ]
+        or 0
+    )
+    E9ScopeItem.all_objects.filter(pk=item.pk).update(
+        deleted_at=timezone.now(), item_number=max(highest, PARKED_FROM) + 1
+    )
+
+
 def renumber_scope(project, scope_key, user=None):
     """Close the gaps after rows are deleted: W1, W2, W3… in the order the rows are shown.
 
@@ -332,8 +351,7 @@ def renumber_scope(project, scope_key, user=None):
     """
     from django.db.models import F
 
-    # rows deleted earlier (soft) would block the numbers; they are gone for good
-    E9ScopeItem.all_objects.filter(project=project, scope=scope_key, deleted_at__isnull=False).delete()
+    # rows put aside by a delete keep a number of PARKED_FROM or more, out of the way
     rows = list(E9ScopeItem.objects.filter(project=project, scope=scope_key).order_by("sort_order", "item_number"))
     wanted = {row.id: index for index, row in enumerate(rows, start=1)}
     changed = [row for row in rows if row.item_number != wanted[row.id]]

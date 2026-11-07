@@ -15,15 +15,15 @@ import { useAppRouter } from "@/hooks/use-app-router";
 // local
 import { E9Announcements } from "./announcements";
 import { E9_BRAND } from "./brand";
-import { E9DonePie, E9Ring } from "./charts";
+import { E9Ring } from "./charts";
 import type { TRingSegment } from "./charts";
-import { E9_STATUSES } from "./constants";
-import { getAttentionProjects, sortProjects, summarizeProjects } from "./helpers";
+import { E9_STATUSES, getStatusMeta } from "./constants";
+import { getAttentionProjects, getProgressPercent, sortProjects, summarizeProjects } from "./helpers";
 import { useCanCreateE9Project, useE9Projects, useE9Summary } from "./hooks";
 import { CountUp, Reveal } from "./motion";
 import { E9ErrorState, E9LoadingState } from "./states";
 import type { TE9Project } from "./types";
-import { E9DeadlineText, E9MemberAvatar, E9PageBody, E9PageHeader, E9Panel, E9ProgressBar } from "./ui";
+import { E9CodeTile, E9DeadlineText, E9MemberAvatar, E9PageBody, E9PageHeader, E9Panel, E9ProgressBar } from "./ui";
 
 type TStatTileProps = {
   label: string;
@@ -142,8 +142,8 @@ function StagesPanel({ projects }: { projects: TE9Project[] }) {
     key: status.key,
     label: status.label,
     value: projects.filter((project) => project.e9.status === status.key).length,
-    // On hold is a status, not a step: it keeps its own colour
-    color: status.key === "on_hold" ? status.color : undefined,
+    // each stage keeps the colour it has everywhere else in the app
+    color: status.color,
   }));
   return (
     <E9Panel title="Sites by stage">
@@ -181,40 +181,63 @@ function BillingPanel({ workspaceSlug }: { workspaceSlug: string }) {
   );
 }
 
-/** One small pie per active project: how much of its tracker is installed. */
-function ProjectPiesPanel({ projects, workspaceSlug }: { projects: TE9Project[]; workspaceSlug: string }) {
+/** Projects with their progress: one clean row each (installed share from the tracker). */
+function ProjectsProgressPanel({ projects, workspaceSlug }: { projects: TE9Project[]; workspaceSlug: string }) {
   const active = sortProjects(
     projects.filter((project) => project.e9.status !== "completed"),
     "deadline"
   );
   return (
-    <E9Panel title="Work done per project">
+    <E9Panel
+      title="Projects"
+      action={
+        <Link
+          href={`/${workspaceSlug}/e9/projects`}
+          className="text-body-xs-semibold text-accent-primary hover:underline"
+        >
+          View all
+        </Link>
+      }
+    >
       {active.length === 0 ? (
         <p className="px-5 py-8 text-center text-body-sm-regular text-tertiary">No active projects.</p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {active.map((project) => {
-            const progress = project.tracker;
-            const hasRows = !!progress && progress.rows > 0;
+        <ul className="divide-y divide-subtle">
+          {active.map((project, index) => {
+            const progress = getProgressPercent(project);
+            const stage = getStatusMeta(project.e9.status);
             return (
               <li key={project.id}>
                 <Link
                   href={`/${workspaceSlug}/e9/projects/${project.id}`}
-                  className="e9-lift flex h-full flex-col items-center gap-3 rounded-xl border border-subtle p-4 text-center hover:border-strong"
+                  className="group grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 px-5 py-3.5 transition-colors hover:bg-layer-1-hover md:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.6fr)_auto]"
                 >
-                  {hasRows ? (
-                    <E9DonePie percent={progress.percent} size={96} label="done" />
-                  ) : (
-                    <span className="grid size-24 place-items-center rounded-full border border-dashed border-strong text-body-2xs-medium text-tertiary">
-                      No tracker
+                  <E9CodeTile code={project.identifier} />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-body-sm-semibold text-primary">{project.name}</span>
+                    <span className="truncate text-body-xs-regular text-tertiary">
+                      {[project.e9.client_name, project.e9.city].filter(Boolean).join(" · ") || "—"}
                     </span>
-                  )}
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="line-clamp-2 text-body-xs-semibold text-primary">{project.name}</span>
-                    <span className="text-body-2xs-regular text-tertiary">
-                      {project.identifier}
-                      {project.e9.city ? ` · ${project.e9.city}` : ""}
+                  </span>
+                  <span className="hidden items-center gap-2 text-body-xs-medium text-secondary md:flex">
+                    <span className="size-2 rounded-full" style={{ backgroundColor: stage.color }} />
+                    {stage.label}
+                  </span>
+                  <span className="col-span-2 flex items-center gap-3 md:col-span-1">
+                    <span className="h-2 flex-1 overflow-hidden rounded-full bg-layer-3">
+                      <span
+                        className="e9-grow block h-full rounded-full"
+                        style={{
+                          width: `${progress}%`,
+                          background: "linear-gradient(90deg, #DA1E26, #F2542D 60%, #F5A524)",
+                          animationDelay: `${index * 0.05}s`,
+                        }}
+                      />
                     </span>
+                    <span className="w-10 text-right text-body-sm-semibold text-primary tabular-nums">{progress}%</span>
+                  </span>
+                  <span className="hidden text-right md:block">
+                    <E9DeadlineText project={project} />
                   </span>
                 </Link>
               </li>
@@ -299,7 +322,7 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
             </Reveal>
           </div>
 
-          <ProjectPiesPanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
+          <ProjectsProgressPanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <StagesPanel projects={projects ?? []} />

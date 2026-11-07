@@ -81,6 +81,15 @@ export class E9ProjectService extends APIService {
       });
   }
 
+  /** Undo a delete: the row comes back in its old place. */
+  async restoreItem(workspaceSlug: string, projectId: string, itemId: string): Promise<TE9ScopeItem> {
+    return this.post(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/items/${itemId}/restore/`)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
   async deleteItem(workspaceSlug: string, projectId: string, itemId: string): Promise<void> {
     return this.delete(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/items/${itemId}/`)
       .then(() => undefined)
@@ -181,6 +190,7 @@ export class E9ProjectService extends APIService {
     project_fields: string[];
     site_visits: number;
     boq_lines?: number;
+    photos?: number;
     reprints?: number;
     snags?: number;
     job_cards?: number;

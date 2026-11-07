@@ -16,6 +16,7 @@ import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
 import { E9RefFiles, ItemLink, SmallButton, showError } from "./shared";
 import type { TE9Snag, TE9Snags } from "./types";
+import { e9Confirm } from "../confirm";
 
 type Props = { workspaceSlug: string; project: TE9Project };
 
@@ -294,8 +295,8 @@ export function E9SnagsPage({ workspaceSlug, project }: Props) {
                       {canEdit && (
                         <SmallButton
                           tone="danger"
-                          onClick={() => {
-                            if (!window.confirm("Delete this snag?")) return;
+                          onClick={async () => {
+                            if (!(await e9Confirm("Delete this snag?"))) return;
                             void send("Couldn't delete", () =>
                               e9ProjectService.deleteSnag(workspaceSlug, project.id, snag.id)
                             );

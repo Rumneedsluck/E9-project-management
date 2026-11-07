@@ -12,6 +12,7 @@ import { e9ProjectService } from "@/services/e9/project.service";
 import { useE9History, useE9Photos } from "../hooks";
 import type { TE9Attachment, TE9Change, TE9ScopeItem } from "./logic";
 import { E9Modal } from "./modal";
+import { e9Confirm } from "../confirm";
 
 const errorText = (error: unknown) =>
   error && typeof error === "object"
@@ -106,7 +107,7 @@ export function E9PhotosModal({ open, onClose, workspaceSlug, projectId, item, d
   };
 
   const remove = async (photo: TE9Attachment) => {
-    if (!window.confirm(`Delete ${photo.name || "this photo"}?`)) return;
+    if (!(await e9Confirm(`Delete ${photo.name || "this photo"}?`))) return;
     await e9ProjectService.deleteAttachment(workspaceSlug, projectId, photo.id);
     if (preview?.id === photo.id) setPreview(null);
     await mutate();

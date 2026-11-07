@@ -11,6 +11,7 @@ import { cn, renderFormattedDate } from "@plane/utils";
 import { e9ProjectService } from "@/services/e9/project.service";
 import { inputClass, showError } from "./commercial/shared";
 import { useE9Announcements } from "./hooks";
+import { e9Confirm } from "./confirm";
 
 /** Team notices. Everyone reads them; workspace admins post and remove them. */
 export function E9Announcements({
@@ -59,7 +60,7 @@ export function E9Announcements({
   };
 
   const remove = async (id: string) => {
-    if (!window.confirm("Remove this announcement for everyone?")) return;
+    if (!(await e9Confirm("Remove this announcement for everyone?"))) return;
     try {
       await mutate(e9ProjectService.deleteAnnouncement(workspaceSlug, id), { revalidate: false });
     } catch (error) {

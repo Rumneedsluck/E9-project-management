@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeftOutline, EditOutline, NewTabArrowOutline } from "@makeplane/propel/icons";
+import { EditOutline, NewTabArrowOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { cn, renderFormattedDate } from "@plane/utils";
 // hooks
@@ -154,25 +154,15 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
   const team = project.member_ids.filter((id) => id !== project.project_lead);
 
   return (
-    <E9PageBody wide={view !== "info" && view !== "certification"}>
-      <Link
-        href={`/${workspaceSlug}/e9/projects`}
-        className="inline-flex w-fit items-center gap-1.5 text-body-xs-medium text-tertiary hover:text-primary"
-      >
-        <ArrowLeftOutline className="size-3.5" />
-        Projects
-      </Link>
-
-      {/* Title block */}
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <E9CodeTile code={project.identifier} size="lg" className="h-14 w-16 rounded-2xl" />
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <h1 className="text-h3-semibold tracking-tight break-words text-primary">{project.name}</h1>
-            <p className="text-body-sm-regular text-tertiary">
+    <E9PageBody wide={view !== "info" && view !== "certification"} tight>
+      {/* Title: one compact line so the sheet starts high on the screen */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <E9CodeTile code={project.identifier} size="lg" className="rounded-xl" />
+          <div className="flex min-w-0 flex-col">
+            <h1 className="truncate text-h5-semibold tracking-tight text-primary">{project.name}</h1>
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-xs-regular text-tertiary">
               {[e9.client_name, e9.city].filter(Boolean).join(" · ") || "No client added yet"}
-            </p>
-            <span className="flex flex-wrap items-center gap-3">
               <E9StatusBadge status={e9.status} />
               <E9CertSteps project={project} compact />
             </span>
@@ -182,8 +172,8 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
           <Button
             stretch="auto"
             variant="secondary"
-            size="lg"
-            icon={<NewTabArrowOutline className="size-4" />}
+            size="md"
+            icon={<NewTabArrowOutline className="size-3.5" />}
             label="Work items"
             onClick={() => router.push(`/${workspaceSlug}/projects/${project.id}/issues`)}
           />
@@ -194,9 +184,9 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
             <Button
               stretch="auto"
               variant="primary"
-              size="lg"
-              icon={<EditOutline className="size-4" />}
-              label="Edit project"
+              size="md"
+              icon={<EditOutline className="size-3.5" />}
+              label="Edit"
               onClick={() => router.push(`/${workspaceSlug}/e9/projects/${project.id}/edit`)}
             />
           )}
@@ -205,7 +195,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
 
       {/* Tabs */}
       <div
-        className="-mb-2 flex gap-1 overflow-x-auto border-b border-subtle"
+        className="-mb-1 flex gap-1 overflow-x-auto border-b border-subtle"
         role="tablist"
         aria-label="Project views"
       >
@@ -217,7 +207,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
             aria-selected={view === entry.key}
             onClick={() => setView(entry.key)}
             className={cn(
-              "-mb-px shrink-0 border-b-2 px-4 py-2.5 text-body-sm-semibold whitespace-nowrap transition-colors",
+              "-mb-px shrink-0 border-b-2 px-3.5 py-2 text-body-sm-semibold whitespace-nowrap transition-colors",
               view === entry.key
                 ? "border-[var(--brand-default)] text-primary"
                 : "border-transparent text-tertiary hover:text-secondary"

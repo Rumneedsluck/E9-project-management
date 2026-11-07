@@ -432,3 +432,39 @@ export const parsePastedDate = (raw: string): string | null => {
   if (month < 1 || month > 12 || date.getUTCDate() !== day) return null;
   return date.toISOString().slice(0, 10);
 };
+
+/*
+ * DCs in one cell, like "3500=190, 3501=60" (DC number = quantity on it).
+ * Stored as two lists the backend and Excel already use: dc_nos "3500, 3501" + dc_qty "190, 60".
+ * A DC without a quantity keeps its place with "-" so numbers and quantities never shift.
+ */
+const splitParts = (text: string) =>
+  text
+    .split(/[,;\n]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+export const joinDcs = (dcNos: string, dcQty: string): string => {
+  const nos = splitParts(dcNos.replace(/\//g, ","));
+  const qtys = splitParts(dcQty.replace(/\//g, ","));
+  return nos
+    .map((no, index) => {
+      const qty = qtys[index];
+      return qty && qty !== "-" ? `${no}=${qty}` : no;
+    })
+    .join(", ");
+};
+
+export const splitDcs = (text: string): { dc_nos: string; dc_qty: string } => {
+  const pairs = splitParts(text).map((part) => {
+    const [no, qty] = part.split(/\s*[=:]\s*/);
+    const clean = (qty ?? "").replace(/[^0-9.]/g, "");
+    return { no: (no ?? "").trim(), qty: clean && Number.isFinite(Number(clean)) ? clean : "" };
+  });
+  const valid = pairs.filter((pair) => pair.no);
+  const anyQty = valid.some((pair) => pair.qty);
+  return {
+    dc_nos: valid.map((pair) => pair.no).join(", "),
+    dc_qty: anyQty ? valid.map((pair) => pair.qty || "-").join(", ") : "",
+  };
+};

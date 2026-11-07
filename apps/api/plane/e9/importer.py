@@ -15,11 +15,13 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 import openpyxl
+from django.core.files.base import ContentFile
 from django.db import models, transaction
 
 from . import tracker
 from .models import E9Attachment, E9ProjectProfile, E9ScopeItem
-from .services import ensure_floors, ensure_scopes, record
+from .excel_images import sheet_images
+from .services import PARKED_FROM, ensure_floors, ensure_scopes, record
 
 
 class ImportProblem(Exception):
@@ -214,7 +216,9 @@ def _read_scope_sheet(sheet, scope_key, warnings):
         warnings.append(f"'{sheet.title}': header row not found, sheet skipped.")
         return []
     rows = []
-    for row in sheet.iter_rows(min_row=header_row + 1, max_row=sheet.max_row, values_only=True):
+    for row_number, row in enumerate(
+        sheet.iter_rows(min_row=header_row + 1, max_row=sheet.max_row, values_only=True), start=header_row + 1
+    ):
         values = {}
         for position, cell in enumerate(row):
             field = columns.get(position)
@@ -232,6 +236,7 @@ def _read_scope_sheet(sheet, scope_key, warnings):
                 record_values[field] = _text(raw)
         if not any(record_values.get(field) not in (None, "") for field in FILLED_FIELDS):
             continue  # empty ready-made row
+        record_values["_row"] = row_number  # where pasted photos for this item sit
         rows.append(record_values)
     return rows
 
@@ -241,7 +246,7 @@ def _clean_item(values, scope_key, sheet_title, warnings):
     item = {}
     label = values.get("description") or values.get("floor_area") or ""
     for field, value in values.items():
-        if field in ("number", "unit"):
+        if field in ("number", "unit", "_row"):
             continue
         if field in CHOICES:
             if value not in CHOICES[field]:
@@ -586,7 +591,15 @@ def import_tracker(project, upload, user):
     if not sheets:
         raise ImportProblem("No scope sheets (Wall Graphics, Glass Film, ...) were found in this file.")
 
-    report = {"items": {}, "floors": [], "project_fields": [], "site_visits": 0, "coordinator": coordinator}
+    report = {
+        "items": {},
+        "floors": [],
+        "project_fields": [],
+        "site_visits": 0,
+        "coordinator": coordinator,
+        "photos": 0,
+    }
+    pictures = sheet_images(upload)
     with transaction.atomic():
         scopes = {scope.key: scope for scope in ensure_scopes(project, enabled_keys=set(), user=user)}
 
@@ -611,9 +624,13 @@ def import_tracker(project, upload, user):
                 scope.save()
             existing = E9ScopeItem.all_objects.filter(project=project, scope=scope_key)
             taken = set(existing.values_list("item_number", flat=True))
-            next_number = (existing.aggregate(models.Max("item_number"))["item_number__max"] or 0) + 1
+            next_number = (
+                existing.filter(item_number__lt=PARKED_FROM).aggregate(models.Max("item_number"))["item_number__max"]
+                or 0
+            ) + 1
             order = existing.aggregate(models.Max("sort_order"))["sort_order__max"] or 0
             created = []
+            rows_of_created = []
             for position, values in enumerate(rows, start=1):
                 number = values.get("number")
                 try:
@@ -637,10 +654,29 @@ def import_tracker(project, upload, user):
                         **fields,
                     )
                 )
+                rows_of_created.append(values.get("_row"))
                 if fields.get("floor_area"):
                     floors.append(fields["floor_area"])
             E9ScopeItem.objects.bulk_create(created)
             report["items"][scope.label] = len(created)
+            # photos pasted on a row of this sheet -> that item's photos
+            by_row = {row: item for row, item in zip(rows_of_created, created) if row}
+            for row, name, data, content_type in pictures.get(title, []):
+                item = by_row.get(row)
+                if item is None:
+                    continue
+                photo = E9Attachment(
+                    project=project,
+                    workspace_id=project.workspace_id,
+                    item=item,
+                    kind="photo",
+                    name=f"{scope.prefix}{item.item_number} {name}"[:255],
+                    size=len(data),
+                    content_type=content_type[:120],
+                )
+                photo.file.save(name, ContentFile(data), save=False)
+                photo.save(created_by_id=user.id)
+                report["photos"] += 1
 
         report["floors"] = [floor.name for floor in ensure_floors(project, floors, user)]
 

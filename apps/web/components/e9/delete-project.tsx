@@ -48,7 +48,7 @@ export function E9DeleteProjectButton({
 
   return (
     <>
-      <Button stretch="auto" variant="danger-outline" size="lg" label="Delete project" onClick={() => setOpen(true)} />
+      <Button stretch="auto" variant="danger-outline" size="md" label="Delete" onClick={() => setOpen(true)} />
       <E9Modal
         open={open}
         onClose={() => {

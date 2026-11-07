@@ -570,6 +570,7 @@ export function E9ImportModal({ open, onClose, workspaceSlug, project }: TProps)
               ))}
               {report.floors.length > 0 && <li>New floors: {report.floors.join(", ")}</li>}
               {report.site_visits > 0 && <li>Site visits / audit reports: {report.site_visits}</li>}
+              {!!report.photos && <li>Photos from the Excel: {report.photos}</li>}
               {!!report.boq_lines && <li>BOQ lines: {report.boq_lines}</li>}
               {!!report.reprints && <li>Reprints &amp; extras: {report.reprints}</li>}
               {!!report.snags && <li>Snags: {report.snags}</li>}

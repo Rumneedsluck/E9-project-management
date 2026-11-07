@@ -15,6 +15,7 @@ import { e9ProjectService } from "@/services/e9/project.service";
 import type { TE9Attachment } from "../tracker/logic";
 import { uploadFiles } from "../tracker/photos-history";
 import type { TE9BoqStatus, TE9BoqUnit } from "./types";
+import { e9Confirm } from "../confirm";
 
 export const errorText = (error: unknown) => {
   if (error && typeof error === "object") {
@@ -184,7 +185,7 @@ export function E9RefFiles({ slug, projectId, kind, refId, label, canUpload, add
   };
 
   const remove = async (file: TE9Attachment) => {
-    if (!window.confirm(`Delete ${file.name}?`)) return;
+    if (!(await e9Confirm(`Delete ${file.name}?`))) return;
     await e9ProjectService.deleteAttachment(slug, projectId, file.id);
     await mutate();
   };
