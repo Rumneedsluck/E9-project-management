@@ -83,7 +83,8 @@ export const AuthenticationWrapper = observer(function AuthenticationWrapper(pro
       (workspace) => workspace.slug === currentWorkspaceSlug
     );
 
-    if (isCurrentWorkspaceValid >= 0) redirectionRoute = `/${currentWorkspaceSlug}`;
+    // E9 Creative: land on the E9 dashboard after signing in
+    if (isCurrentWorkspaceValid >= 0) redirectionRoute = `/${currentWorkspaceSlug}/e9`;
 
     return redirectionRoute;
   };
