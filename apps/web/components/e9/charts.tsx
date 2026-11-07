@@ -12,7 +12,7 @@
  * row to see it in the middle.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { CSSProperties } from "react";
 import { cn } from "@plane/utils";
 
@@ -25,7 +25,23 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const GAP = 3; // px of surface between segments
 
 /** opacity step for the i-th of n ordered segments (0.18 … 1) */
-const inkStep = (index: number, count: number) => (count <= 1 ? 1 : 0.18 + (0.82 * index) / (count - 1));
+/*
+ * Ordered steps get "traffic" colours that read at a glance in dark mode:
+ * first = not started (grey), middle = under way (amber → sky), last = done (green).
+ */
+const RAMPS: Record<number, string[]> = {
+  1: ["#22C55E"],
+  2: ["#6B7280", "#22C55E"],
+  3: ["#6B7280", "#F59E0B", "#22C55E"],
+  4: ["#6B7280", "#F59E0B", "#38BDF8", "#22C55E"],
+  5: ["#6B7280", "#F59E0B", "#FB923C", "#38BDF8", "#22C55E"],
+};
+export const rampColor = (index: number, count: number) => {
+  const ramp = RAMPS[Math.min(Math.max(count, 1), 5)];
+  if (count <= 5) return ramp[index] ?? ramp[ramp.length - 1];
+  // longer lists: spread across the 5-step ramp
+  return ramp[Math.round((index / (count - 1)) * 4)];
+};
 
 export function E9Ring({
   segments,
@@ -81,8 +97,7 @@ export function E9Ring({
                 cy={SIZE / 2}
                 r={RADIUS}
                 fill="none"
-                stroke={segment.color ?? "currentColor"}
-                strokeOpacity={segment.color ? 1 : inkStep(index, segments.length)}
+                stroke={segment.color ?? rampColor(index, segments.length)}
                 strokeWidth={active === segment.key ? STROKE + 4 : STROKE}
                 strokeDasharray={`${length} ${CIRCUMFERENCE - length}`}
                 strokeDashoffset={-start}
@@ -121,8 +136,7 @@ export function E9Ring({
             <span
               className="size-2.5 shrink-0 rounded-sm text-primary"
               style={{
-                backgroundColor: segment.color ?? "currentColor",
-                opacity: segment.color ? 1 : inkStep(index, segments.length),
+                backgroundColor: segment.color ?? rampColor(index, segments.length),
               }}
             />
             <span className="flex-1 truncate text-secondary">{segment.label}</span>
@@ -151,6 +165,7 @@ export function E9DonePie({
   const circumference = 2 * Math.PI * radius;
   const value = Math.max(0, Math.min(100, percent));
   const done = (value / 100) * circumference;
+  const gradientId = useId();
   return (
     <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
       <svg
@@ -159,6 +174,14 @@ export function E9DonePie({
         role="img"
         aria-label={`${value}% ${label}`}
       >
+        <defs>
+          {/* warm E9 sweep: red → coral → amber */}
+          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#DA1E26" />
+            <stop offset="55%" stopColor="#F2542D" />
+            <stop offset="100%" stopColor="#F5A524" />
+          </linearGradient>
+        </defs>
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -174,7 +197,7 @@ export function E9DonePie({
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="var(--brand-default)"
+            stroke={`url(#${gradientId})`}
             strokeWidth={stroke}
             strokeLinecap={value < 100 ? "round" : "butt"}
             strokeDasharray={`${done} ${circumference}`}
@@ -196,7 +219,7 @@ export function E9DonePie({
   );
 }
 
-/** Small stage pie (Production, Material …): ordered statuses, ink light -> dark, problems in red. */
+/** Small stage pie (Production, Material …): grey not started → amber under way → green done; problems in red. */
 export function E9StagePie({ title, segments }: { title: string; segments: TRingSegment[] }) {
   const size = 92;
   const stroke = 16;
@@ -239,8 +262,7 @@ export function E9StagePie({ title, segments }: { title: string; segments: TRing
                 cy={size / 2}
                 r={radius}
                 fill="none"
-                stroke={segment.color ?? "currentColor"}
-                strokeOpacity={segment.color ? 1 : inkStep(index, segments.length)}
+                stroke={segment.color ?? rampColor(index, segments.length)}
                 strokeWidth={stroke}
                 strokeDasharray={`${Math.max(0, length - gap)} ${circumference}`}
                 strokeDashoffset={-start}
@@ -264,8 +286,7 @@ export function E9StagePie({ title, segments }: { title: string; segments: TRing
             <span
               className="size-2 shrink-0 rounded-sm text-primary"
               style={{
-                backgroundColor: segment.color ?? "currentColor",
-                opacity: segment.color ? 1 : inkStep(index, segments.length),
+                backgroundColor: segment.color ?? rampColor(index, segments.length),
               }}
             />
             <span className="flex-1 leading-tight text-secondary">{segment.label}</span>

@@ -18,6 +18,7 @@ import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
 import { ItemLink, SmallButton, fmt, showError, unitText } from "./shared";
 import type { TE9Boq, TE9Reprint } from "./types";
+import { e9Confirm } from "../confirm";
 
 type Props = { workspaceSlug: string; project: TE9Project };
 
@@ -366,8 +367,8 @@ export function E9ReprintsPage({ workspaceSlug, project }: Props) {
                         {canEdit && (
                           <SmallButton
                             tone="danger"
-                            onClick={() => {
-                              if (!window.confirm(`Delete this ${KIND_LABEL[row.kind].toLowerCase()}?`)) return;
+                            onClick={async () => {
+                              if (!(await e9Confirm(`Delete this ${KIND_LABEL[row.kind].toLowerCase()}?`))) return;
                               void send("Couldn't delete", () =>
                                 e9ProjectService.boqDelete(workspaceSlug, project.id, "reprints", row.id)
                               );

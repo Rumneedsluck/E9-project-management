@@ -98,6 +98,7 @@ export function TextCell({
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
       data-e9-nav=""
+      data-dirty={draft.trim() !== value ? "1" : undefined}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           setDraft(value);
@@ -136,6 +137,7 @@ export function NumberCell({
       inputMode="decimal"
       autoComplete="off"
       data-e9-nav=""
+      data-dirty={draft.trim().replace(/,/g, "") !== clean ? "1" : undefined}
       className={cn(base, "text-right tabular-nums")}
       value={draft}
       disabled={disabled}

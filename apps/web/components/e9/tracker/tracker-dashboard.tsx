@@ -89,32 +89,17 @@ type Props = {
 function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
   const done = workDone(items);
   const rows = items.filter(isFilled);
-  const fmtNum = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
   return (
-    <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,22rem)_1fr]">
-      <div className="flex flex-col items-center gap-5 rounded-xl border border-subtle bg-surface-1 p-6 shadow-raised-100">
-        <span className="self-start text-body-xs-semibold tracking-[0.14em] text-tertiary uppercase">Work done</span>
-        <E9DonePie percent={done.percent} label="installed" />
-        <dl className="grid w-full grid-cols-2 gap-3 text-center">
-          {done.sqftTotal > 0 && (
-            <div className="rounded-lg bg-layer-1 px-3 py-2">
-              <dt className="text-body-2xs-medium text-tertiary">Sq ft installed</dt>
-              <dd className="text-body-sm-semibold text-primary tabular-nums">
-                {fmtNum(done.sqftDone)} / {fmtNum(done.sqftTotal)}
-              </dd>
-            </div>
-          )}
-          {done.nosTotal > 0 && (
-            <div className="rounded-lg bg-layer-1 px-3 py-2">
-              <dt className="text-body-2xs-medium text-tertiary">Nos installed</dt>
-              <dd className="text-body-sm-semibold text-primary tabular-nums">
-                {fmtNum(done.nosDone)} / {fmtNum(done.nosTotal)}
-              </dd>
-            </div>
-          )}
-        </dl>
+    <section className="flex flex-col gap-4">
+      {/* the whole project's outcome: one big pie */}
+      <div className="e9-glow-card relative flex flex-col items-center gap-3 overflow-hidden rounded-2xl border border-subtle bg-surface-1 px-6 py-8 shadow-raised-100">
+        <span className="text-body-xs-semibold tracking-[0.18em] text-tertiary uppercase">
+          Work done · whole project
+        </span>
+        <E9DonePie percent={done.percent} size={280} label="installed" />
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 2xl:grid-cols-5">
+      {/* the 5 stages, smaller, in one row */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {STAGE_PIES.map((pie) => (
           <E9StagePie
             key={pie.title}
@@ -123,7 +108,7 @@ function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
               key: status.value || "blank",
               label: status.label,
               value: rows.filter((item) => String(item[pie.field] ?? "") === status.value).length,
-              color: status.problem ? "var(--brand-default)" : undefined,
+              color: status.problem ? "#EF4444" : undefined,
             }))}
           />
         ))}

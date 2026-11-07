@@ -64,6 +64,7 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
     };
   }, [bend, projects.length]);
 
+  const animation = useRef<number | null>(null);
   const goTo = useCallback(
     (index: number) => {
       const track = trackRef.current;
@@ -71,13 +72,47 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
       if (!track || count === 0) return;
       const target = track.children[((index % count) + count) % count] as HTMLElement | undefined;
       if (!target) return;
-      track.scrollTo({
-        left: target.offsetLeft - (track.clientWidth - target.offsetWidth) / 2,
-        behavior: reducedMotion() ? "auto" : "smooth",
-      });
+      const to = target.offsetLeft - (track.clientWidth - target.offsetWidth) / 2;
+      if (reducedMotion()) {
+        track.scrollLeft = to;
+        return;
+      }
+      // own easing (fast start, soft landing) – smoother than the browser's smooth scroll
+      if (animation.current) cancelAnimationFrame(animation.current);
+      const from = track.scrollLeft;
+      const start = performance.now();
+      const duration = 750;
+      track.style.scrollSnapType = "none";
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 4);
+        track.scrollLeft = from + (to - from) * eased;
+        if (t < 1) animation.current = requestAnimationFrame(step);
+        else {
+          animation.current = null;
+          track.style.scrollSnapType = "";
+        }
+      };
+      animation.current = requestAnimationFrame(step);
     },
     [projects.length]
   );
+
+  // point at a side card and it glides to the centre (short pause so passing the mouse over doesn't jump)
+  const glideTimer = useRef<number | null>(null);
+  const cancelGlide = useCallback(() => {
+    if (glideTimer.current) window.clearTimeout(glideTimer.current);
+    glideTimer.current = null;
+  }, []);
+  const glideTo = useCallback(
+    (index: number) => {
+      cancelGlide();
+      if (index === current) return;
+      glideTimer.current = window.setTimeout(() => goTo(index), 220);
+    },
+    [cancelGlide, current, goTo]
+  );
+  useEffect(() => cancelGlide, [cancelGlide]);
 
   // slow auto-play; stops while you point at it
   useEffect(() => {
@@ -112,6 +147,8 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
                 href={`/${workspaceSlug}/e9/projects/${project.id}`}
                 aria-label={`${project.name}, ${stage.label}`}
                 aria-current={index === current ? "true" : undefined}
+                onMouseEnter={() => glideTo(index)}
+                onMouseLeave={cancelGlide}
                 className="group relative aspect-[16/9] w-[min(720px,78vw)] shrink-0 snap-center overflow-hidden rounded-2xl shadow-raised-200 will-change-transform"
               >
                 <div

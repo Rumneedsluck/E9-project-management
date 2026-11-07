@@ -28,6 +28,7 @@ import { E9BillingPage } from "./billing-page";
 import { printJmcSheet } from "./jmc-sheet";
 import { E9RefFiles, FormField, SmallButton, inputClass, showError } from "./shared";
 import type { TE9Certification, TE9Certifications, TE9Readiness } from "./types";
+import { e9Confirm } from "../confirm";
 
 type Props = { workspaceSlug: string; project: TE9Project };
 
@@ -246,8 +247,8 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
                     {data.can_edit && cert.bills === 0 && (
                       <SmallButton
                         tone="danger"
-                        onClick={() => {
-                          if (!window.confirm(`Delete the JMC for ${partLabel(cert)}?`)) return;
+                        onClick={async () => {
+                          if (!(await e9Confirm(`Delete the JMC for ${partLabel(cert)}?`))) return;
                           void send("Couldn't delete", () =>
                             e9ProjectService.deleteCertification(workspaceSlug, project.id, cert.id)
                           );

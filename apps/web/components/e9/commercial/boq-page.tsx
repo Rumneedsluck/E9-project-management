@@ -35,6 +35,7 @@ import {
 } from "./shared";
 import { E9VariancePanel } from "./variance";
 import type { TE9Amendment, TE9Boq, TE9BoqLine, TE9PO } from "./types";
+import { e9Confirm } from "../confirm";
 
 type Props = { workspaceSlug: string; project: TE9Project };
 
@@ -69,8 +70,8 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
       return false;
     }
   };
-  const remove = (kind: TE9BoqKind, id: string, what: string) => {
-    if (!window.confirm(`Delete ${what}? This cannot be undone.`)) return;
+  const remove = async (kind: TE9BoqKind, id: string, what: string) => {
+    if (!(await e9Confirm(`Delete ${what}? This cannot be undone.`))) return;
     void send(`Couldn't delete ${what}`, () => e9ProjectService.boqDelete(workspaceSlug, project.id, kind, id));
   };
 

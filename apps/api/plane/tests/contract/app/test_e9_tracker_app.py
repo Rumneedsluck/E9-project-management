@@ -119,6 +119,29 @@ class TestTrackerItemsAPI:
         assert sorted(row["item_code"] for row in listing.data["items"]) == ["GF1", "W1", "W2", "W3"]
 
     @pytest.mark.django_db
+    def test_undo_delete_brings_the_row_back_in_place(self, session_client, workspace, project):
+        url = items_url(workspace.slug, project.id)
+        rows = session_client.post(url, {"scope": "wall_graphics", "count": 3}, format="json").data
+        session_client.patch(
+            item_url(workspace.slug, project.id, rows[1]["id"]), {"description": "Lobby"}, format="json"
+        )
+        # delete W2: W3 becomes W2
+        assert session_client.delete(item_url(workspace.slug, project.id, rows[1]["id"])).status_code == 204
+        codes = {row["id"]: row["item_code"] for row in session_client.get(url).data["items"]}
+        assert codes == {rows[0]["id"]: "W1", rows[2]["id"]: "W2"}
+        # a new row still continues the normal numbering
+        extra = session_client.post(url, {"scope": "wall_graphics"}, format="json").data[0]
+        assert extra["item_code"] == "W3"
+        # undo: the old W2 is back as W2 with its data, the rows after it move down
+        restored = session_client.post(item_url(workspace.slug, project.id, rows[1]["id"]) + "restore/")
+        assert restored.status_code == 200 and restored.data["item_code"] == "W2"
+        assert restored.data["description"] == "Lobby"
+        codes = {row["id"]: row["item_code"] for row in session_client.get(url).data["items"]}
+        assert codes == {rows[0]["id"]: "W1", rows[1]["id"]: "W2", rows[2]["id"]: "W3", extra["id"]: "W4"}
+        # nothing to restore twice
+        assert session_client.post(item_url(workspace.slug, project.id, rows[1]["id"]) + "restore/").status_code == 404
+
+    @pytest.mark.django_db
     def test_edit_row_updates_area_and_stage(self, session_client, workspace, project):
         created = session_client.post(
             items_url(workspace.slug, project.id), {"scope": "wall_graphics"}, format="json"

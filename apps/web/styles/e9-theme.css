@@ -375,3 +375,33 @@ a:hover .e9-link,
     animation: none;
   }
 }
+
+/* ---- warm glow behind the big work-done pie (lives up dark mode) ---- */
+.e9-glow-card::before {
+  content: "";
+  position: absolute;
+  inset: -40% -10% auto;
+  height: 120%;
+  background: radial-gradient(45% 55% at 50% 40%, rgb(218 30 38 / 0.16), rgb(245 165 36 / 0.06) 55%, transparent 75%);
+  pointer-events: none;
+}
+.e9-glow-card > * {
+  position: relative;
+}
+
+/* ---- small pop-in for menus ---- */
+@keyframes e9-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.e9-pop {
+  animation: e9-pop 0.18s var(--e9-ease) both;
+  transform-origin: top right;
+}
+@media (prefers-reduced-motion: reduce) {
+  .e9-pop {
+    animation: none;
+  }
+}

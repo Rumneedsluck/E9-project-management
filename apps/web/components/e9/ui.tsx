@@ -13,6 +13,7 @@ import { useMember } from "@/hooks/store/use-member";
 // local
 import { E9_STAGES, getPriorityMeta, getStageIndex, getStatusMeta } from "./constants";
 import { describeDeadline, getDeadlineState, getInitials } from "./helpers";
+import { E9ConfirmHost } from "./confirm";
 import { E9Intro } from "./intro";
 import { RevealText, useInView } from "./motion";
 import type { TE9CertState, TE9Project, TE9ProjectPriority, TE9ProjectStatus } from "./types";
@@ -282,15 +283,26 @@ export function E9CertSteps({ project, compact = false }: { project: TE9Project;
 }
 
 /** Content container used by every E9 page: generous padding on desktop, tighter on phones. */
-export function E9PageBody({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
+export function E9PageBody({
+  children,
+  wide = false,
+  tight = false,
+}: {
+  children: ReactNode;
+  wide?: boolean;
+  /** less space around (project pages: the sheet starts higher) */
+  tight?: boolean;
+}) {
   return (
     <div
       className={cn(
-        "e9-enter mx-auto flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8",
+        "e9-enter mx-auto flex w-full flex-col px-4 sm:px-6 lg:px-8",
+        tight ? "gap-4 py-4 lg:py-5" : "gap-6 py-6 lg:py-8",
         wide ? "max-w-none" : "max-w-[1280px]"
       )}
     >
       <E9Intro />
+      <E9ConfirmHost />
       {children}
     </div>
   );

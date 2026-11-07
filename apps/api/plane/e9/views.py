@@ -20,7 +20,17 @@ from .serializers import (
     E9ScopeItemSerializer,
     default_profile_data,
 )
-from .services import ensure_floors, item_code, record, record_changes, renumber_scope, scope_map, snapshot
+from .services import (
+    ensure_floors,
+    item_code,
+    PARKED_FROM,
+    park_item,
+    record,
+    record_changes,
+    renumber_scope,
+    scope_map,
+    snapshot,
+)
 
 
 def _is_workspace_admin(user, slug):
@@ -255,7 +265,11 @@ class E9ScopeItemListEndpoint(BaseAPIView):
             # Lock the project row so two people adding rows at once get different codes
             Project.objects.select_for_update().filter(pk=project.id).first()
             existing = E9ScopeItem.all_objects.filter(project=project, scope=scope)
-            last_number = existing.aggregate(models.Max("item_number"))["item_number__max"] or 0
+            # rows put aside by a delete (spare numbers from PARKED_FROM) don't count
+            last_number = (
+                existing.filter(item_number__lt=PARKED_FROM).aggregate(models.Max("item_number"))["item_number__max"]
+                or 0
+            )
             last_order = existing.aggregate(models.Max("sort_order"))["sort_order__max"] or 0
             created = [
                 E9ScopeItem.objects.create(
@@ -326,7 +340,9 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
             # lock the project so two people deleting at once renumber one after the other
             Project.objects.select_for_update().filter(pk=item.project_id).first()
             scope_key, project, deleted_id = item.scope, item.project, item.id
-            item.delete(soft=False)
+            # put aside (not erased) so Undo can bring the row back with its photos; its number moves out of
+            # the way so the codes can close the gap
+            park_item(item)
             record(project, request.user, "item", "deleted", deleted_id, code, old=details or code)
             moved = renumber_scope(project, scope_key, request.user)
             if moved:
@@ -341,3 +357,25 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
                     new=f"{moved} code(s) moved up to close the gap after {code}",
                 )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class E9ScopeItemRestoreEndpoint(BaseAPIView):
+    """Undo a delete: the row comes back in its old place (codes after it move down one)."""
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
+    def post(self, request, slug, project_id, item_id):
+        if not _visible_projects(request.user, slug).filter(pk=project_id).exists():
+            return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_update_items(request.user, slug, project_id):
+            return Response({"error": "Guests can view the tracker but not change it."}, status=403)
+        item = E9ScopeItem.all_objects.filter(project_id=project_id, pk=item_id, deleted_at__isnull=False).first()
+        if item is None:
+            return Response({"error": "Nothing to bring back."}, status=status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            Project.objects.select_for_update().filter(pk=project_id).first()
+            E9ScopeItem.all_objects.filter(pk=item.pk).update(deleted_at=None)
+            renumber_scope(item.project, item.scope, request.user)
+            item.refresh_from_db()
+            scopes = scope_map(item.project)
+            record(item.project, request.user, "item", "restored", item.id, item_code(item, scopes))
+        return Response(E9ScopeItemSerializer(item, context={"scopes": scopes}).data, status=status.HTTP_200_OK)

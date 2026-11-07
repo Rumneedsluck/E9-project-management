@@ -10,7 +10,9 @@ import {
   floorProgress,
   isFilled,
   isStageOverdue,
+  joinDcs,
   parsePastedDate,
+  splitDcs,
   scopeProgress,
   stageTargetRows,
   trackerKpis,
@@ -199,5 +201,17 @@ describe("pasting dates from Excel", () => {
     expect(parsePastedDate("12 Nov 2026")).toBe("2026-11-12");
     expect(parsePastedDate("31/02/2026")).toBeNull();
     expect(parsePastedDate("soon")).toBeNull();
+  });
+});
+
+describe("DCs typed in one cell", () => {
+  it("splits 3500=190, 3501=60 into the two stored lists and back", () => {
+    expect(splitDcs("3500=190, 3501=60")).toEqual({ dc_nos: "3500, 3501", dc_qty: "190, 60" });
+    expect(splitDcs("3500 : 190 sq ft; 3501")).toEqual({ dc_nos: "3500, 3501", dc_qty: "190, -" });
+    expect(splitDcs("3500")).toEqual({ dc_nos: "3500", dc_qty: "" });
+    expect(splitDcs("")).toEqual({ dc_nos: "", dc_qty: "" });
+    expect(joinDcs("3500, 3501", "190, 60")).toBe("3500=190, 3501=60");
+    expect(joinDcs("3500, 3501", "190, -")).toBe("3500=190, 3501");
+    expect(joinDcs("3500", "")).toBe("3500");
   });
 });

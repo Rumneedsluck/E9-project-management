@@ -17,6 +17,7 @@ import { E9Panel } from "../ui";
 import { E9Modal } from "../tracker/modal";
 import { E9RefFiles, FormField, SmallButton, fmt, inputClass, money, showError, unitText } from "./shared";
 import type { TE9Bill, TE9Bills } from "./types";
+import { e9Confirm } from "../confirm";
 
 type Props = { workspaceSlug: string; project: TE9Project };
 
@@ -124,8 +125,8 @@ export function E9BillingPage({ workspaceSlug, project }: Props) {
             send("Couldn't save", () => e9ProjectService.updateBill(workspaceSlug, project.id, bill.id, body))
           }
           onEditLines={() => setCreating(bill)}
-          onDelete={() => {
-            if (!window.confirm(`Delete ${bill.title}?`)) return;
+          onDelete={async () => {
+            if (!(await e9Confirm(`Delete ${bill.title}?`))) return;
             void send("Couldn't delete", () => e9ProjectService.deleteBill(workspaceSlug, project.id, bill.id));
           }}
         />

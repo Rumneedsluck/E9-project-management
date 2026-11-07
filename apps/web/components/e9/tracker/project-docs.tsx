@@ -15,6 +15,7 @@ import { E9ErrorState, E9LoadingState } from "../states";
 import { E9Panel } from "../ui";
 import type { TE9Attachment } from "./logic";
 import { E9HistoryList, uploadFiles } from "./photos-history";
+import { e9Confirm } from "../confirm";
 
 const inputClass =
   "h-9 w-full rounded-lg border border-subtle bg-surface-1 px-3 text-body-sm-regular text-primary outline-none focus:border-accent-strong";
@@ -84,7 +85,7 @@ export function E9SiteAuditPanel({ workspaceSlug, projectId }: TProps) {
   };
 
   const remove = async (doc: TE9Attachment) => {
-    if (!window.confirm(`Delete ${doc.label || doc.name || "this report"}?`)) return;
+    if (!(await e9Confirm(`Delete ${doc.label || doc.name || "this report"}?`))) return;
     await e9ProjectService.deleteAttachment(workspaceSlug, projectId, doc.id);
     await mutate();
   };
