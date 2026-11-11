@@ -6,7 +6,7 @@
 
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { ClipboardEvent, ReactNode } from "react";
+import type { CSSProperties, FocusEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { AddOutline, ClockOutline, CloseOutline, SearchOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { setToast } from "@plane/blocks/toast";
@@ -44,10 +44,14 @@ import {
   joinDcs,
   parsePastedDate,
   splitDcs,
+  splitFloors,
 } from "./logic";
 import { E9ItemHistoryModal, E9PhotoCell, E9PhotosModal } from "./photos-history";
 import { mailSearchUrl } from "../commercial/shared";
 import { e9Confirm } from "../confirm";
+import { canCountUp, fillValues } from "./fill";
+import type { TFillMode } from "./fill";
+import { E9FloorPickerModal } from "./floor-picker";
 import { E9ReprintQuickModal } from "./reprint-quick";
 import { E9ColumnsModal, E9FloorsModal, E9ImportModal, E9ScopesModal } from "./setup-panels";
 
@@ -77,6 +81,8 @@ type TRowContext = {
   boqLineForScope: Map<string, string> | null;
   scopeLabel: (key: string) => string;
   openReprint: () => void;
+  /** pick how many floors and which */
+  openFloors: () => void;
   workspaceSlug: string;
   projectId: string;
 };
@@ -230,6 +236,34 @@ export const pastedValue = (spec: TPasteSpec, raw: string, item: TE9ScopeItem): 
   return options.find((option) => option.toLowerCase() === value.toLowerCase());
 };
 
+/** The text a cell holds (what Excel would copy). */
+export const cellText = (spec: TPasteSpec, item: TE9ScopeItem): string => {
+  if (spec.kind === "dcs") return joinDcs(item.dc_nos, item.dc_qty);
+  const value = item[spec.field];
+  return value === null || value === undefined ? "" : String(value);
+};
+
+/** The change that writing `text` into a cell makes; undefined when the text does not fit the column. */
+export const patchFor = (spec: TPasteSpec, text: string, item: TE9ScopeItem): Partial<TE9ScopeItem> | undefined => {
+  const value = pastedValue(spec, text, item);
+  if (value === undefined) return undefined;
+  if (spec.kind === "dcs") return splitDcs(value ?? "") as Partial<TE9ScopeItem>;
+  return { [spec.field]: value } as Partial<TE9ScopeItem>;
+};
+
+type TCell = { row: number; col: number };
+type TSel = { anchor: TCell; focus: TCell };
+type TBlock = { r1: number; r2: number; c1: number; c2: number };
+const blockOf = (sel: TSel): TBlock => ({
+  r1: Math.min(sel.anchor.row, sel.focus.row),
+  r2: Math.max(sel.anchor.row, sel.focus.row),
+  c1: Math.min(sel.anchor.col, sel.focus.col),
+  c2: Math.max(sel.anchor.col, sel.focus.col),
+});
+const sameCell = (a: TCell, b: TCell) => a.row === b.row && a.col === b.col;
+const isBlock = (block: TBlock) => block.r1 !== block.r2 || block.c1 !== block.c2;
+type TFillChip = { x: number; y: number; block: TBlock; toRow: number; mode: TFillMode };
+
 const COLUMNS: TColumn[] = [
   {
     key: "boq",
@@ -302,14 +336,26 @@ const COLUMNS: TColumn[] = [
     width: 150,
     band: "Item details",
     render: (ctx) => (
-      <TextCell
-        label="Floor / area"
-        value={ctx.item.floor_area}
-        disabled={ctx.disabled}
-        placeholder="Pick or type a floor"
-        listId={ctx.floorListId}
-        onSave={(value) => ctx.save({ floor_area: value })}
-      />
+      <div className="flex items-center gap-0.5">
+        <TextCell
+          label="Floor / area"
+          value={ctx.item.floor_area}
+          disabled={ctx.disabled}
+          placeholder="Type a floor"
+          onSave={(value) => ctx.save({ floor_area: value })}
+        />
+        {!ctx.disabled && (
+          <button
+            type="button"
+            onClick={ctx.openFloors}
+            aria-label={`Choose floors for ${ctx.item.item_code}`}
+            title="How many floors, and which"
+            className="grid size-7 shrink-0 place-items-center rounded-md text-body-xs-semibold text-tertiary hover:bg-layer-1-hover hover:text-accent-primary"
+          >
+            ▤
+          </button>
+        )}
+      </div>
     ),
   },
   {
@@ -1015,7 +1061,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     () => [
       ...new Set([
         ...(floors ?? []).map((floor) => floor.name),
-        ...items.map((item) => item.floor_area).filter(Boolean),
+        ...items.flatMap((item) => splitFloors(item.floor_area)),
       ]),
     ],
     [floors, items]
@@ -1036,6 +1082,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   }, [boq]);
   const scopeLabel = useCallback((key: string) => scopes?.find((entry) => entry.key === key)?.label ?? key, [scopes]);
   const [reprintItem, setReprintItem] = useState<TE9ScopeItem | null>(null);
+  const [floorPickItem, setFloorPickItem] = useState<TE9ScopeItem | null>(null);
 
   // ---- stage groups that slide open / shut like a door (remembered per project) ----
   const bandStoreKey = `e9-open-bands-${project.id}`;
@@ -1073,7 +1120,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     return items
       .filter((item) => item.scope === scopeKey)
       .filter(
-        (item) => floorFilter === "all" || (floorFilter === "" ? !item.floor_area : item.floor_area === floorFilter)
+        (item) =>
+          floorFilter === "all" ||
+          (floorFilter === "" ? !item.floor_area.trim() : splitFloors(item.floor_area).includes(floorFilter))
       )
       .filter((item) =>
         !query
@@ -1123,7 +1172,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       else await e9ProjectService.deleteItem(workspaceSlug, project.id, id);
     }
   };
-  const travel = async (direction: "undo" | "redo") => {
+  const travel = async (direction: "undo" | "redo", quiet = false) => {
     if (historyBusy.current) return;
     const from = direction === "undo" ? undoStack : redoStack;
     const to = direction === "undo" ? redoStack : undoStack;
@@ -1137,7 +1186,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     try {
       await runStep(step, direction);
       to.current = [...to.current, step];
-      setToast({ type: "success", title: `${direction === "undo" ? "Undone" : "Redone"}: ${step.label}` });
+      if (!quiet) setToast({ type: "success", title: `${direction === "undo" ? "Undone" : "Redone"}: ${step.label}` });
     } catch {
       setToast({ type: "error", title: `Couldn't ${direction}`, message: "Please try again." });
     } finally {
@@ -1217,19 +1266,11 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   };
 
   /** Paste a block copied from Excel: fills across and down from the cell you are in, adding rows if needed. */
-  const pasteBlock = async (event: ClipboardEvent<HTMLTableElement>) => {
+  /** Paste a block of cells starting at (startRow, startCol); rows are added if the block is taller than the sheet. */
+  const pasteMatrix = async (matrix: string[][], startRow: number, startCol: number) => {
     if (!canEdit || !scopeKey) return;
-    const raw = event.clipboardData.getData("text/plain").replace(/\r/g, "").replace(/\n$/, "");
-    if (!raw.includes("\t") && !raw.includes("\n")) return; // one value: normal paste into the cell
-    const cell = (event.target as HTMLElement).closest<HTMLElement>("td[data-col]");
-    const rowId = cell?.closest<HTMLElement>("tr[data-item]")?.dataset.item;
-    if (!cell || !rowId) return;
-    event.preventDefault();
-    const matrix = raw.split("\n").map((line) => line.split("\t"));
-    const startRow = rows.findIndex((row) => row.id === rowId);
     // paste runs across the columns you can see (folded stage groups are skipped, like hidden Excel columns)
     const pasteColumns = columns.filter((column) => column.band === ALWAYS_OPEN_BAND || openBands.has(column.band));
-    const startCol = pasteColumns.findIndex((column) => column.key === cell.dataset.col);
     if (startRow < 0 || startCol < 0) return;
     let targets = rows.slice(startRow);
     let added = 0;
@@ -1361,6 +1402,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 
   // ---- speed: rows are memoised (one edit redraws one row) and long sheets draw only what is on screen ----
   const rowActionsRef = useRef<TRowHandlers | null>(null);
+  const startFillRef = useRef<((event: ReactPointerEvent) => void) | null>(null);
   const rowActions = useMemo<TRowActions>(
     () => ({
       save: (item, patch) => void rowActionsRef.current?.save(item, patch),
@@ -1370,7 +1412,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       openPhotos: (item) => setPhotoItem(item),
       openInstallPhotos: (item) => setInstallPhotoItem(item),
       openReprint: (item) => setReprintItem(item),
+      openFloors: (item) => setFloorPickItem(item),
       openHistory: (item) => setHistoryItem(item),
+      startFill: (event) => startFillRef.current?.(event),
     }),
     []
   );
@@ -1412,6 +1456,348 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     syncWindow();
   }, [rows.length, isLoading, scopeKey, syncWindow]);
 
+  // ---- Excel-style selection: drag over cells, fill handle, copy / paste, Ctrl + D ----
+  const [sel, setSel] = useState<TSel | null>(null);
+  const [fillTo, setFillTo] = useState<number | null>(null);
+  const [fillChip, setFillChip] = useState<TFillChip | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const selRef = useRef<TSel | null>(null);
+  selRef.current = sel;
+  const fillToRef = useRef<number | null>(null);
+  const dragRef = useRef<{ start: TCell; active: boolean } | null>(null);
+  const gridCols = columns.filter((column) => column.band === ALWAYS_OPEN_BAND || openBands.has(column.band));
+  const gridKey = gridCols.map((column) => column.key).join(",");
+  const fillIndex = useMemo(
+    () => new Map(gridKey ? gridKey.split(",").map((key, index) => [key, index]) : []),
+    [gridKey]
+  );
+  const rowIndex = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows]);
+  useEffect(() => setSel(null), [scopeKey, floorFilter, search]);
+
+  const cellAt = (target: EventTarget | null): TCell | null => {
+    if (!(target instanceof Element)) return null;
+    const td = target.closest<HTMLElement>("td[data-col]");
+    const id = td?.closest<HTMLElement>("tr[data-item]")?.dataset.item;
+    const row = id ? rowIndex.get(id) : undefined;
+    const col = td ? fillIndex.get(td.dataset.col ?? "") : undefined;
+    return row === undefined || col === undefined ? null : { row, col };
+  };
+
+  /** Save several cells at once as ONE undo step. */
+  const applyPatches = async (changes: { item: TE9ScopeItem; patch: Partial<TE9ScopeItem> }[], label: string) => {
+    const real = changes
+      .map(({ item, patch }) => ({
+        item,
+        patch: Object.fromEntries(
+          Object.entries(patch).filter(
+            ([key, value]) => String(item[key as keyof TE9ScopeItem] ?? "") !== String(value ?? "")
+          )
+        ) as Partial<TE9ScopeItem>,
+      }))
+      .filter(({ patch }) => Object.keys(patch).length > 0);
+    if (!real.length) return 0;
+    const steps = real.map(({ item, patch }) => ({
+      id: item.id,
+      before: Object.fromEntries(
+        Object.keys(patch).map((key) => [key, item[key as keyof TE9ScopeItem] ?? null])
+      ) as Partial<TE9ScopeItem>,
+      after: patch,
+    }));
+    const byId = new Map(real.map(({ item, patch }) => [item.id, patch]));
+    await mutate(
+      (current) =>
+        current && {
+          ...current,
+          items: current.items.map((row) => (byId.has(row.id) ? { ...row, ...byId.get(row.id) } : row)),
+        },
+      { revalidate: false }
+    );
+    // remembered at once (like a normal edit), so a quick Ctrl + Z undoes exactly this
+    pushHistory({ kind: "patch", label, changes: steps });
+    try {
+      await Promise.all(
+        steps.map((step) => e9ProjectService.updateItem(workspaceSlug, project.id, step.id, step.after))
+      );
+    } catch {
+      setToast({
+        type: "error",
+        title: `Couldn't save the ${label}`,
+        message: "Some cells may not be saved. Please check.",
+      });
+    }
+    await mutate();
+    return steps.length;
+  };
+
+  /** Fill the cells above or below a block with its values (copy, or count up like Excel). */
+  const fillBlock = async (block: TBlock, toRow: number, mode: TFillMode, label = "fill") => {
+    if (!canEdit) return 0;
+    const down = toRow > block.r2;
+    if (!down && toRow >= block.r1) return 0;
+    const first = down ? block.r2 + 1 : toRow;
+    const last = down ? toRow : block.r1 - 1;
+    const patches = new Map<number, Partial<TE9ScopeItem>>();
+    for (let c = block.c1; c <= block.c2; c += 1) {
+      const spec = gridCols[c] ? PASTE[gridCols[c].key] : undefined;
+      if (!spec) continue;
+      const source = rows.slice(block.r1, block.r2 + 1).map((item) => cellText(spec, item));
+      fillValues(source, last - first + 1, down ? "down" : "up", mode).forEach((value, i) => {
+        const r = down ? first + i : last - i;
+        const item = rows[r];
+        const patch = item ? patchFor(spec, value, item) : undefined;
+        if (patch) patches.set(r, { ...patches.get(r), ...patch });
+      });
+    }
+    return applyPatches(
+      [...patches].map(([r, patch]) => ({ item: rows[r], patch })),
+      label
+    );
+  };
+
+  const seriesPossible = (block: TBlock) => {
+    for (let c = block.c1; c <= block.c2; c += 1) {
+      const spec = gridCols[c] ? PASTE[gridCols[c].key] : undefined;
+      if (spec && canCountUp(rows.slice(block.r1, block.r2 + 1).map((item) => cellText(spec, item)))) return true;
+    }
+    return false;
+  };
+
+  const fillDown = async () => {
+    const current = selRef.current;
+    if (!current || !canEdit) return;
+    const block = blockOf(current);
+    if (block.r1 === block.r2) {
+      // one cell: copy the cell above into it
+      if (block.r1 === 0) return;
+      await fillBlock({ ...block, r1: block.r1 - 1, r2: block.r1 - 1 }, block.r1, "copy", "fill down");
+    } else {
+      await fillBlock({ ...block, r2: block.r1 }, block.r2, "copy", "fill down");
+    }
+  };
+
+  const copyText = (): string | null => {
+    const current = selRef.current;
+    if (!current) return null;
+    const block = blockOf(current);
+    return rows
+      .slice(block.r1, block.r2 + 1)
+      .map((item) =>
+        gridCols
+          .slice(block.c1, block.c2 + 1)
+          .map((column) => (PASTE[column.key] ? cellText(PASTE[column.key], item) : ""))
+          .join("\t")
+      )
+      .join("\n");
+  };
+
+  /** Paste: a block lands at the top-left of the selection; one value fills every selected cell. */
+  const pasteText = async (text: string) => {
+    const current = selRef.current;
+    if (!current || !canEdit) return;
+    const block = blockOf(current);
+    const matrix = text
+      .replace(/\r/g, "")
+      .replace(/\n$/, "")
+      .split("\n")
+      .map((line) => line.split("\t"));
+    const single = matrix.length === 1 && matrix[0].length === 1;
+    if (single && isBlock(block)) {
+      const filled = Array.from({ length: block.r2 - block.r1 + 1 }, () =>
+        Array.from({ length: block.c2 - block.c1 + 1 }, () => matrix[0][0])
+      );
+      await pasteMatrix(filled, block.r1, block.c1);
+    } else await pasteMatrix(matrix, block.r1, block.c1);
+  };
+
+  /** Drag the little square: fill the rows you pass over. Ctrl while releasing = copy instead of count up. */
+  const startFill = (event: ReactPointerEvent) => {
+    const current = selRef.current;
+    if (!current || !canEdit) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const block = blockOf(current);
+    setDragging(true);
+    const rowUnder = (x: number, y: number) => {
+      const id = document.elementFromPoint(x, y)?.closest<HTMLElement>("tr[data-item]")?.dataset.item;
+      return id ? rowIndex.get(id) : undefined;
+    };
+    const move = (ev: PointerEvent) => {
+      const sheet = sheetRef.current;
+      if (sheet) {
+        const box = sheet.getBoundingClientRect();
+        if (ev.clientY > box.bottom - 36) sheet.scrollTop += 24;
+        else if (ev.clientY < box.top + 80) sheet.scrollTop -= 24;
+      }
+      const row = rowUnder(ev.clientX, ev.clientY);
+      if (row === undefined) return;
+      const target = row >= block.r1 && row <= block.r2 ? null : row;
+      fillToRef.current = target;
+      setFillTo(target);
+    };
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      setDragging(false);
+      const target = fillToRef.current;
+      fillToRef.current = null;
+      setFillTo(null);
+      if (target === null) return;
+      const copy = ev.ctrlKey || ev.metaKey;
+      const grown = { ...block, r1: Math.min(block.r1, target), r2: Math.max(block.r2, target) };
+      const finish = async () => {
+        await fillBlock(block, target, copy ? "copy" : "series");
+        setSel({ anchor: { row: grown.r1, col: grown.c1 }, focus: { row: grown.r2, col: grown.c2 } });
+        if (!copy && seriesPossible(block)) {
+          setFillChip({ x: ev.clientX, y: ev.clientY, block, toRow: target, mode: "series" });
+        }
+      };
+      void finish();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  };
+
+  startFillRef.current = startFill;
+  const chooseFillMode = async (mode: TFillMode) => {
+    if (!fillChip || fillChip.mode === mode) return;
+    const chip = fillChip;
+    setFillChip({ ...chip, mode });
+    await travelRef.current("undo", true);
+    await fillBlock(chip.block, chip.toRow, mode);
+  };
+
+  const cellFocused = (event: FocusEvent<HTMLTableElement>) => {
+    if (dragRef.current?.active) return;
+    const pos = cellAt(event.target);
+    if (!pos) return;
+    setSel((prev) =>
+      prev && sameCell(prev.anchor, pos) && sameCell(prev.focus, pos) ? prev : { anchor: pos, focus: pos }
+    );
+  };
+
+  /** Mouse down on a cell: Shift extends the block; dragging to another cell selects a block. */
+  const cellPressed = (event: ReactPointerEvent<HTMLTableElement>) => {
+    if (event.button !== 0 || (event.target as Element).closest("[data-fill-handle]")) return;
+    const pos = cellAt(event.target);
+    if (!pos) return;
+    const current = selRef.current;
+    if (event.shiftKey && current) {
+      event.preventDefault();
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      setSel({ anchor: current.anchor, focus: pos });
+      return;
+    }
+    dragRef.current = { start: pos, active: false };
+    const move = (ev: PointerEvent) => {
+      const drag = dragRef.current;
+      const over = cellAt(document.elementFromPoint(ev.clientX, ev.clientY));
+      if (!drag || !over) return;
+      if (!drag.active && !sameCell(over, drag.start)) {
+        drag.active = true;
+        setDragging(true);
+        (document.activeElement as HTMLElement | null)?.blur?.();
+        window.getSelection()?.removeAllRanges();
+      }
+      if (drag.active)
+        setSel((prev) =>
+          prev && sameCell(prev.anchor, drag.start) && sameCell(prev.focus, over)
+            ? prev
+            : { anchor: drag.start, focus: over }
+        );
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      dragRef.current = null;
+      setDragging(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  };
+
+  // keyboard, copy and paste work from the page (focus can be in a cell or nowhere, after a block was dragged)
+  const gridApi = useRef({ fillDown, copyText, pasteText });
+  gridApi.current = { fillDown, copyText, pasteText };
+  useEffect(() => {
+    const inGrid = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null;
+      if (!element || element.closest?.("[role=dialog]")) return false;
+      return element === document.body || !!tableRef.current?.contains(element);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      const current = selRef.current;
+      if (!current || !inGrid(event.target)) return;
+      const block = blockOf(current);
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        void gridApi.current.fillDown();
+        return;
+      }
+      if (event.key === "Escape" && isBlock(block)) {
+        setSel({ anchor: current.anchor, focus: current.anchor });
+        return;
+      }
+      if (!event.shiftKey || mod || event.altKey) return;
+      const vertical = event.key === "ArrowDown" || event.key === "ArrowUp";
+      const horizontal = event.key === "ArrowLeft" || event.key === "ArrowRight";
+      if (!vertical && !(horizontal && (isBlock(block) || event.target === document.body))) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const step = event.key === "ArrowDown" || event.key === "ArrowRight" ? 1 : -1;
+      const focus = vertical
+        ? { row: Math.min(Math.max(current.focus.row + step, 0), rows.length - 1), col: current.focus.col }
+        : { row: current.focus.row, col: Math.min(Math.max(current.focus.col + step, 0), gridCols.length - 1) };
+      (document.activeElement as HTMLElement | null)?.blur?.();
+      setSel({ anchor: current.anchor, focus });
+      const id = rows[focus.row]?.id;
+      if (id) tableRef.current?.querySelector(`tr[data-item="${id}"]`)?.scrollIntoView({ block: "nearest" });
+    };
+    const onCopy = (event: ClipboardEvent) => {
+      if (!selRef.current || !inGrid(event.target)) return;
+      const block = blockOf(selRef.current);
+      const input = event.target as HTMLInputElement;
+      // some text is highlighted inside one cell: let the browser copy just that
+      if (!isBlock(block) && input.tagName === "INPUT" && input.selectionStart !== input.selectionEnd) return;
+      const text = gridApi.current.copyText();
+      if (text === null) return;
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", text);
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      if (!selRef.current || !inGrid(event.target)) return;
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      const matrix = text.replace(/\r/g, "").replace(/\n$/, "");
+      const block = blockOf(selRef.current);
+      // one value into one cell: normal paste
+      if (!matrix.includes("\t") && !matrix.includes("\n") && !isBlock(block)) return;
+      event.preventDefault();
+      void gridApi.current.pasteText(text);
+    };
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("paste", onPaste);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("paste", onPaste);
+    };
+  }, [rows, gridCols.length]);
+  // the "Fill options" chip goes away when you do anything else
+  useEffect(() => {
+    if (!fillChip) return;
+    const close = (event: Event) => {
+      if ((event.target as HTMLElement | null)?.closest?.("[data-fill-chip]")) return;
+      setFillChip(null);
+    };
+    const timer = window.setTimeout(() => setFillChip(null), 12000);
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [fillChip]);
+
   if ((isLoading && !data) || !scopes) return <E9LoadingState />;
   if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
 
@@ -1450,6 +1836,32 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const winStart = windowed ? Math.max(0, view.first - WINDOW_BUFFER) : 0;
   const winEnd = windowed ? Math.min(rows.length, view.first + view.count + WINDOW_BUFFER) : rows.length;
   const spanCols = layout.reduce((t, group) => t + (group.door ? 1 : 0) + group.columns.length, 2);
+  const selBlock = sel ? blockOf(sel) : null;
+  /** The selection / fill-preview facts for one row. */
+  const gridFor = (r: number): TRowGrid => {
+    if (!selBlock) return NO_GRID;
+    const inBlock = r >= selBlock.r1 && r <= selBlock.r2;
+    const down = fillTo !== null && fillTo > selBlock.r2;
+    const ghost: 0 | 1 | 2 =
+      fillTo !== null && (down ? r > selBlock.r2 && r <= fillTo : r < selBlock.r1 && r >= fillTo)
+        ? r === fillTo
+          ? 2
+          : 1
+        : 0;
+    if (!inBlock && !ghost) return NO_GRID;
+    return {
+      selFrom: inBlock ? selBlock.c1 : -1,
+      selTo: inBlock ? selBlock.c2 : -1,
+      selTop: inBlock && r === selBlock.r1 ? 1 : 0,
+      selBottom: inBlock && r === selBlock.r2 ? 1 : 0,
+      selMulti: isBlock(selBlock) ? 1 : 0,
+      handleCol: canEdit && inBlock && r === selBlock.r2 && fillTo === null ? selBlock.c2 : -1,
+      ghost,
+      ghostFrom: ghost ? selBlock.c1 : -1,
+      ghostTo: ghost ? selBlock.c2 : -1,
+      ghostDir: down ? 1 : -1,
+    };
+  };
   const spacer = (key: string, count: number) =>
     count > 0 ? (
       <tr key={key} aria-hidden="true" style={{ height: count * rowHeight.current }}>
@@ -1699,9 +2111,10 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
             >
               <table
                 ref={tableRef}
-                className="table-fixed border-separate border-spacing-0 text-left"
+                className={cn("table-fixed border-separate border-spacing-0 text-left", dragging && "select-none")}
                 style={{ width: tableWidth }}
-                onPaste={pasteBlock}
+                onFocus={cellFocused}
+                onPointerDown={cellPressed}
               >
                 <colgroup>
                   <col style={{ width: CODE_WIDTH }} />
@@ -1806,6 +2219,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                       {spacer("top", winStart)}
                       {rows.slice(winStart, winEnd).map((item, offset) => (
                         <TrackerRow
+                          {...gridFor(winStart + offset)}
+                          fillIndex={fillIndex}
                           key={item.id}
                           item={item}
                           odd={(winStart + offset) % 2 === 1}
@@ -1843,6 +2258,47 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       <E9FloorsModal open={panel === "floors"} {...panelProps} />
       <E9ColumnsModal open={panel === "columns"} {...panelProps} />
       <E9ImportModal open={panel === "import"} {...panelProps} />
+      {fillChip && (
+        <div
+          data-fill-chip=""
+          role="group"
+          aria-label="Auto fill options"
+          style={{
+            left: Math.min(fillChip.x + 6, window.innerWidth - 230),
+            top: Math.min(fillChip.y + 10, window.innerHeight - 80),
+          }}
+          className="fixed z-50 flex flex-col gap-1 rounded-xl border border-subtle bg-surface-1 p-2 shadow-raised-200"
+        >
+          <span className="px-1 text-body-2xs-semibold text-tertiary">Auto fill options</span>
+          {(
+            [
+              ["series", "Count up (1st, 2nd, 3rd…)"],
+              ["copy", "Copy cells"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              aria-pressed={fillChip.mode === mode}
+              onClick={() => void chooseFillMode(mode)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-2 py-1 text-left text-body-xs-medium hover:bg-layer-1-hover",
+                fillChip.mode === mode && "bg-accent-subtle font-semibold"
+              )}
+            >
+              <span aria-hidden="true">{fillChip.mode === mode ? "●" : "○"}</span>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      <E9FloorPickerModal
+        open={!!floorPickItem}
+        onClose={() => setFloorPickItem(null)}
+        item={floorPickItem}
+        floorNames={floorNames}
+        onApply={(item, names) => void save(item, { floor_area: names.join(", ") })}
+      />
       <E9PhotosModal
         open={!!photoItem}
         onClose={() => setPhotoItem(null)}
@@ -1982,18 +2438,77 @@ function BandHeads({
   );
 }
 
+/** What one row needs to draw the selection, the fill handle and the fill preview (numbers only, so rows stay memoised). */
+type TRowGrid = {
+  selFrom: number;
+  selTo: number;
+  selTop: 0 | 1;
+  selBottom: 0 | 1;
+  selMulti: 0 | 1;
+  handleCol: number;
+  ghost: 0 | 1 | 2;
+  ghostFrom: number;
+  ghostTo: number;
+  ghostDir: 1 | -1;
+};
+const NO_GRID: TRowGrid = {
+  selFrom: -1,
+  selTo: -1,
+  selTop: 0,
+  selBottom: 0,
+  selMulti: 0,
+  handleCol: -1,
+  ghost: 0,
+  ghostFrom: -1,
+  ghostTo: -1,
+  ghostDir: 1,
+};
+const ACCENT = "var(--brand-default)";
+
+/** Selection outline, tint and fill handle for the cell in column `index` of this row. */
+const cellMark = (index: number | undefined, grid: TRowGrid): { style?: CSSProperties; handle: boolean } => {
+  if (index === undefined) return { handle: false };
+  const shadows: string[] = [];
+  let backgroundColor: string | undefined;
+  if (grid.selFrom >= 0 && index >= grid.selFrom && index <= grid.selTo) {
+    if (grid.selTop) shadows.push(`inset 0 2px 0 ${ACCENT}`);
+    if (grid.selBottom) shadows.push(`inset 0 -2px 0 ${ACCENT}`);
+    if (index === grid.selFrom) shadows.push(`inset 2px 0 0 ${ACCENT}`);
+    if (index === grid.selTo) shadows.push(`inset -2px 0 0 ${ACCENT}`);
+    if (grid.selMulti) backgroundColor = "color-mix(in srgb, var(--brand-default) 10%, transparent)";
+  }
+  if (grid.ghost && index >= grid.ghostFrom && index <= grid.ghostTo) {
+    const soft = `color-mix(in srgb, ${ACCENT} 55%, transparent)`;
+    if (index === grid.ghostFrom) shadows.push(`inset 2px 0 0 ${soft}`);
+    if (index === grid.ghostTo) shadows.push(`inset -2px 0 0 ${soft}`);
+    if (grid.ghost === 2) shadows.push(`inset 0 ${grid.ghostDir === 1 ? "-2px" : "2px"} 0 ${soft}`);
+    backgroundColor = "color-mix(in srgb, var(--brand-default) 6%, transparent)";
+  }
+  return {
+    style:
+      shadows.length || backgroundColor ? { boxShadow: shadows.join(",") || undefined, backgroundColor } : undefined,
+    handle: grid.handleCol === index,
+  };
+};
+
 function BandCells({
   group,
   door,
   columns,
   ctx,
   onOpen,
+  fillIndex,
+  grid,
+  onFillStart,
 }: {
   group: TBandGroup;
   door: boolean;
   columns: TColumn[];
   ctx: TRowContext;
   onOpen: () => void;
+  fillIndex: Map<string, number>;
+  grid: TRowGrid;
+  onFillStart: (event: ReactPointerEvent) => void;
 }) {
   const color = BAND_COLORS[group.label] ?? GREY;
   return (
@@ -2006,15 +2521,28 @@ function BandCells({
           style={{ backgroundColor: `${color}0D`, boxShadow: `inset 1px 0 0 ${color}40` }}
         />
       )}
-      {columns.map((column) => (
-        <td
-          key={column.key}
-          data-col={column.key}
-          className={cn("overflow-hidden border-b border-subtle px-1 py-1 align-middle", column.className)}
-        >
-          {column.render(ctx)}
-        </td>
-      ))}
+      {columns.map((column) => {
+        const mark = cellMark(fillIndex.get(column.key), grid);
+        return (
+          <td
+            key={column.key}
+            data-col={column.key}
+            style={mark.style}
+            className={cn("relative overflow-hidden border-b border-subtle px-1 py-1 align-middle", column.className)}
+          >
+            {column.render(ctx)}
+            {mark.handle && (
+              <span
+                data-fill-handle=""
+                role="presentation"
+                title="Drag down or up to fill. Counts up (1st Floor, 2nd Floor…); hold Ctrl to copy."
+                onPointerDown={onFillStart}
+                className="absolute right-0 bottom-0 z-[1] size-2.5 cursor-crosshair rounded-[2px] border border-white bg-[var(--brand-default)]"
+              />
+            )}
+          </td>
+        );
+      })}
     </>
   );
 }
@@ -2048,7 +2576,9 @@ type TRowActions = TRowHandlers & {
   openPhotos: (item: TE9ScopeItem) => void;
   openInstallPhotos: (item: TE9ScopeItem) => void;
   openReprint: (item: TE9ScopeItem) => void;
+  openFloors: (item: TE9ScopeItem) => void;
   openHistory: (item: TE9ScopeItem) => void;
+  startFill: (event: ReactPointerEvent) => void;
 };
 
 /** One tracker row. Memoised: it redraws only when its own item (or the layout) changes. */
@@ -2064,7 +2594,10 @@ const TrackerRow = memo(function TrackerRow({
   layout,
   shared,
   actions,
-}: {
+  fillIndex,
+  ...gridProps
+}: TRowGrid & {
+  fillIndex: Map<string, number>;
   item: TE9ScopeItem;
   odd: boolean;
   isSelected: boolean;
@@ -2090,6 +2623,7 @@ const TrackerRow = memo(function TrackerRow({
     installPhotos,
     openInstallPhotos: () => actions.openInstallPhotos(item),
     openReprint: () => actions.openReprint(item),
+    openFloors: () => actions.openFloors(item),
   };
   return (
     <tr
@@ -2140,6 +2674,9 @@ const TrackerRow = memo(function TrackerRow({
           columns={group.columns}
           ctx={ctx}
           onOpen={() => actions.openBand(group.label)}
+          fillIndex={fillIndex}
+          grid={gridProps}
+          onFillStart={actions.startFill}
         />
       ))}
       <td className="border-b border-subtle px-1 py-1 align-middle">

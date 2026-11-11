@@ -22,6 +22,7 @@ from .serializers import (
 )
 from .services import (
     ensure_floors,
+    split_floors,
     item_code,
     PARKED_FROM,
     park_item,
@@ -293,7 +294,7 @@ class E9ScopeItemListEndpoint(BaseAPIView):
                 new=f"{len(created)} row(s) added to {scopes[scope].label}",
             )
             if serializer.validated_data.get("floor_area"):
-                ensure_floors(project, [serializer.validated_data["floor_area"]], request.user)
+                ensure_floors(project, split_floors(serializer.validated_data["floor_area"]), request.user)
         data = E9ScopeItemSerializer(created, many=True, context={"scopes": scopes}).data
         return Response(data, status=status.HTTP_201_CREATED)
 
@@ -324,7 +325,7 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
             changed = {field: getattr(item, field) for field in serializer.validated_data if field != "sort_order"}
             record_changes(item.project, request.user, "item", item.id, item_code(item, scopes), before, changed)
             if "floor_area" in serializer.validated_data:
-                ensure_floors(item.project, [item.floor_area], request.user)
+                ensure_floors(item.project, split_floors(item.floor_area), request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")

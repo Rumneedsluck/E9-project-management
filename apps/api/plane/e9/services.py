@@ -74,6 +74,11 @@ PREFIX_PATTERN = re.compile(r"^[A-Z0-9]{1,6}$")
 # ---------------------------------------------------------------------------
 
 
+def split_floors(text):
+    """'7th Floor, 8th Floor' -> ['7th Floor', '8th Floor']: one item can sit on several floors."""
+    return [part.strip() for part in re.split(r"[;,]", text or "") if part.strip()]
+
+
 def ensure_floors(project, names, user=None):
     """Create floor rows for any of these names the project does not have yet (keeps first-seen order)."""
     names = [name.strip() for name in names if name and name.strip()]

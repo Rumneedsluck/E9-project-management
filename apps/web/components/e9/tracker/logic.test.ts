@@ -15,6 +15,7 @@ import {
   parsePastedDate,
   splitDcs,
   scopeProgress,
+  splitFloors,
   stageTargetRows,
   trackerKpis,
 } from "./logic";
@@ -165,6 +166,23 @@ describe("on hold and cancelled items", () => {
   it("does not change the items it is given", () => {
     expect(counted(rows)).toHaveLength(2);
     expect(rows[1].installation_status).toBe("Installation Done");
+  });
+});
+
+describe("items on several floors", () => {
+  it("splits a typed list of floors", () => {
+    expect(splitFloors("7th Floor, 8th Floor")).toEqual(["7th Floor", "8th Floor"]);
+    expect(splitFloors(" Ground ;Terrace,, ")).toEqual(["Ground", "Terrace"]);
+    expect(splitFloors("")).toEqual([]);
+  });
+
+  it("counts an item on two floors under each of them", () => {
+    const rows = [
+      item({ description: "long wall", floor_area: "7th Floor, 8th Floor", area_sqft: "50.00" }),
+      item({ description: "single", floor_area: "8th Floor", area_sqft: "10.00" }),
+    ];
+    const byName = Object.fromEntries(floorProgress(rows, []).map((row) => [row.name, row.rows]));
+    expect(byName).toEqual({ "7th Floor": 1, "8th Floor": 2 });
   });
 });
 

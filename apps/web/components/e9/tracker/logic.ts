@@ -159,6 +159,19 @@ export const todayDate = (now: Date = new Date()) => new Date(now.getFullYear(),
 export const isFilled = (item: TE9ScopeItem): boolean =>
   Boolean(item.floor_area?.trim() || item.description?.trim() || item.height_in || item.width_in || item.qty);
 
+/** "7th Floor, 8th Floor" -> ["7th Floor", "8th Floor"]: one item can sit on several floors. */
+export const splitFloors = (text: string | null | undefined): string[] =>
+  (text ?? "")
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+const NO_FLOOR = "No floor set";
+const floorsOf = (item: TE9ScopeItem): string[] => {
+  const floors = splitFloors(item.floor_area);
+  return floors.length ? floors : [NO_FLOOR];
+};
+
 export const isCancelled = (item: TE9ScopeItem): boolean => item.hold_status === "Cancelled";
 export const isHeld = (item: TE9ScopeItem): boolean => item.hold_status === "On Hold";
 
@@ -277,10 +290,11 @@ export type TFloorProgress = ReturnType<typeof groupTotals> & {
 /** Floor-wise totals. Floors from the floor list come first (in their order), then any other floor names typed on items. */
 export const floorProgress = (items: TE9ScopeItem[], floors: TE9Floor[]): TFloorProgress[] => {
   const rows = counted(items).filter(isFilled);
-  const names = [...floors.map((floor) => floor.name), ...rows.map((item) => item.floor_area.trim() || "No floor set")];
+  const names = [...floors.map((floor) => floor.name), ...rows.flatMap(floorsOf)];
   return [...new Set(names)]
     .map((name) => {
-      const floorRows = rows.filter((item) => (item.floor_area.trim() || "No floor set") === name);
+      // an item on two floors counts on each of them
+      const floorRows = rows.filter((item) => floorsOf(item).includes(name));
       return {
         name,
         floor: floors.find((floor) => floor.name === name) ?? null,

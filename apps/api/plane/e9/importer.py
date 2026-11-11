@@ -21,7 +21,7 @@ from django.db import models, transaction
 from . import tracker
 from .models import E9Attachment, E9ProjectProfile, E9ScopeItem
 from .excel_images import sheet_images
-from .services import PARKED_FROM, ensure_floors, ensure_scopes, record
+from .services import PARKED_FROM, ensure_floors, ensure_scopes, record, split_floors
 
 
 class ImportProblem(Exception):
@@ -689,7 +689,7 @@ def import_tracker(project, upload, user):
                 )
                 rows_of_created.append(values.get("_row"))
                 if fields.get("floor_area"):
-                    floors.append(fields["floor_area"])
+                    floors.extend(split_floors(fields["floor_area"]))
             E9ScopeItem.objects.bulk_create(created)
             report["items"][scope.label] = len(created)
             report["on_hold"] += sum(1 for row in created if row.hold_status == "On Hold")

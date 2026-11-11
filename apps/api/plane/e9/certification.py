@@ -12,6 +12,7 @@ own signed JMC, so every bill is backed by a signature.
 """
 
 from .models import E9Attachment, E9Certification, E9Floor, E9ProjectStatus, E9ScopeItem
+from .services import split_floors
 
 # stages where the work on site is over and the JMC is the next step
 WORK_DONE_STATUSES = {E9ProjectStatus.SIGN_OFF, E9ProjectStatus.COMPLETED}
@@ -66,7 +67,8 @@ def project_states(projects):
 
 def covers(cert, item):
     """Does this certification cover this tracker row?"""
-    if cert.floor and _norm(cert.floor) != _norm(item.floor_area):
+    # an item can sit on several floors ("7th Floor, 8th Floor"): the JMC covers it if it names any of them
+    if cert.floor and _norm(cert.floor) not in {_norm(floor) for floor in split_floors(item.floor_area)}:
         return False
     if cert.scope and cert.scope != item.scope:
         return False
@@ -93,7 +95,7 @@ def payload(project, can_edit, scopes):
     for attachment in E9Attachment.objects.filter(project=project, kind="jmc", ref_id__isnull=False):
         files[attachment.ref_id] = files.get(attachment.ref_id, 0) + 1
     floors = [floor.name for floor in E9Floor.objects.filter(project=project).order_by("sort_order", "created_at")]
-    used_floors = sorted({item.floor_area.strip() for item in items if is_filled(item) and item.floor_area.strip()})
+    used_floors = sorted({floor for item in items if is_filled(item) for floor in split_floors(item.floor_area)})
     for name in used_floors:
         if _norm(name) not in {_norm(floor) for floor in floors}:
             floors.append(name)

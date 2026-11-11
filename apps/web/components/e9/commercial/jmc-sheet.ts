@@ -10,6 +10,7 @@
  * site; "filled" prints the certified sizes/quantities already typed in the tracker.
  */
 
+import { splitFloors } from "../tracker/logic";
 import type { TE9ProjectScope, TE9ScopeItem } from "../tracker/logic";
 import type { TE9Project } from "../types";
 
@@ -20,7 +21,8 @@ const isFilled = (item: TE9ScopeItem) =>
 
 /** Same rule as the backend: does a JMC for this floor / scope cover this tracker row? */
 export const jmcCovers = (part: { floor: string; scope: string }, item: TE9ScopeItem) =>
-  (!part.floor || norm(part.floor) === norm(item.floor_area)) && (!part.scope || part.scope === item.scope);
+  (!part.floor || splitFloors(item.floor_area).some((floor) => norm(floor) === norm(part.floor))) &&
+  (!part.scope || part.scope === item.scope);
 
 const escape = (value: unknown) =>
   String(value ?? "")
