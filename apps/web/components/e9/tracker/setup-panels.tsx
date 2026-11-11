@@ -13,6 +13,7 @@ import { e9ProjectService } from "@/services/e9/project.service";
 import { refreshE9Projects, refreshE9Tracker, useE9Floors, useE9Scopes } from "../hooks";
 import type { TE9Project } from "../types";
 import type { TE9Floor, TE9FloorStatus, TE9ProjectScope, TE9UnitMode } from "./logic";
+import { SCOPE_BILL_WHEN } from "./constants";
 import { E9Modal } from "./modal";
 
 const inputClass =
@@ -62,7 +63,14 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
       await e9ProjectService.saveScopes(
         workspaceSlug,
         project.id,
-        rows.map(({ key, label, prefix, unit_mode, enabled }) => ({ key, label, prefix, unit_mode, enabled }))
+        rows.map(({ key, label, prefix, unit_mode, enabled, bill_when }) => ({
+          key,
+          label,
+          prefix,
+          unit_mode,
+          enabled,
+          bill_when,
+        }))
       );
       await refreshE9Tracker(workspaceSlug, project.id);
       setToast({ type: "success", title: "Scopes saved", message: "The tracker and dashboard now follow them." });
@@ -96,6 +104,9 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
               <th className="pb-2">Scope name</th>
               <th className="w-24 pb-2">Code</th>
               <th className="w-72 pb-2">Measured as</th>
+              <th className="w-40 pb-2" title="When items of this scope can be billed">
+                Bill when
+              </th>
               <th className="w-20 pb-2 text-right">Items</th>
               <th className="w-10 pb-2" />
             </tr>
@@ -151,6 +162,22 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
                       ))}
                     </select>
                   </td>
+                  <td className="py-1.5 pr-2">
+                    <select
+                      className={inputClass}
+                      value={row.bill_when ?? "Signed off"}
+                      aria-label={`${row.label} bills when`}
+                      onChange={(event) =>
+                        update(index, { bill_when: event.target.value as "Signed off" | "Delivered" })
+                      }
+                    >
+                      {SCOPE_BILL_WHEN.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="py-1.5 text-right text-body-xs-medium text-tertiary tabular-nums">
                     {row.item_count ?? 0}
                   </td>
@@ -174,7 +201,10 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
         <button
           type="button"
           onClick={() =>
-            setRows((prev) => [...prev, { label: "", prefix: "", unit_mode: "sqft", enabled: true, item_count: 0 }])
+            setRows((prev) => [
+              ...prev,
+              { label: "", prefix: "", unit_mode: "sqft", enabled: true, bill_when: "Signed off", item_count: 0 },
+            ])
           }
           className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-strong px-3 py-2 text-body-xs-semibold text-accent-primary hover:bg-accent-subtle"
         >
@@ -419,6 +449,7 @@ export const HIDEABLE_COLUMNS: { key: string; label: string }[] = [
   { key: "client_sign_off", label: "Client sign-off" },
   { key: "remarks", label: "Remarks" },
   { key: "resent", label: "Re-sent (reprints)" },
+  { key: "hold_cancel", label: "On hold / cancel / billing" },
 ];
 
 export function E9ColumnsModal({ open, onClose, workspaceSlug, project }: TProps) {
@@ -572,6 +603,8 @@ export function E9ImportModal({ open, onClose, workspaceSlug, project }: TProps)
               {report.floors.length > 0 && <li>New floors: {report.floors.join(", ")}</li>}
               {report.site_visits > 0 && <li>Site visits / audit reports: {report.site_visits}</li>}
               {!!report.photos && <li>Photos from the Excel: {report.photos}</li>}
+              {!!report.on_hold && <li>Items on hold: {report.on_hold}</li>}
+              {!!report.cancelled && <li>Cancelled items: {report.cancelled}</li>}
               {!!report.boq_lines && <li>BOQ lines: {report.boq_lines}</li>}
               {!!report.reprints && <li>Reprints &amp; extras: {report.reprints}</li>}
               {!!report.snags && <li>Snags: {report.snags}</li>}

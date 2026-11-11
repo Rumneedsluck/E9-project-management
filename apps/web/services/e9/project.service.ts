@@ -5,6 +5,7 @@
  */
 
 import { API_BASE_URL } from "@plane/constants";
+import type { TE9Health, TE9Hold, TE9Report } from "@/components/e9/tracker/hold-types";
 import type { TE9Attachment, TE9Change, TE9Floor, TE9ProjectScope, TE9ScopeItem } from "@/components/e9/tracker/logic";
 import type {
   TE9Announcements,
@@ -191,6 +192,8 @@ export class E9ProjectService extends APIService {
     site_visits: number;
     boq_lines?: number;
     photos?: number;
+    on_hold?: number;
+    cancelled?: number;
     reprints?: number;
     snags?: number;
     job_cards?: number;
@@ -271,6 +274,19 @@ export class E9ProjectService extends APIService {
 
   deleteSnag(workspaceSlug: string, projectId: string, snagId: string): Promise<TE9Snags> {
     return this.call(this.delete(`${this.base(workspaceSlug, projectId)}/snags/${snagId}/`));
+  }
+
+  // ---- hold & cancel lists, client report, health check ----
+  getHold(workspaceSlug: string, projectId: string): Promise<TE9Hold> {
+    return this.call(this.get(`${this.base(workspaceSlug, projectId)}/hold/`));
+  }
+
+  getHealth(workspaceSlug: string, projectId: string): Promise<TE9Health> {
+    return this.call(this.get(`${this.base(workspaceSlug, projectId)}/health/`));
+  }
+
+  getReport(workspaceSlug: string, projectId: string): Promise<TE9Report> {
+    return this.call(this.get(`${this.base(workspaceSlug, projectId)}/report/`));
   }
 
   // ---- certification (JMC) ----

@@ -17,9 +17,13 @@ import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { DateCell, NumberCell, SelectCell, TextCell } from "./cells";
 import {
+  BILL_NOW,
+  BILL_WHEN,
   CLIENT_SIGN_OFF,
   DISPATCH_STATUS,
   E9_TRACKER_STAGES,
+  HOLD_REASONS,
+  HOLD_STATUS,
   INSTALLATION_STATUS,
   ISSUE_RESOLVED,
   MATERIAL_STATUS,
@@ -101,6 +105,7 @@ const BAND_COLORS: Record<string, string> = {
   "5 · Installation": stageColor("installation"),
   "6 · Certify & hand over": stageColor("sign_off"),
   Notes: GREY,
+  "On hold / cancel / billing": "#B45309",
 };
 
 const text = (field: keyof TE9ScopeItem, label: string, placeholder?: string) => (ctx: TRowContext) => (
@@ -202,6 +207,12 @@ const PASTE: Record<string, TPasteSpec> = {
   certqty: { field: "certified_qty", kind: "number" },
   signoff: { field: "client_sign_off", kind: "select", options: () => CLIENT_SIGN_OFF },
   remarks: { field: "remarks", kind: "text" },
+  holdstatus: { field: "hold_status", kind: "select", options: () => HOLD_STATUS },
+  holdreason: { field: "hold_reason", kind: "select", options: () => HOLD_REASONS },
+  holdsince: { field: "hold_since", kind: "date" },
+  replacedby: { field: "replaced_by", kind: "text" },
+  billnow: { field: "bill_now", kind: "select", options: () => BILL_NOW },
+  billwhen: { field: "bill_when", kind: "select", options: () => BILL_WHEN },
 };
 
 /** One pasted text -> the value to save, or undefined when it does not fit the column. */
@@ -819,6 +830,107 @@ const COLUMNS: TColumn[] = [
           + reprint
         </button>
       ),
+  },
+  {
+    key: "holdstatus",
+    hideKey: "hold_cancel",
+    label: "On hold / cancelled?",
+    width: 150,
+    band: "On hold / cancel / billing",
+    render: (ctx) => (
+      <SelectCell
+        label="On hold or cancelled"
+        value={ctx.item.hold_status}
+        options={HOLD_STATUS}
+        blankLabel="—"
+        disabled={ctx.disabled}
+        onSave={(v) =>
+          // stamp today's date when an item goes on hold / is cancelled and nobody typed one
+          ctx.save({
+            hold_status: v as TE9ScopeItem["hold_status"],
+            ...(v && !ctx.item.hold_since ? { hold_since: new Date().toLocaleDateString("en-CA") } : {}),
+          })
+        }
+      />
+    ),
+  },
+  {
+    key: "holdreason",
+    hideKey: "hold_cancel",
+    label: "Reason",
+    width: 200,
+    band: "On hold / cancel / billing",
+    render: (ctx) => (
+      <SelectCell
+        label="Hold or cancel reason"
+        value={ctx.item.hold_reason}
+        options={[
+          "",
+          ...HOLD_REASONS,
+          ...(HOLD_REASONS.includes(ctx.item.hold_reason) ? [] : [ctx.item.hold_reason]),
+        ].filter((option, index, all) => all.indexOf(option) === index)}
+        blankLabel="—"
+        disabled={ctx.disabled}
+        onSave={(v) => ctx.save({ hold_reason: v })}
+      />
+    ),
+  },
+  {
+    key: "holdsince",
+    hideKey: "hold_cancel",
+    label: "Since (date)",
+    width: 136,
+    band: "On hold / cancel / billing",
+    render: ({ item, disabled, save }) => (
+      <DateCell
+        label="On hold since"
+        value={item.hold_since}
+        disabled={disabled}
+        onSave={(v) => save({ hold_since: v })}
+      />
+    ),
+  },
+  {
+    key: "replacedby",
+    hideKey: "hold_cancel",
+    label: "Replaced by (item code) / note",
+    width: 190,
+    band: "On hold / cancel / billing",
+    render: text("replaced_by", "Replaced by", "Item code"),
+  },
+  {
+    key: "billnow",
+    hideKey: "hold_cancel",
+    label: "Bill now? (hold)",
+    width: 120,
+    band: "On hold / cancel / billing",
+    render: (ctx) => (
+      <SelectCell
+        label="Bill now (held items)"
+        value={ctx.item.bill_now}
+        options={BILL_NOW}
+        blankLabel="—"
+        disabled={ctx.disabled}
+        onSave={(v) => ctx.save({ bill_now: v as TE9ScopeItem["bill_now"] })}
+      />
+    ),
+  },
+  {
+    key: "billwhen",
+    hideKey: "hold_cancel",
+    label: "Bill when? (blank = scope)",
+    width: 150,
+    band: "On hold / cancel / billing",
+    render: (ctx) => (
+      <SelectCell
+        label="Bill when"
+        value={ctx.item.bill_when}
+        options={BILL_WHEN}
+        blankLabel="scope setting"
+        disabled={ctx.disabled}
+        onSave={(v) => ctx.save({ bill_when: v as TE9ScopeItem["bill_when"] })}
+      />
+    ),
   },
 ];
 
@@ -1980,7 +2092,16 @@ const TrackerRow = memo(function TrackerRow({
     openReprint: () => actions.openReprint(item),
   };
   return (
-    <tr data-item={item.id} className={cn("group", odd && "bg-layer-1/40", ctx.empty && "opacity-70")}>
+    <tr
+      data-item={item.id}
+      className={cn(
+        "group",
+        odd && "bg-layer-1/40",
+        ctx.empty && "opacity-70",
+        item.hold_status === "On Hold" && "bg-[#F59E0B]/[0.08]",
+        item.hold_status === "Cancelled" && "opacity-50"
+      )}
+    >
       <td
         className={cn(
           "sticky left-0 z-[2] border-b border-subtle bg-surface-1 px-2 py-1 align-middle text-body-xs-semibold text-primary group-hover:bg-layer-1",
@@ -1998,6 +2119,17 @@ const TrackerRow = memo(function TrackerRow({
             />
           )}
           {item.item_code}
+          {item.hold_status && (
+            <span
+              role="img"
+              aria-label={item.hold_status}
+              title={item.hold_status}
+              className={cn(
+                "size-2 shrink-0 rounded-full",
+                item.hold_status === "On Hold" ? "bg-[#F59E0B]" : "bg-tertiary"
+              )}
+            />
+          )}
         </label>
       </td>
       {layout.map((group) => (

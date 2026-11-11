@@ -62,6 +62,7 @@ HIDEABLE_COLUMNS = [
     "client_sign_off",
     "remarks",
     "resent",
+    "hold_cancel",
 ]
 
 

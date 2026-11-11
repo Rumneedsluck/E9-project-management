@@ -18,6 +18,8 @@ export type TE9ProjectScope = {
   is_standard: boolean;
   enabled: boolean;
   sort_order: number;
+  /** when items of this scope can be billed */
+  bill_when: "Signed off" | "Delivered";
   item_count?: number;
 };
 
@@ -124,6 +126,14 @@ export type TE9ScopeItem = {
   installed_by: string;
   client_sign_off: string;
   remarks: string;
+  /** "" (normal), "On Hold" or "Cancelled" */
+  hold_status: "" | "On Hold" | "Cancelled";
+  hold_reason: string;
+  hold_since: string | null;
+  replaced_by: string;
+  bill_now: "" | "Yes" | "No";
+  /** "" = the scope's setting */
+  bill_when: "" | "Signed off" | "Delivered";
   sort_order: number;
   updated_at: string;
 };
@@ -148,6 +158,32 @@ export const todayDate = (now: Date = new Date()) => new Date(now.getFullYear(),
 /** Template rule: a row counts once something is typed in Floor, Description, Height, Width or Qty. */
 export const isFilled = (item: TE9ScopeItem): boolean =>
   Boolean(item.floor_area?.trim() || item.description?.trim() || item.height_in || item.width_in || item.qty);
+
+export const isCancelled = (item: TE9ScopeItem): boolean => item.hold_status === "Cancelled";
+export const isHeld = (item: TE9ScopeItem): boolean => item.hold_status === "On Hold";
+
+/**
+ * Rows as the totals see them: a held item stays in the total but shows no progress until it is released,
+ * a cancelled item leaves every number (same rule as the Excel template).
+ */
+export const counted = (items: TE9ScopeItem[]): TE9ScopeItem[] =>
+  items
+    .filter((item) => !isCancelled(item))
+    .map((item) =>
+      isHeld(item)
+        ? {
+            ...item,
+            site_audit_status: "Not Started",
+            pre_press: "Not Started",
+            production_status: "Not Started",
+            material_status: "",
+            quality_check: "Pending",
+            dispatch_status: "Not Dispatched",
+            installation_status: "Not Started",
+            client_sign_off: "Pending",
+          }
+        : item
+    );
 
 /** How much one item counts: 1 per item for sq-ft scopes, its Qty for Nos scopes (frames, signages, 3D). */
 export const itemMeasure = (item: TE9ScopeItem): number => (item.unit === "nos" ? toNumber(item.qty) || 1 : 1);
@@ -240,7 +276,7 @@ export type TFloorProgress = ReturnType<typeof groupTotals> & {
 
 /** Floor-wise totals. Floors from the floor list come first (in their order), then any other floor names typed on items. */
 export const floorProgress = (items: TE9ScopeItem[], floors: TE9Floor[]): TFloorProgress[] => {
-  const rows = items.filter(isFilled);
+  const rows = counted(items).filter(isFilled);
   const names = [...floors.map((floor) => floor.name), ...rows.map((item) => item.floor_area.trim() || "No floor set")];
   return [...new Set(names)]
     .map((name) => {
@@ -260,7 +296,7 @@ export const scopeProgress = (
   scopes: Pick<TE9ProjectScope, "key" | "label" | "unit_mode">[]
 ): TScopeProgress[] =>
   scopes.map((scope) => {
-    const totals = groupTotals(items.filter((item) => item.scope === scope.key && isFilled(item)));
+    const totals = groupTotals(counted(items).filter((item) => item.scope === scope.key && isFilled(item)));
     return {
       scope: scope.key,
       label: scope.label,
@@ -279,14 +315,18 @@ export type TTrackerKpis = {
 };
 
 export const isOpenSiteIssue = (item: TE9ScopeItem) =>
-  isFilled(item) && !!item.site_issue && item.site_issue !== "No issues" && item.issue_resolved !== "Yes";
+  isFilled(item) &&
+  !isCancelled(item) &&
+  !!item.site_issue &&
+  item.site_issue !== "No issues" &&
+  item.issue_resolved !== "Yes";
 
 export const trackerKpis = (
   items: TE9ScopeItem[],
   deadline: string | null,
   today: Date = todayDate()
 ): TTrackerKpis => {
-  const rows = items.filter(isFilled);
+  const rows = counted(items).filter(isFilled);
   const totalItems = rows.reduce((total, item) => total + itemMeasure(item), 0);
   const installed = rows
     .filter((item) => item.installation_status === "Installation Done")
@@ -323,7 +363,7 @@ export const stageTargetRows = (
   targets: TE9StageTargets,
   today: Date = todayDate()
 ): TStageTargetRow[] => {
-  const rows = items.filter(isFilled);
+  const rows = counted(items).filter(isFilled);
   return E9_TRACKER_STAGES.map((stage) => {
     const target = targets[stage.targetField] ?? null;
     const targetDay = parseDay(target);
@@ -348,7 +388,7 @@ export const formatMeasure = (value: number, unit: "sqft" | "nos" | "mixed") =>
 
 /** Work done (installed) the way the Excel dashboard counts it: sq ft for sq-ft rows, Nos for the rest. */
 export const workDone = (items: TE9ScopeItem[]) => {
-  const rows = items.filter(isFilled);
+  const rows = counted(items).filter(isFilled);
   let sqftTotal = 0;
   let sqftDone = 0;
   let nosTotal = 0;

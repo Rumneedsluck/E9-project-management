@@ -93,12 +93,25 @@ export const useE9Bills = (slug: string, projectId: string) =>
 export const useE9Summary = (slug: string | undefined) =>
   useSWR(slug ? e9SummaryKey(slug) : null, () => e9ProjectService.getSummary(slug!), opts);
 
+export const e9HoldKey = (slug: string, projectId: string) => `E9_HOLD_${slug}_${projectId}`;
+export const e9HealthKey = (slug: string, projectId: string) => `E9_HEALTH_${slug}_${projectId}`;
+export const e9ReportKey = (slug: string, projectId: string) => `E9_REPORT_${slug}_${projectId}`;
 export const e9CertKey = (slug: string, projectId: string) => `E9_CERT_${slug}_${projectId}`;
 export const e9AnnouncementsKey = (slug: string) => `E9_ANNOUNCEMENTS_${slug}`;
 
 /** JMCs (whole project / floor / scope) and whether billing is open. */
 export const useE9Certifications = (slug: string, projectId: string) =>
   useSWR(e9CertKey(slug, projectId), () => e9ProjectService.getCertifications(slug, projectId), opts);
+
+/** Items on hold / cancelled. */
+export const useE9Hold = (slug: string, projectId: string) =>
+  useSWR(e9HoldKey(slug, projectId), () => e9ProjectService.getHold(slug, projectId), opts);
+
+export const useE9Health = (slug: string, projectId: string) =>
+  useSWR(e9HealthKey(slug, projectId), () => e9ProjectService.getHealth(slug, projectId), opts);
+
+export const useE9Report = (slug: string, projectId: string) =>
+  useSWR(e9ReportKey(slug, projectId), () => e9ProjectService.getReport(slug, projectId), opts);
 
 export const useE9Announcements = (slug: string | undefined) =>
   useSWR(slug ? e9AnnouncementsKey(slug) : null, () => e9ProjectService.getAnnouncements(slug!), opts);
@@ -109,6 +122,9 @@ export const refreshE9Commercial = async (slug: string, projectId: string) => {
     mutate(e9BoqKey(slug, projectId)),
     mutate(e9BillsKey(slug, projectId)),
     mutate(e9CertKey(slug, projectId)),
+    mutate(e9HoldKey(slug, projectId)),
+    mutate(e9HealthKey(slug, projectId)),
+    mutate(e9ReportKey(slug, projectId)),
     mutate(e9SummaryKey(slug)),
     mutate(e9ProjectsKey(slug)),
     mutate(e9ProjectKey(slug, projectId)),

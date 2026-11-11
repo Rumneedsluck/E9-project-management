@@ -110,6 +110,23 @@ export const QUALITY_CHECK = ["Pending", "Passed", "Needs Revision"];
 export const DISPATCH_STATUS = ["Not Dispatched", "Partially Dispatched", "Dispatched", "Delivered at Site"];
 export const INSTALLATION_STATUS = ["Not Started", "In Progress", "Installation Done"];
 export const CLIENT_SIGN_OFF = ["Pending", "Signed Off", "Rework Required"];
+/** On hold / cancelled / billing (blank = a normal item). */
+export const HOLD_STATUS = ["", "On Hold", "Cancelled"];
+export const HOLD_REASONS = [
+  "Client wants no change - waiting",
+  "Artwork changed by client",
+  "Whole design changed by client",
+  "Item replaced by another scope",
+  "Waiting for client approval",
+  "Site not ready",
+  "PO / payment pending",
+  "Cancelled by client",
+  "Other",
+];
+export const BILL_NOW = ["", "Yes", "No"];
+/** per item; blank = the scope's setting */
+export const BILL_WHEN = ["", "Signed off", "Delivered"];
+export const SCOPE_BILL_WHEN = ["Signed off", "Delivered"];
 
 /** Template colour guide: green = done/approved, yellow = under way, blue = sent/in pipeline, grey = not started, orange = issue, red = needs rework. */
 export type TStatusTone = "done" | "progress" | "sent" | "idle" | "issue" | "bad";

@@ -16,6 +16,7 @@ import { E9DonePie, E9StagePie } from "../charts";
 import type { TE9ScopeItem, TStageTargetRow } from "./logic";
 import {
   STAGE_PIES,
+  counted,
   floorProgress,
   formatMeasure,
   isFilled,
@@ -88,7 +89,7 @@ type Props = {
 /** Big work-done pie and the 5 stage pies, like the Excel dashboard and scope sheets. */
 function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
   const done = workDone(items);
-  const rows = items.filter(isFilled);
+  const rows = counted(items).filter(isFilled);
   return (
     <section className="flex flex-col gap-4">
       {/* the whole project's outcome: one big pie */}

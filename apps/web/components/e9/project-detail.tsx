@@ -24,7 +24,9 @@ import { E9BoqPage } from "./commercial/boq-page";
 import { E9LogsPage } from "./commercial/logs-page";
 import { E9ReprintsPage } from "./commercial/reprints-page";
 import { E9SnagsPage } from "./commercial/snags-page";
+import { E9HoldPage } from "./tracker/hold-page";
 import { E9ProjectHistory, E9SiteAuditPanel } from "./tracker/project-docs";
+import { E9ClientReport, E9HealthCheck } from "./tracker/reports-page";
 import { E9SiteIssuesPage } from "./tracker/site-issues";
 import { E9TrackerDashboard } from "./tracker/tracker-dashboard";
 import { E9TrackerSheet } from "./tracker/tracker-sheet";
@@ -54,22 +56,28 @@ const empty = <span className="text-placeholder">Not set</span>;
 
 type Props = { workspaceSlug: string; projectId: string };
 
-type TView = "overview" | "tracker" | "boq" | "logs" | "issues" | "certification" | "info";
-type TSub = "reprints" | "snags" | "site_issues" | "details" | "history";
+type TView = "overview" | "tracker" | "boq" | "logs" | "issues" | "certification" | "reports" | "info";
+type TSub = "reprints" | "snags" | "site_issues" | "hold" | "report" | "health" | "details" | "history";
 const VIEWS: { key: TView; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "tracker", label: "Tracker" },
   { key: "boq", label: "BOQ" },
   { key: "logs", label: "JC & DC" },
-  { key: "issues", label: "Site issues" },
+  { key: "issues", label: "Issues & holds" },
   { key: "certification", label: "Certification & Billing" },
+  { key: "reports", label: "Reports" },
   { key: "info", label: "Info" },
 ];
-const SUBS: Record<"issues" | "info", { key: TSub; label: string }[]> = {
+const SUBS: Record<"issues" | "reports" | "info", { key: TSub; label: string }[]> = {
   issues: [
     { key: "site_issues", label: "Open site issues" },
+    { key: "hold", label: "On hold & cancelled" },
     { key: "reprints", label: "Reprints & Extras" },
     { key: "snags", label: "Snag list" },
+  ],
+  reports: [
+    { key: "report", label: "Client report" },
+    { key: "health", label: "Health check" },
   ],
   info: [
     { key: "details", label: "Project details" },
@@ -88,7 +96,7 @@ const LEGACY: Record<string, [TView, TSub?]> = {
 const resolveView = (view: string | null, sub: string | null): [TView, TSub | undefined] => {
   if (view && LEGACY[view]) return [LEGACY[view][0], LEGACY[view][1]];
   const main = (VIEWS.find((entry) => entry.key === view)?.key ?? "overview") as TView;
-  if (main === "issues" || main === "info") {
+  if (main === "issues" || main === "reports" || main === "info") {
     const options = SUBS[main];
     return [main, (options.find((option) => option.key === sub) ?? options[0]).key];
   }
@@ -218,7 +226,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
         ))}
       </div>
 
-      {(view === "issues" || view === "info") && (
+      {(view === "issues" || view === "reports" || view === "info") && (
         <SubTabs options={SUBS[view]} value={sub} onChange={(next) => setView(view, next)} />
       )}
 
@@ -236,6 +244,9 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
       {view === "issues" && sub === "site_issues" && (
         <E9SiteIssuesPage workspaceSlug={workspaceSlug} project={project} />
       )}
+      {view === "issues" && sub === "hold" && <E9HoldPage workspaceSlug={workspaceSlug} project={project} />}
+      {view === "reports" && sub === "report" && <E9ClientReport workspaceSlug={workspaceSlug} project={project} />}
+      {view === "reports" && sub === "health" && <E9HealthCheck workspaceSlug={workspaceSlug} project={project} />}
       {view === "issues" && sub === "reprints" && <E9ReprintsPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "issues" && sub === "snags" && <E9SnagsPage workspaceSlug={workspaceSlug} project={project} />}
       {view === "certification" && <E9CertificationPage workspaceSlug={workspaceSlug} project={project} />}

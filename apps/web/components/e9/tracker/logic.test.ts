@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { TE9ScopeItem } from "./logic";
 import {
+  counted,
   floorProgress,
   isFilled,
   isStageOverdue,
@@ -71,6 +72,12 @@ const item = (values: Partial<TE9ScopeItem>): TE9ScopeItem => {
     installed_by: "",
     client_sign_off: "Pending",
     remarks: "",
+    hold_status: "",
+    hold_reason: "",
+    hold_since: null,
+    replaced_by: "",
+    bill_now: "",
+    bill_when: "",
     sort_order: counter,
     updated_at: "",
     ...values,
@@ -133,6 +140,31 @@ describe("progress by scope", () => {
     expect(frameRow.installed).toBe(6);
     expect(frameRow.percentItems).toBe(60);
     expect(frameRow.percentArea).toBeNull();
+  });
+});
+
+describe("on hold and cancelled items", () => {
+  const rows = [
+    item({ description: "normal", area_sqft: "100.00", installation_status: "Installation Done" }),
+    item({
+      description: "held",
+      area_sqft: "100.00",
+      installation_status: "Installation Done",
+      hold_status: "On Hold",
+    }),
+    item({ description: "gone", area_sqft: "100.00", hold_status: "Cancelled" }),
+  ];
+
+  it("keeps held items in the total with no progress and drops cancelled ones", () => {
+    const [row] = scopeProgress(rows, [{ key: "wall_graphics", label: "Wall Graphics", unit_mode: "sqft" }]);
+    expect(row.items).toBe(2);
+    expect(row.installed).toBe(1);
+    expect(row.percentItems).toBe(50);
+  });
+
+  it("does not change the items it is given", () => {
+    expect(counted(rows)).toHaveLength(2);
+    expect(rows[1].installation_status).toBe("Installation Done");
   });
 });
 
