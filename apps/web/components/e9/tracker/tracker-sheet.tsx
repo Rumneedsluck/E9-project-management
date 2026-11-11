@@ -1602,16 +1602,16 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                             <button
                               type="button"
                               onClick={() => toggleBand(group.label)}
-                              title={open ? `Close ${group.label}` : `Open ${group.label}`}
-                              className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left hover:bg-white/10"
+                              aria-expanded={open}
+                              aria-label={`${open ? "Fold" : "Open"} ${shortBand(group.label)}`}
+                              title={open ? `Fold ${shortBand(group.label)}` : `Open ${shortBand(group.label)}`}
+                              className={cn(
+                                "group/door flex w-full items-center gap-2 py-1 transition-colors outline-none hover:bg-white/10 focus-visible:bg-white/15 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-inset",
+                                open ? "px-2 text-left" : "justify-center px-0"
+                              )}
                             >
-                              <span
-                                className="inline-block transition-transform duration-300"
-                                style={{ transform: open ? "rotate(90deg)" : "none" }}
-                              >
-                                ▸
-                              </span>
-                              {open && <span className="truncate">{group.label}</span>}
+                              {open && <span className="min-w-0 flex-1 truncate">{group.label}</span>}
+                              <DoorChevron open={open} />
                             </button>
                           )}
                         </th>
@@ -1731,6 +1731,31 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 type TBandGroup = { label: string; columns: TColumn[] };
 
 /** <col> elements of one stage group: the folded "door" plus its columns (widths animate). */
+/** Round chip with a thin chevron: points right when the group is folded, turns to point left (fold) when open. */
+function DoorChevron({ open }: { open: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-5 shrink-0 place-items-center rounded-full bg-white/20 ring-1 ring-white/35 transition-[background-color,transform] duration-300 group-hover/door:bg-white/30"
+    >
+      <svg
+        viewBox="0 0 12 12"
+        className={cn(
+          "size-3 transition-transform duration-300 ease-out",
+          open ? "rotate-180 group-hover/door:-translate-x-px" : "group-hover/door:translate-x-px"
+        )}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4.5 2.5 8 6l-3.5 3.5" />
+      </svg>
+    </span>
+  );
+}
+
 function BandCols({
   group,
   door,
@@ -1782,12 +1807,11 @@ function BandHeads({
             <button
               type="button"
               onClick={onOpen}
-              title={`Open ${group.label}`}
-              className="flex h-full w-full items-center justify-center py-2 text-body-2xs-semibold"
-              style={{ color }}
-            >
-              +
-            </button>
+              aria-label={`Open ${shortBand(group.label)}`}
+              title={`Open ${shortBand(group.label)}`}
+              className="grid h-full w-full place-items-center py-2 outline-none focus-visible:ring-2 focus-visible:ring-inset"
+              style={{ color, ["--tw-ring-color" as string]: color }}
+            ></button>
           )}
         </th>
       )}
@@ -1823,8 +1847,8 @@ function BandCells({
         <td
           onClick={onOpen}
           title={`Open ${shortBand(group.label)}`}
-          className="cursor-pointer overflow-hidden border-b border-subtle p-0"
-          style={{ backgroundColor: `${color}14`, boxShadow: `inset 2px 0 0 ${color}66` }}
+          className="cursor-pointer overflow-hidden border-b border-subtle p-0 transition-[filter] hover:brightness-95 dark:hover:brightness-125"
+          style={{ backgroundColor: `${color}0D`, boxShadow: `inset 1px 0 0 ${color}40` }}
         />
       )}
       {columns.map((column) => (
