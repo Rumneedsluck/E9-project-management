@@ -49,6 +49,7 @@ def blank_item(**values):
         "dispatch_status": "Not Dispatched",
         "installation_status": "Not Started",
         "client_sign_off": "Pending",
+        "hold_status": "",
     }
     return SimpleNamespace(**{**defaults, **values})
 

@@ -157,6 +157,22 @@ class E9ScopeItem(BaseModel):
     # 6 · Handover
     client_sign_off = models.CharField(max_length=40, choices=_choices(tracker.CLIENT_SIGN_OFF), default="Pending")
     remarks = models.TextField(blank=True, default="")
+    # On hold / cancelled / billing. Held items stay in the totals but add no progress;
+    # cancelled ones leave every number.
+    hold_status = models.CharField(max_length=12, choices=_choices(tracker.HOLD_STATUS), blank=True, default="")
+    hold_reason = models.CharField(max_length=80, blank=True, default="")
+    hold_since = models.DateField(null=True, blank=True)
+    replaced_by = models.CharField(max_length=255, blank=True, default="", help_text="Item code / note")
+    bill_now = models.CharField(
+        max_length=3, choices=_choices(tracker.BILL_NOW), blank=True, default="", help_text="Held item billed now?"
+    )
+    bill_when = models.CharField(
+        max_length=12,
+        choices=_choices(tracker.BILL_WHEN),
+        blank=True,
+        default="",
+        help_text="Signed off / Delivered. Blank = the scope's setting.",
+    )
 
     class Meta:
         verbose_name = "E9 Scope Item"
@@ -198,6 +214,12 @@ class E9ProjectScope(BaseModel):
     is_standard = models.BooleanField(default=False)
     enabled = models.BooleanField(default=True)
     sort_order = models.FloatField(default=65535)
+    bill_when = models.CharField(
+        max_length=12,
+        choices=_choices(tracker.SCOPE_BILL_WHEN),
+        default="Signed off",
+        help_text="When items of this scope can be billed: Signed off or Delivered",
+    )
 
     class Meta:
         verbose_name = "E9 Project Scope"

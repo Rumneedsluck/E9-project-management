@@ -8,7 +8,7 @@ allowed  = BOQ qty, or the amended qty when the client sent an amended BOQ (+ co
 pending  = quantity asked for by mail but not confirmed yet
 on tracker = sum of the tracker rows that carry this BOQ No. (sq ft or Nos, by the line's unit)
 extra    = on tracker - allowed            (amber while a pending mail covers it, red otherwise)
-billable = min(installed, allowed) + client-change reprints
+billable = min(rows that reached their "Bill when" step, allowed) + client-change reprints
 Reprints caused by our own mistakes are listed, but never billed and never counted as extra.
 """
 
@@ -20,6 +20,7 @@ from .models import (
     E9Bill,
     E9BillLine,
     E9BoqLine,
+    E9ProjectScope,
     E9ReprintCause,
     E9Reprint,
     E9ScopeItem,
@@ -42,6 +43,27 @@ def is_filled(item):
 def measure(item, unit):
     """How much one tracker row counts towards a BOQ line (site-measured size)."""
     return tracker.measured(item, unit)
+
+
+def can_bill(item, scope_rule):
+    """May this row be billed yet? (template: 'Bill when' = Signed off / Delivered; held items need Bill now = Yes).
+
+    scope_rule is the scope's setting; a row's own 'Bill when' overrides it. Cancelled rows are never billed.
+    """
+    if tracker.is_cancelled(item):
+        return False
+    if tracker.is_held(item):
+        return item.bill_now == "Yes" and item.production_status == "Production Done"
+    rule = item.bill_when or scope_rule or "Signed off"
+    if rule == "Delivered":
+        return item.dispatch_status == "Delivered at Site"
+    return item.client_sign_off == "Signed Off"
+
+
+def billable_measure(item, unit):
+    """What one billable row is worth: the certified quantity when typed, else the measured size."""
+    certified = tracker.certified_measure(item, unit)
+    return certified if certified is not None else measure(item, unit)
 
 
 def q2(value):
@@ -79,7 +101,13 @@ def line_rows(project):
         .prefetch_related("amendment_changes__amendment")
         .order_by("po__sort_order", "po__created_at", "sort_order", "created_at")
     )
-    items = [item for item in E9ScopeItem.objects.filter(project=project) if is_filled(item)]
+    # cancelled items leave every number; held ones stay in the totals but add no progress
+    items = [
+        item
+        for item in E9ScopeItem.objects.filter(project=project)
+        if is_filled(item) and not tracker.is_cancelled(item)
+    ]
+    scope_rules = dict(E9ProjectScope.objects.filter(project=project).values_list("key", "bill_when"))
     by_no = defaultdict(list)
     for item in items:
         by_no[norm(item.boq_item_no)].append(item)
@@ -119,19 +147,18 @@ def line_rows(project):
         unit = line.unit
         # production size when typed (what we actually send), else the measured size
         on_tracker = sum((tracker.production_measure(item, unit) for item in rows_for_line), ZERO)
+        working = [item for item in rows_for_line if tracker.makes_progress(item)]
         produced = sum(
-            (
-                tracker.production_measure(item, unit)
-                for item in rows_for_line
-                if item.production_status == "Production Done"
-            ),
+            (tracker.production_measure(item, unit) for item in working if item.production_status == "Production Done"),
             ZERO,
         )
-        certified_rows = [tracker.certified_measure(item, unit) for item in rows_for_line]
+        certified_rows = [tracker.certified_measure(item, unit) for item in working]
         certified_on_site = sum((value for value in certified_rows if value is not None), ZERO)
         installed = sum(
-            (measure(item, unit) for item in rows_for_line if item.installation_status == "Installation Done"), ZERO
+            (measure(item, unit) for item in working if item.installation_status == "Installation Done"), ZERO
         )
+        billable_rows = [item for item in rows_for_line if can_bill(item, scope_rules.get(item.scope))]
+        ready_to_bill = sum((billable_measure(item, unit) for item in billable_rows), ZERO)
         over = on_tracker - allowed
         if over > 0 and over > pending:
             status = "excess"
@@ -140,9 +167,9 @@ def line_rows(project):
         else:
             status = "ok"
         client_reprints = reprints[line.id]["client"]
-        # after the joint measurement the certified quantity counts; before it, what is installed
-        done = certified_on_site if certified_on_site > 0 else installed
-        billable_now = min(done, allowed) + client_reprints
+        # a row is billable once its 'Bill when' trigger is reached (Signed off / Delivered); the certified
+        # quantity counts when typed, and never more than the BOQ allows
+        billable_now = min(ready_to_bill, allowed) + client_reprints
         max_billable = allowed + client_reprints
         rows.append(
             {

@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from plane.app.permissions import ROLE, allow_permission
 from plane.app.views.base import BaseAPIView
 
-from . import importer
+from . import importer, tracker
 from .models import E9Attachment, E9AttachmentKind, E9ChangeLog, E9Floor, E9ProjectScope, E9ScopeItem, E9UnitMode
 from .serializers import (
     E9AttachmentSerializer,
@@ -110,11 +110,14 @@ class E9ScopeListEndpoint(BaseAPIView):
                 return Response({"scopes": f"'{label}': the code must be 1-6 letters or numbers."}, status=400)
             if key and current[key].prefix != prefix and key in used:
                 return Response({"scopes": f"'{label}' already has items, so its code cannot change."}, status=400)
-            cleaned.append((key, label, prefix, unit_mode, bool(row.get("enabled", True))))
-        sent_keys = {key for key, *_ in cleaned if key}
+            bill_when = row.get("bill_when") or (current[key].bill_when if key else "Signed off")
+            if bill_when not in tracker.SCOPE_BILL_WHEN:
+                return Response({"scopes": f"'{label}': bill when must be Signed off or Delivered."}, status=400)
+            cleaned.append((key, label, prefix, unit_mode, bool(row.get("enabled", True)), bill_when))
+        sent_keys = {item[0] for item in cleaned if item[0]}
         # standard scopes are never removed (only switched off); keep any that were not sent
         kept_prefixes = [scope.prefix for key, scope in current.items() if key not in sent_keys and scope.is_standard]
-        prefixes = [prefix for _, _, prefix, _, _ in cleaned] + kept_prefixes
+        prefixes = [item[2] for item in cleaned] + kept_prefixes
         duplicate = next((prefix for prefix in prefixes if prefixes.count(prefix) > 1), None)
         if duplicate:
             return Response({"scopes": f"Two scopes use the code '{duplicate}'. Codes must differ."}, status=400)
@@ -126,12 +129,12 @@ class E9ScopeListEndpoint(BaseAPIView):
                 )
 
         # 2) save
-        fields = ["label", "prefix", "unit_mode", "enabled"]
+        fields = ["label", "prefix", "unit_mode", "enabled", "bill_when"]
         with transaction.atomic():
             for scope in removed:
                 record(project, request.user, "scope", "deleted", None, scope.label, old=scope.label)
                 scope.delete(soft=False)
-            for order, (key, label, prefix, unit_mode, enabled) in enumerate(cleaned):
+            for order, (key, label, prefix, unit_mode, enabled, bill_when) in enumerate(cleaned):
                 if key:
                     scope = current[key]
                     before = snapshot(scope, fields)
@@ -144,6 +147,7 @@ class E9ScopeListEndpoint(BaseAPIView):
                     )
                     before = None
                 scope.label, scope.prefix, scope.unit_mode, scope.enabled = label, prefix, unit_mode, enabled
+                scope.bill_when = bill_when
                 scope.sort_order = (order + 1) * 1000
                 if before is None:
                     scope.save(created_by_id=request.user.id)

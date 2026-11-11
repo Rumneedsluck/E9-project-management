@@ -106,6 +106,38 @@ INSTALLATION_STATUS = ["Not Started", "In Progress", "Installation Done"]
 CLIENT_SIGN_OFF = ["Pending", "Signed Off", "Rework Required"]
 UNIT_OVERRIDE = ["", "sqft", "nos"]
 
+# On hold / cancelled / billing (template columns AR-AX). Blank = a normal item.
+HOLD_STATUS = ["", "On Hold", "Cancelled"]
+HOLD_REASONS = [
+    "Client wants no change - waiting",
+    "Artwork changed by client",
+    "Whole design changed by client",
+    "Item replaced by another scope",
+    "Waiting for client approval",
+    "Site not ready",
+    "PO / payment pending",
+    "Cancelled by client",
+    "Other",
+]
+REPLACED_REASON = "Item replaced by another scope"
+BILL_NOW = ["", "Yes", "No"]
+BILL_WHEN = ["", "Signed off", "Delivered"]  # per item; blank = the scope's setting
+SCOPE_BILL_WHEN = ["Signed off", "Delivered"]
+
+
+def is_cancelled(item):
+    """Cancelled items are removed from every number."""
+    return item.hold_status == "Cancelled"
+
+
+def is_held(item):
+    """Held items stay in the totals but show no progress until released."""
+    return item.hold_status == "On Hold"
+
+
+def makes_progress(item):
+    return not item.hold_status
+
 
 def item_unit(unit_mode, height, width, unit_override=""):
     """'sqft' or 'nos' for an item. unit_mode is the scope's setting: sqft, nos or either."""
@@ -128,6 +160,10 @@ def item_area_sqft(height, width, qty):
 
 def current_stage(item):
     """The template's 'Current Stage (auto)' formula, checked from the latest stage backwards."""
+    if item.hold_status == "Cancelled":
+        return "Cancelled"
+    if item.hold_status == "On Hold":
+        return "On Hold"
     if item.client_sign_off == "Signed Off":
         return "Handed Over"
     if item.installation_status == "Installation Done":
@@ -299,10 +335,12 @@ def progress(items, unit_modes):
     for item in items:
         if not (item.floor_area.strip() or item.description.strip() or item.height_in or item.width_in or item.qty):
             continue
+        if is_cancelled(item):
+            continue  # cancelled items are not counted anywhere
         mode = unit_modes.get(item.scope) or SCOPES.get(item.scope, ("", "", "either"))[2]
         unit = item_unit(mode, item.height_in, item.width_in, item.unit_override)
         amount = measured(item, unit)
-        done = item.installation_status == "Installation Done"
+        done = item.installation_status == "Installation Done" and makes_progress(item)
         totals["rows"] += 1
         totals[f"{unit}_total"] += amount
         if done:

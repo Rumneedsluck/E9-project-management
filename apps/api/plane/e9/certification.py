@@ -75,9 +75,9 @@ def covers(cert, item):
 
 def readiness(items):
     """How far the certified quantities are filled in, for a group of tracker rows."""
-    rows = [item for item in items if is_filled(item)]
+    rows = [item for item in items if is_filled(item) and item.hold_status != "Cancelled"]
     certified = [item for item in rows if item.certified_qty is not None or item.certified_height_in is not None]
-    installed = [item for item in rows if item.installation_status == "Installation Done"]
+    installed = [item for item in rows if item.installation_status == "Installation Done" and not item.hold_status]
     return {"rows": len(rows), "certified": len(certified), "installed": len(installed)}
 
 

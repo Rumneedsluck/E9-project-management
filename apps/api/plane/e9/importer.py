@@ -94,6 +94,12 @@ COLUMNS = {
     "client sign-off": "client_sign_off",
     "remarks": "remarks",
     "unit": "unit",
+    "on hold / cancelled?": "hold_status",
+    "reason": "hold_reason",
+    "since (date)": "hold_since",
+    "replaced by (item code) / note": "replaced_by",
+    "bill now? (hold / hand-over)": "bill_now",
+    "bill when? (blank = scope default)": "bill_when",
 }
 CHOICES = {
     "site_audit_status": tracker.SITE_AUDIT_STATUS,
@@ -105,6 +111,9 @@ CHOICES = {
     "dispatch_status": tracker.DISPATCH_STATUS,
     "installation_status": tracker.INSTALLATION_STATUS,
     "client_sign_off": tracker.CLIENT_SIGN_OFF,
+    "hold_status": [value for value in tracker.HOLD_STATUS if value],
+    "bill_now": [value for value in tracker.BILL_NOW if value],
+    "bill_when": [value for value in tracker.BILL_WHEN if value],
 }
 NUMBER_FIELDS = {
     "height_in",
@@ -126,6 +135,8 @@ TEXT_LIMITS = {
     "dc_nos": 255,
     "dc_qty": 255,
     "installed_by": 255,
+    "hold_reason": 80,
+    "replaced_by": 255,
 }
 FILLED_FIELDS = ("floor_area", "description", "height_in", "width_in", "qty")
 
@@ -205,6 +216,20 @@ def _read_project_info(workbook, warnings):
     return values, visits, coordinator
 
 
+def _read_bill_when_defaults(workbook):
+    """{scope label (lower case): "Signed off" | "Delivered"} from the Billing sheet (column J)."""
+    sheet = next((ws for ws in workbook.worksheets if ws.title.strip().lower() == "billing"), None)
+    if sheet is None:
+        return {}
+    found = {}
+    for row in sheet.iter_rows(min_row=1, max_row=min(sheet.max_row, 40), max_col=10, values_only=True):
+        label = _header(row[0] if row else "")
+        value = _text(row[9] if len(row) > 9 else "")
+        if label and value in tracker.SCOPE_BILL_WHEN:
+            found[label] = value
+    return found
+
+
 def _read_scope_sheet(sheet, scope_key, warnings):
     header_row = None
     for index, row in enumerate(sheet.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
@@ -230,7 +255,7 @@ def _read_scope_sheet(sheet, scope_key, warnings):
                 number = _number(raw)
                 if number is not None:
                     record_values[field] = number
-            elif field == "installation_date":
+            elif field in ("installation_date", "hold_since"):
                 record_values[field] = _date(raw)
             else:
                 record_values[field] = _text(raw)
@@ -598,10 +623,18 @@ def import_tracker(project, upload, user):
         "site_visits": 0,
         "coordinator": coordinator,
         "photos": 0,
+        "on_hold": 0,
+        "cancelled": 0,
     }
     pictures = sheet_images(upload)
+    bill_defaults = _read_bill_when_defaults(workbook)
     with transaction.atomic():
         scopes = {scope.key: scope for scope in ensure_scopes(project, enabled_keys=set(), user=user)}
+        for scope in scopes.values():
+            wanted = bill_defaults.get(scope.label.strip().lower())
+            if wanted and scope.bill_when != wanted:
+                scope.bill_when = wanted
+                scope.save()
 
         # Project info: fill only empty fields
         profile = E9ProjectProfile.all_objects.filter(project=project).first()
@@ -659,6 +692,8 @@ def import_tracker(project, upload, user):
                     floors.append(fields["floor_area"])
             E9ScopeItem.objects.bulk_create(created)
             report["items"][scope.label] = len(created)
+            report["on_hold"] += sum(1 for row in created if row.hold_status == "On Hold")
+            report["cancelled"] += sum(1 for row in created if row.hold_status == "Cancelled")
             # photos pasted on a row of this sheet -> that item's photos
             by_row = {row: item for row, item in zip(rows_of_created, created) if row}
             for row, name, data, content_type in pictures.get(title, []):

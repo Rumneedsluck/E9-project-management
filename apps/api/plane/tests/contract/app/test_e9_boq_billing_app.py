@@ -151,7 +151,7 @@ class TestBoqExtra:
         for item in items:
             session_client.patch(
                 url(workspace, project, f"items/{item['id']}/"),
-                {"installation_status": "Installation Done"},
+                {"installation_status": "Installation Done", "client_sign_off": "Signed Off"},
                 format="json",
             )
         member = member_client(workspace, project, 15)
@@ -187,7 +187,7 @@ class TestBilling:
         for item in items:
             client.patch(
                 url(workspace, project, f"items/{item['id']}/"),
-                {"installation_status": "Installation Done"},
+                {"installation_status": "Installation Done", "client_sign_off": "Signed Off"},
                 format="json",
             )
         self.cert = sign_jmc(client, workspace, project)["certifications"][0]["id"]

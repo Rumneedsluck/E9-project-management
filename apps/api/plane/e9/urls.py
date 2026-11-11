@@ -45,6 +45,7 @@ from .views_cert import (
     E9CertificationDetailEndpoint,
     E9CertificationListEndpoint,
 )
+from .views_report import E9ClientReportEndpoint, E9HealthEndpoint, E9HoldEndpoint
 from .views_snags import E9SnagDetailEndpoint, E9SnagListEndpoint
 
 P = "workspaces/<str:slug>/e9/projects/<uuid:project_id>"
@@ -106,6 +107,9 @@ urlpatterns = [
     path(f"{P}/reprints/", E9ReprintListEndpoint.as_view(), name="e9-reprints"),
     path(f"{P}/reprints/<uuid:reprint_id>/", E9ReprintDetailEndpoint.as_view(), name="e9-reprint-detail"),
     # Snag list
+    path(f"{P}/hold/", E9HoldEndpoint.as_view(), name="e9-hold"),
+    path(f"{P}/health/", E9HealthEndpoint.as_view(), name="e9-health"),
+    path(f"{P}/report/", E9ClientReportEndpoint.as_view(), name="e9-report"),
     path(f"{P}/snags/", E9SnagListEndpoint.as_view(), name="e9-snags"),
     path(f"{P}/snags/<uuid:snag_id>/", E9SnagDetailEndpoint.as_view(), name="e9-snag-detail"),
     # JC & DC logs

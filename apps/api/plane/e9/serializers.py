@@ -124,6 +124,12 @@ ITEM_EDITABLE_FIELDS = [
     "certified_qty",
     "client_sign_off",
     "remarks",
+    "hold_status",
+    "hold_reason",
+    "hold_since",
+    "replaced_by",
+    "bill_now",
+    "bill_when",
     "sort_order",
 ]
 
@@ -244,7 +250,7 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
 class E9ProjectScopeSerializer(serializers.ModelSerializer):
     class Meta:
         model = E9ProjectScope
-        fields = ["key", "label", "prefix", "unit_mode", "is_standard", "enabled", "sort_order"]
+        fields = ["key", "label", "prefix", "unit_mode", "is_standard", "enabled", "sort_order", "bill_when"]
         read_only_fields = ["key", "is_standard"]
 
 
