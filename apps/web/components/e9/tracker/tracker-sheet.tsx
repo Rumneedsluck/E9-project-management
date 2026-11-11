@@ -83,18 +83,20 @@ type TColumn = {
   band: string;
   render: (ctx: TRowContext) => ReactNode;
   className?: string;
+  /** worked out by the sheet: nothing to type here */
+  auto?: boolean;
 };
 
 const BAND_COLORS: Record<string, string> = {
   "Item details": GREY,
   "1 · Site audit": stageColor("site_audit"),
+  "Site issues": "#F06A25",
   "Production size (what we send)": "#0E7490",
   "2 · Pre-press": stageColor("pre_press"),
   "3 · Production & material": stageColor("material"),
   "4 · Quality & dispatch": stageColor("delivered"),
   "5 · Installation": stageColor("installation"),
-  "Certified (joint measurement)": "#C2410C",
-  "6 · Handover": stageColor("sign_off"),
+  "6 · Certify & hand over": stageColor("sign_off"),
   Notes: GREY,
 };
 
@@ -267,9 +269,10 @@ const COLUMNS: TColumn[] = [
   },
   {
     key: "stage",
+    auto: true,
     hideKey: "current_stage",
     label: "Current stage",
-    width: 140,
+    width: 128,
     band: "Item details",
     className: "px-2",
     render: ({ item, empty }) => (
@@ -299,7 +302,7 @@ const COLUMNS: TColumn[] = [
     key: "plan",
     hideKey: "floor_plan_ref",
     label: "Floor plan",
-    width: 110,
+    width: 96,
     band: "Item details",
     render: text("floor_plan_ref", "Floor plan"),
   },
@@ -307,7 +310,7 @@ const COLUMNS: TColumn[] = [
     key: "desc",
     hideKey: "description",
     label: "Description",
-    width: 220,
+    width: 200,
     band: "Item details",
     render: text("description", "Description", "e.g. Wall 01"),
   },
@@ -425,7 +428,7 @@ const COLUMNS: TColumn[] = [
     hideKey: "site_issue",
     label: "Site issue",
     width: 200,
-    band: "1 · Site audit",
+    band: "Site issues",
     render: ({ item, disabled, save }) => (
       <SelectCell
         label="Site issue"
@@ -446,7 +449,7 @@ const COLUMNS: TColumn[] = [
     hideKey: "site_issue",
     label: "Resolved?",
     width: 92,
-    band: "1 · Site audit",
+    band: "Site issues",
     render: ({ item, disabled, save }) => (
       <SelectCell
         label="Issue resolved"
@@ -483,6 +486,7 @@ const COLUMNS: TColumn[] = [
   ),
   {
     key: "prodmeasure",
+    auto: true,
     hideKey: "production_size",
     label: "Production qty",
     width: 104,
@@ -537,7 +541,7 @@ const COLUMNS: TColumn[] = [
     key: "eproof",
     hideKey: "jc_no",
     label: "E-Proof mail",
-    width: 130,
+    width: 120,
     band: "2 · Pre-press",
     render: (ctx) =>
       ctx.item.jc_no ? (
@@ -647,6 +651,7 @@ const COLUMNS: TColumn[] = [
   },
   {
     key: "dispatched",
+    auto: true,
     hideKey: "dc_qty",
     label: "Dispatched",
     width: 96,
@@ -662,6 +667,7 @@ const COLUMNS: TColumn[] = [
   },
   {
     key: "balance",
+    auto: true,
     hideKey: "dc_qty",
     label: "Balance to send",
     width: 104,
@@ -719,7 +725,7 @@ const COLUMNS: TColumn[] = [
     "certh",
     "certified",
     "Cert. H (in)",
-    "Certified (joint measurement)",
+    "6 · Certify & hand over",
     "certified_height_in",
     "Certified height in inches"
   ),
@@ -727,24 +733,18 @@ const COLUMNS: TColumn[] = [
     "certw",
     "certified",
     "Cert. W (in)",
-    "Certified (joint measurement)",
+    "6 · Certify & hand over",
     "certified_width_in",
     "Certified width in inches"
   ),
-  numberColumn(
-    "certqty",
-    "certified",
-    "Cert. Qty",
-    "Certified (joint measurement)",
-    "certified_qty",
-    "Certified quantity"
-  ),
+  numberColumn("certqty", "certified", "Cert. Qty", "6 · Certify & hand over", "certified_qty", "Certified quantity"),
   {
     key: "certmeasure",
+    auto: true,
     hideKey: "certified",
     label: "Certifiable",
     width: 100,
-    band: "Certified (joint measurement)",
+    band: "6 · Certify & hand over",
     render: ({ item, empty }) =>
       empty ? null : <AutoCell value={item.certified_measure} unit={item.unit} hint="Used for billing" />,
   },
@@ -753,7 +753,7 @@ const COLUMNS: TColumn[] = [
     hideKey: "client_sign_off",
     label: "Client sign-off",
     width: 152,
-    band: "6 · Handover",
+    band: "6 · Certify & hand over",
     render: (ctx) => (
       <SelectCell
         label="Client sign-off"
@@ -769,7 +769,7 @@ const COLUMNS: TColumn[] = [
     key: "remarks",
     hideKey: "remarks",
     label: "Remarks",
-    width: 220,
+    width: 200,
     band: "Notes",
     render: text("remarks", "Remarks"),
   },
@@ -1818,7 +1818,11 @@ function BandHeads({
       {columns.map((column) => (
         <th
           key={column.key}
-          className="overflow-hidden border-b border-subtle bg-layer-1 px-2 py-2 text-body-2xs-semibold whitespace-nowrap text-tertiary"
+          title={column.auto ? `${column.label}: worked out for you, nothing to type here` : undefined}
+          className={cn(
+            "overflow-hidden border-b border-subtle bg-layer-1 px-2 py-2 text-body-2xs-semibold whitespace-nowrap text-tertiary",
+            column.auto && "italic"
+          )}
         >
           {column.label}
         </th>
