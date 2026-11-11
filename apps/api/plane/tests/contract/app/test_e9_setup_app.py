@@ -594,3 +594,30 @@ class TestFullTemplateImport:
             d for d in session_client.get(url(workspace, project, "logs/")).data["challans"] if d["number"] == "3500"
         )
         assert dc["dispatched_from"] == "I Media" and dc["vehicle"] == "KA-01-1234" and dc["dc_date"] == "2026-11-18"
+
+
+@pytest.mark.contract
+class TestFirstOpenRace:
+    @pytest.mark.django_db
+    def test_two_requests_opening_a_new_project_at_once_both_work(self, project):
+        """A request that looked for scopes/floors before the other one saved them must not crash."""
+        from unittest.mock import patch
+
+        from plane.e9 import services
+        from plane.e9.models import E9ProjectScope
+
+        services.ensure_scopes(project)  # the "winner" already saved the standard scopes
+        real_filter = E9ProjectScope.objects.filter
+        calls = {"n": 0}
+
+        def stale_first_look(*args, **kwargs):
+            calls["n"] += 1
+            return [] if calls["n"] == 1 else real_filter(*args, **kwargs)
+
+        with patch.object(E9ProjectScope.objects, "filter", side_effect=stale_first_look):
+            scopes = services.ensure_scopes(project)  # the "loser" saw nothing and tries to insert again
+        assert len(scopes) == len(services.tracker.SCOPES)
+        assert E9ProjectScope.objects.filter(project=project).count() == len(services.tracker.SCOPES)
+
+        services.ensure_floors(project, ["Ground Floor"])
+        assert len(services.ensure_floors(project, ["Ground Floor", "1st Floor"])) == 1

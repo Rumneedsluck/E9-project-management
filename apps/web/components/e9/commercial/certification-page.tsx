@@ -60,6 +60,7 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<TE9Certification | null>(null);
   const [completing, setCompleting] = useState<TE9Certification | null>(null);
+  const [showSteps, setShowSteps] = useState(false);
 
   const send = async (title: string, request: () => Promise<TE9Certifications>) => {
     try {
@@ -143,28 +144,53 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
           </div>
         </div>
 
-        <ol className="flex flex-col divide-y divide-subtle rounded-lg border border-subtle">
-          <CheckRow
-            done={measured}
-            title="Measure on site with the client"
-            text="Take the printed JMC sheet to site."
-          />
-          <CheckRow
-            done={typedAll}
-            title="Type the certified qty in the Tracker"
-            text={`${data.overall.certified} of ${data.overall.rows} rows filled (Certified columns).`}
-            action={
-              <a href={trackerHref} className="text-body-xs-semibold text-accent-primary hover:underline">
-                Open Tracker →
-              </a>
-            }
-          />
-          <CheckRow
-            done={step1Done}
-            title="Client signs the JMC → Certification done"
-            text="Upload the signed sheet and press “Certification done”. Billing opens."
-          />
-        </ol>
+        {step1Done && !showSteps ? (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm-regular text-secondary">
+            <span className="text-success-primary">✓ Measured and signed by the client</span>
+            {!typedAll && (
+              <span className="text-warning-primary">
+                · only {data.overall.certified} of {data.overall.rows} rows have a certified qty
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowSteps(true)}
+              className="text-body-xs-semibold text-accent-primary hover:underline"
+            >
+              Show the steps
+            </button>
+          </p>
+        ) : (
+          <ol className="flex flex-col divide-y divide-subtle rounded-lg border border-subtle">
+            <CheckRow
+              number={1}
+              state={measured ? "done" : "current"}
+              title="Measure on site with the client"
+              text="Take the printed JMC sheet to site."
+            />
+            <CheckRow
+              number={2}
+              state={typedAll ? "done" : step1Done ? "warn" : measured ? "current" : "todo"}
+              title="Type the certified qty in the Tracker"
+              text={
+                step1Done && !typedAll
+                  ? `Billing is open, but only ${data.overall.certified} of ${data.overall.rows} rows have a certified qty.`
+                  : `${data.overall.certified} of ${data.overall.rows} rows filled (Certified columns).`
+              }
+              action={
+                <a href={trackerHref} className="text-body-xs-semibold text-accent-primary hover:underline">
+                  Open Tracker →
+                </a>
+              }
+            />
+            <CheckRow
+              number={3}
+              state={step1Done ? "done" : measured && typedAll ? "current" : "todo"}
+              title="Client signs the JMC → Certification done"
+              text="Upload the signed sheet and press “Certification done”. Billing opens."
+            />
+          </ol>
+        )}
 
         {certs.length === 0 ? (
           data.can_edit ? (
@@ -398,19 +424,42 @@ function StepHeader({
   );
 }
 
-function CheckRow({ done, title, text, action }: { done: boolean; title: string; text: string; action?: ReactNode }) {
+type TCheckState = "done" | "current" | "warn" | "todo";
+
+function CheckRow({
+  number,
+  state,
+  title,
+  text,
+  action,
+}: {
+  number: number;
+  state: TCheckState;
+  title: string;
+  text: string;
+  action?: ReactNode;
+}) {
+  const mark = { done: "✓", warn: "!", current: String(number), todo: String(number) }[state];
+  const label = { done: "done", warn: "needs attention", current: "next step", todo: "not yet" }[state];
   return (
-    <li className="flex items-center gap-3 px-4 py-3">
+    <li className={cn("flex items-center gap-3 px-4 py-3", state === "current" && "bg-[#F59E0B]/10")}>
       <span
+        aria-hidden="true"
         className={cn(
           "grid size-6 shrink-0 place-items-center rounded-full text-body-2xs-semibold",
-          done ? "bg-success-primary text-white" : "border border-strong text-transparent"
+          state === "done" && "bg-success-primary text-white",
+          state === "warn" && "bg-[#F59E0B] text-black",
+          state === "current" && "bg-[#F59E0B] text-black",
+          state === "todo" && "border border-strong text-placeholder"
         )}
       >
-        ✓
+        {mark}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className={cn("text-body-sm-semibold", done ? "text-primary" : "text-secondary")}>{title}</span>
+        <span className={cn("text-body-sm-semibold", state === "todo" ? "text-secondary" : "text-primary")}>
+          {title}
+          <span className="sr-only"> ({label})</span>
+        </span>
         <span className="text-body-xs-regular text-tertiary">{text}</span>
       </span>
       {action}

@@ -46,7 +46,8 @@ def ensure_scopes(project, enabled_keys=None, user=None):
                 created_by_id=getattr(user, "id", None),
             )
         )
-    E9ProjectScope.objects.bulk_create(rows)
+    # several requests can open a brand-new project at the same moment; the loser must not fail
+    E9ProjectScope.objects.bulk_create(rows, ignore_conflicts=True)
     return list(E9ProjectScope.objects.filter(project=project))
 
 
@@ -95,7 +96,7 @@ def ensure_floors(project, names, user=None):
             )
         )
         order += 1000
-    E9Floor.objects.bulk_create(created)
+    E9Floor.objects.bulk_create(created, ignore_conflicts=True)
     return created
 
 
