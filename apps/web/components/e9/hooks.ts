@@ -61,7 +61,12 @@ export const useE9Documents = (slug: string, projectId: string) =>
   useSWR(e9DocsKey(slug, projectId), () => e9ProjectService.listAttachments(slug, projectId, "site_audit"), opts);
 
 export const useE9History = (slug: string, projectId: string, entityId?: string) =>
-  useSWR(e9HistoryKey(slug, projectId, entityId), () => e9ProjectService.listHistory(slug, projectId, entityId), opts);
+  // entityId "none" means "no item chosen yet": do not ask the server anything
+  useSWR(
+    entityId === "none" ? null : e9HistoryKey(slug, projectId, entityId),
+    () => e9ProjectService.listHistory(slug, projectId, entityId),
+    opts
+  );
 
 export const e9BoqKey = (slug: string, projectId: string) => `E9_BOQ_${slug}_${projectId}`;
 export const e9LogsKey = (slug: string, projectId: string) => `E9_LOGS_${slug}_${projectId}`;

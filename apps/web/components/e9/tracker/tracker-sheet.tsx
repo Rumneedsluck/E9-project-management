@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ClipboardEvent, ReactNode } from "react";
 import { AddOutline, ClockOutline, CloseOutline, SearchOutline } from "@makeplane/propel/icons";
@@ -894,7 +894,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     for (const line of boq.lines) if (line.scope && !map.has(line.scope)) map.set(line.scope, line.line_no);
     return map;
   }, [boq]);
-  const scopeLabel = (key: string) => scopes?.find((entry) => entry.key === key)?.label ?? key;
+  const scopeLabel = useCallback((key: string) => scopes?.find((entry) => entry.key === key)?.label ?? key, [scopes]);
   const [reprintItem, setReprintItem] = useState<TE9ScopeItem | null>(null);
 
   // ---- stage groups that slide open / shut like a door (remembered per project) ----
@@ -1219,6 +1219,58 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     }
   };
 
+  // ---- speed: rows are memoised (one edit redraws one row) and long sheets draw only what is on screen ----
+  const rowActionsRef = useRef<TRowHandlers | null>(null);
+  const rowActions = useMemo<TRowActions>(
+    () => ({
+      save: (item, patch) => void rowActionsRef.current?.save(item, patch),
+      toggle: (id) => rowActionsRef.current?.toggle(id),
+      remove: (item) => void rowActionsRef.current?.remove(item),
+      openBand: (band) => rowActionsRef.current?.openBand(band),
+      openPhotos: (item) => setPhotoItem(item),
+      openReprint: (item) => setReprintItem(item),
+      openHistory: (item) => setHistoryItem(item),
+    }),
+    []
+  );
+  const rowShared = useMemo<TRowShared>(
+    () => ({
+      floorListId,
+      boqListId,
+      boqNos,
+      boqLineScope,
+      boqLineForScope,
+      scopeLabel,
+      workspaceSlug,
+      projectId: project.id,
+    }),
+    [floorListId, boqListId, boqNos, boqLineScope, boqLineForScope, scopeLabel, workspaceSlug, project.id]
+  );
+  const layoutRef = useRef<{ sig: string; groups: TOpenGroup[] }>({ sig: "", groups: [] });
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const rowHeight = useRef(DEFAULT_ROW_HEIGHT);
+  const scrollFrame = useRef(0);
+  const [span, setSpan] = useState({ first: 0, count: 40 });
+  const syncWindow = useCallback(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const first = Math.floor(el.scrollTop / rowHeight.current / WINDOW_STEP) * WINDOW_STEP;
+    const count = Math.ceil(el.clientHeight / rowHeight.current) + 1;
+    setSpan((prev) => (prev.first === first && prev.count === count ? prev : { first, count }));
+  }, []);
+  const onSheetScroll = useCallback(() => {
+    if (scrollFrame.current) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = 0;
+      syncWindow();
+    });
+  }, [syncWindow]);
+  useEffect(() => {
+    const first = sheetRef.current?.querySelector<HTMLElement>("tbody tr[data-item]");
+    if (first && first.offsetHeight > 20) rowHeight.current = first.offsetHeight;
+    syncWindow();
+  }, [rows.length, isLoading, scopeKey, syncWindow]);
+
   if ((isLoading && !data) || !scopes) return <E9LoadingState />;
   if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
 
@@ -1242,6 +1294,27 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     ACTIONS_WIDTH +
     shownColumns.reduce((t, column) => t + columnWidth(column), 0) +
     bandGroups.reduce((t, group) => t + (group.label === ALWAYS_OPEN_BAND ? 0 : doorWidth(group.label)), 0);
+
+  const openGroups: TOpenGroup[] = bandGroups.map((group) => ({
+    label: group.label,
+    door: group.label !== ALWAYS_OPEN_BAND,
+    columns: group.columns.filter((column) => bandOpenness(column.band) > 0),
+  }));
+  const layoutSig = openGroups
+    .map((group) => `${group.label}:${group.columns.map((column) => column.key).join(",")}`)
+    .join("|");
+  if (layoutRef.current.sig !== layoutSig) layoutRef.current = { sig: layoutSig, groups: openGroups };
+  const layout = layoutRef.current.groups;
+  const windowed = rows.length > WINDOW_MIN;
+  const winStart = windowed ? Math.max(0, span.first - WINDOW_BUFFER) : 0;
+  const winEnd = windowed ? Math.min(rows.length, span.first + span.count + WINDOW_BUFFER) : rows.length;
+  const spanCols = layout.reduce((t, group) => t + (group.door ? 1 : 0) + group.columns.length, 2);
+  const spacer = (key: string, count: number) =>
+    count > 0 ? (
+      <tr key={key} aria-hidden="true" style={{ height: count * rowHeight.current }}>
+        <td colSpan={spanCols} className="p-0" />
+      </tr>
+    ) : null;
 
   /** Slide a stage group open or shut (columns grow while the folded "door" shrinks). */
   const toggleBand = (band: string) => {
@@ -1284,6 +1357,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     };
     requestAnimationFrame(frame);
   };
+  rowActionsRef.current = { save, toggle, remove: removeRow, openBand: toggleBand };
   const setAllBands = (open: boolean) => {
     const next = new Set(
       open ? bandGroups.map((group) => group.label).filter((label) => label !== ALWAYS_OPEN_BAND) : []
@@ -1477,7 +1551,11 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 
           {/* Sheet */}
           <div className="overflow-hidden rounded-xl border border-subtle bg-surface-1 shadow-raised-100">
-            <div className="max-h-[calc(100vh-13rem)] min-h-[18rem] overflow-auto">
+            <div
+              ref={sheetRef}
+              onScroll={onSheetScroll}
+              className="max-h-[calc(100vh-13rem)] min-h-[18rem] overflow-auto"
+            >
               <table
                 ref={tableRef}
                 className="table-fixed border-separate border-spacing-0 text-left"
@@ -1583,99 +1661,25 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                       </td>
                     </tr>
                   ) : (
-                    rows.map((item, rowIndex) => {
-                      const ctx: TRowContext = {
-                        item,
-                        scope,
-                        disabled: !canEdit,
-                        empty: !isFilled(item),
-                        overdue: (stage) => isStageOverdue(item, stage, project.e9),
-                        save: (patch) => save(item, patch),
-                        photos: photosByItem.get(item.id) ?? [],
-                        openPhotos: () => setPhotoItem(item),
-                        floorListId,
-                        boqListId,
-                        boqNos,
-                        boqLineScope,
-                        boqLineForScope,
-                        scopeLabel,
-                        openReprint: () => setReprintItem(item),
-                        workspaceSlug,
-                        projectId: project.id,
-                      };
-                      return (
-                        <tr
+                    <>
+                      {spacer("top", winStart)}
+                      {rows.slice(winStart, winEnd).map((item, offset) => (
+                        <TrackerRow
                           key={item.id}
-                          data-item={item.id}
-                          className={cn("group", rowIndex % 2 === 1 && "bg-layer-1/40", ctx.empty && "opacity-70")}
-                        >
-                          <td
-                            className={cn(
-                              "sticky left-0 z-[2] border-b border-subtle bg-surface-1 px-2 py-1 align-middle text-body-xs-semibold text-primary group-hover:bg-layer-1",
-                              selected.has(item.id) && "bg-accent-subtle"
-                            )}
-                          >
-                            <label className="flex cursor-pointer items-center gap-1.5">
-                              {canEdit && (
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Select ${item.item_code}`}
-                                  className="size-3.5 accent-[var(--brand-default)]"
-                                  checked={selected.has(item.id)}
-                                  onChange={() => toggle(item.id)}
-                                />
-                              )}
-                              {item.item_code}
-                            </label>
-                          </td>
-                          {bandGroups.map((group) => (
-                            <BandCells
-                              key={group.label}
-                              group={group}
-                              door={group.label !== ALWAYS_OPEN_BAND}
-                              columns={group.columns.filter((column) => bandOpenness(column.band) > 0)}
-                              ctx={ctx}
-                              onOpen={() => toggleBand(group.label)}
-                            />
-                          ))}
-                          <td className="border-b border-subtle px-1 py-1 align-middle">
-                            <div className="flex items-center justify-end gap-0.5">
-                              {canEdit && !ctx.empty && (
-                                <button
-                                  type="button"
-                                  onClick={() => setReprintItem(item)}
-                                  aria-label={`Reprint ${item.item_code}`}
-                                  title="Reprint / extra for this item"
-                                  className="grid size-7 place-items-center rounded-md text-body-xs-semibold text-tertiary hover:bg-layer-1-hover hover:text-accent-primary"
-                                >
-                                  ↻
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setHistoryItem(item)}
-                                aria-label={`History of ${item.item_code}`}
-                                title="Who changed what"
-                                className="grid size-7 place-items-center rounded-md text-placeholder hover:bg-layer-1-hover hover:text-primary"
-                              >
-                                <ClockOutline className="size-3.5" />
-                              </button>
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  onClick={() => removeRow(item)}
-                                  aria-label={`Delete ${item.item_code}`}
-                                  title={`Delete ${item.item_code}`}
-                                  className="grid size-7 place-items-center rounded-md text-tertiary hover:bg-danger-subtle hover:text-danger-primary"
-                                >
-                                  <CloseOutline className="size-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
+                          item={item}
+                          odd={(winStart + offset) % 2 === 1}
+                          isSelected={selected.has(item.id)}
+                          canEdit={canEdit}
+                          scope={scope}
+                          e9={project.e9}
+                          photos={photosByItem.get(item.id) ?? NO_PHOTOS}
+                          layout={layout}
+                          shared={rowShared}
+                          actions={rowActions}
+                        />
+                      ))}
+                      {spacer("bottom", rows.length - winEnd)}
+                    </>
                   )}
                 </tbody>
               </table>
@@ -1837,6 +1841,142 @@ function BandCells({
 }
 
 /** "⋯" menu with the less-used sheet tools. */
+const WINDOW_MIN = 60; // sheets longer than this draw only the rows on screen
+const WINDOW_BUFFER = 12; // plus this many rows above and below
+const WINDOW_STEP = 4; // redraw the window every 4 rows of scrolling, not every pixel
+const DEFAULT_ROW_HEIGHT = 48;
+const NO_PHOTOS: TE9Attachment[] = [];
+
+type TOpenGroup = { label: string; door: boolean; columns: TColumn[] };
+type TRowShared = Pick<
+  TRowContext,
+  | "floorListId"
+  | "boqListId"
+  | "boqNos"
+  | "boqLineScope"
+  | "boqLineForScope"
+  | "scopeLabel"
+  | "workspaceSlug"
+  | "projectId"
+>;
+type TRowHandlers = {
+  save: (item: TE9ScopeItem, patch: Partial<TE9ScopeItem>) => unknown;
+  toggle: (id: string) => void;
+  remove: (item: TE9ScopeItem) => unknown;
+  openBand: (band: string) => void;
+};
+type TRowActions = TRowHandlers & {
+  openPhotos: (item: TE9ScopeItem) => void;
+  openReprint: (item: TE9ScopeItem) => void;
+  openHistory: (item: TE9ScopeItem) => void;
+};
+
+/** One tracker row. Memoised: it redraws only when its own item (or the layout) changes. */
+const TrackerRow = memo(function TrackerRow({
+  item,
+  odd,
+  isSelected,
+  canEdit,
+  scope,
+  e9,
+  photos,
+  layout,
+  shared,
+  actions,
+}: {
+  item: TE9ScopeItem;
+  odd: boolean;
+  isSelected: boolean;
+  canEdit: boolean;
+  scope: TE9ProjectScope | undefined;
+  e9: Parameters<typeof isStageOverdue>[2];
+  photos: TE9Attachment[];
+  layout: TOpenGroup[];
+  shared: TRowShared;
+  actions: TRowActions;
+}) {
+  const ctx: TRowContext = {
+    ...shared,
+    item,
+    scope,
+    disabled: !canEdit,
+    empty: !isFilled(item),
+    overdue: (stage) => isStageOverdue(item, stage, e9),
+    save: (patch) => actions.save(item, patch),
+    photos,
+    openPhotos: () => actions.openPhotos(item),
+    openReprint: () => actions.openReprint(item),
+  };
+  return (
+    <tr data-item={item.id} className={cn("group", odd && "bg-layer-1/40", ctx.empty && "opacity-70")}>
+      <td
+        className={cn(
+          "sticky left-0 z-[2] border-b border-subtle bg-surface-1 px-2 py-1 align-middle text-body-xs-semibold text-primary group-hover:bg-layer-1",
+          isSelected && "bg-accent-subtle"
+        )}
+      >
+        <label className="flex cursor-pointer items-center gap-1.5">
+          {canEdit && (
+            <input
+              type="checkbox"
+              aria-label={`Select ${item.item_code}`}
+              className="size-3.5 accent-[var(--brand-default)]"
+              checked={isSelected}
+              onChange={() => actions.toggle(item.id)}
+            />
+          )}
+          {item.item_code}
+        </label>
+      </td>
+      {layout.map((group) => (
+        <BandCells
+          key={group.label}
+          group={group}
+          door={group.door}
+          columns={group.columns}
+          ctx={ctx}
+          onOpen={() => actions.openBand(group.label)}
+        />
+      ))}
+      <td className="border-b border-subtle px-1 py-1 align-middle">
+        <div className="flex items-center justify-end gap-0.5">
+          {canEdit && !ctx.empty && (
+            <button
+              type="button"
+              onClick={() => actions.openReprint(item)}
+              aria-label={`Reprint ${item.item_code}`}
+              title="Reprint / extra for this item"
+              className="grid size-7 place-items-center rounded-md text-body-xs-semibold text-tertiary hover:bg-layer-1-hover hover:text-accent-primary"
+            >
+              ↻
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => actions.openHistory(item)}
+            aria-label={`History of ${item.item_code}`}
+            title="Who changed what"
+            className="grid size-7 place-items-center rounded-md text-placeholder hover:bg-layer-1-hover hover:text-primary"
+          >
+            <ClockOutline className="size-3.5" />
+          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => actions.remove(item)}
+              aria-label={`Delete ${item.item_code}`}
+              title={`Delete ${item.item_code}`}
+              className="grid size-7 place-items-center rounded-md text-tertiary hover:bg-danger-subtle hover:text-danger-primary"
+            >
+              <CloseOutline className="size-3.5" />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+});
+
 function MoreMenu({ items }: { items: (false | undefined | { label: string; onClick: () => void })[] }) {
   const [open, setOpen] = useState(false);
   const entries = items.filter((entry): entry is { label: string; onClick: () => void } => !!entry);
