@@ -97,7 +97,10 @@ export function E9SummaryPage({ workspaceSlug }: { workspaceSlug: string }) {
               </span>
             }
             action={
-              <span className="text-body-xs-regular text-tertiary">
+              <span
+                className="text-body-xs-regular text-tertiary"
+                title="Work installed so far that can be billed today (never more than the BOQ allows)"
+              >
                 Billable now <span className="font-semibold text-primary">{money(project.billable_amount)}</span>
               </span>
             }
@@ -118,7 +121,12 @@ export function E9SummaryPage({ workspaceSlug }: { workspaceSlug: string }) {
                   <thead>
                     <tr className="border-b border-subtle text-body-2xs-semibold text-tertiary">
                       <th className="px-5 py-2.5">Bill</th>
-                      <th className="w-[260px] px-5 py-2.5">Stage</th>
+                      <th
+                        className="w-[260px] px-5 py-2.5"
+                        title="Green = done · amber = where the bill is now · grey = still to come"
+                      >
+                        Stage <span className="font-normal text-placeholder normal-case">(green done · amber now)</span>
+                      </th>
                       <th className="px-5 py-2.5">Now</th>
                       <th className="px-5 py-2.5 text-right">Amount</th>
                     </tr>

@@ -33,7 +33,10 @@ export const BILL_STEPS = [
 /** 5 bars: done / current / later */
 export function BillStepper({ stage, compact = false }: { stage: number; compact?: boolean }) {
   return (
-    <ol className={cn("flex w-full items-start", compact ? "gap-1" : "gap-2")}>
+    <ol
+      aria-label={stage >= 4 ? "Bill finished" : `Bill step ${stage + 1} of 5: ${BILL_STEPS[stage + 1]?.title ?? ""}`}
+      className={cn("flex w-full items-start", compact ? "gap-1" : "gap-2")}
+    >
       {BILL_STEPS.map((step, index) => {
         const done = index === 0 || stage >= index;
         const current = !done && stage + 1 === index;
@@ -42,7 +45,7 @@ export function BillStepper({ stage, compact = false }: { stage: number; compact
             <span
               className={cn(
                 "h-1.5 rounded-full",
-                done ? "bg-success-primary" : current ? "bg-[var(--brand-default)]" : "bg-layer-3"
+                done ? "bg-success-primary" : current ? "bg-[#F59E0B]" : "bg-layer-3"
               )}
             />
             {!compact && (
@@ -52,7 +55,7 @@ export function BillStepper({ stage, compact = false }: { stage: number; compact
                   done ? "text-success-primary" : current ? "text-primary" : "text-placeholder"
                 )}
               >
-                {done ? "✓ " : `${index + 1} · `}
+                {done ? "✓ " : current ? "● " : `${index + 1} · `}
                 {step.title}
               </span>
             )}

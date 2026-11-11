@@ -1250,13 +1250,13 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const rowHeight = useRef(DEFAULT_ROW_HEIGHT);
   const scrollFrame = useRef(0);
-  const [span, setSpan] = useState({ first: 0, count: 40 });
+  const [view, setView] = useState({ first: 0, count: 40 });
   const syncWindow = useCallback(() => {
     const el = sheetRef.current;
     if (!el) return;
     const first = Math.floor(el.scrollTop / rowHeight.current / WINDOW_STEP) * WINDOW_STEP;
     const count = Math.ceil(el.clientHeight / rowHeight.current) + 1;
-    setSpan((prev) => (prev.first === first && prev.count === count ? prev : { first, count }));
+    setView((prev) => (prev.first === first && prev.count === count ? prev : { first, count }));
   }, []);
   const onSheetScroll = useCallback(() => {
     if (scrollFrame.current) return;
@@ -1306,8 +1306,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   if (layoutRef.current.sig !== layoutSig) layoutRef.current = { sig: layoutSig, groups: openGroups };
   const layout = layoutRef.current.groups;
   const windowed = rows.length > WINDOW_MIN;
-  const winStart = windowed ? Math.max(0, span.first - WINDOW_BUFFER) : 0;
-  const winEnd = windowed ? Math.min(rows.length, span.first + span.count + WINDOW_BUFFER) : rows.length;
+  const winStart = windowed ? Math.max(0, view.first - WINDOW_BUFFER) : 0;
+  const winEnd = windowed ? Math.min(rows.length, view.first + view.count + WINDOW_BUFFER) : rows.length;
   const spanCols = layout.reduce((t, group) => t + (group.door ? 1 : 0) + group.columns.length, 2);
   const spacer = (key: string, count: number) =>
     count > 0 ? (
@@ -1920,7 +1920,7 @@ const TrackerRow = memo(function TrackerRow({
             <input
               type="checkbox"
               aria-label={`Select ${item.item_code}`}
-              className="size-3.5 accent-[var(--brand-default)]"
+              className="size-3.5 accent-[var(--brand-default)] opacity-40 transition-opacity group-hover:opacity-100 checked:opacity-100 focus-visible:opacity-100"
               checked={isSelected}
               onChange={() => actions.toggle(item.id)}
             />
@@ -2023,6 +2023,7 @@ function MoreMenu({ items }: { items: (false | undefined | { label: string; onCl
 }
 
 function Legend() {
+  const [open, setOpen] = useState(false);
   const swatch = (className: string, label: string) => (
     <span className="flex items-center gap-1.5">
       <span className={cn("size-3 rounded-sm", className)} />
@@ -2031,15 +2032,29 @@ function Legend() {
   );
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-body-2xs-medium text-tertiary">
-      {swatch("bg-success-subtle", "Done / approved")}
-      {swatch("bg-warning-subtle", "Under way")}
-      {swatch("bg-info-subtle", "Sent / in the pipeline")}
-      {swatch("bg-[#F06A25]/15", "Open site issue")}
-      {swatch(
-        "bg-danger-subtle ring-1 ring-[var(--border-color-danger-strong)]",
-        "Overdue against the stage target / rework"
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="rounded-md px-1.5 py-0.5 text-body-2xs-semibold text-secondary hover:bg-layer-1-hover"
+      >
+        Colour key {open ? "▴" : "▾"}
+      </button>
+      {open && (
+        <>
+          {swatch("bg-success-subtle", "Done / approved")}
+          {swatch("bg-warning-subtle", "Under way")}
+          {swatch("bg-info-subtle", "Sent / in the pipeline")}
+          {swatch("bg-[#F06A25]/15", "Open site issue")}
+          {swatch(
+            "bg-danger-subtle ring-1 ring-[var(--border-color-danger-strong)]",
+            "Overdue against the stage target / rework"
+          )}
+          <span>
+            Tick rows to delete several at once, or use ✕ at the end of a row. The clock shows who changed it.
+          </span>
+        </>
       )}
-      <span>Tick rows to delete several at once, or use ✕ at the end of a row. The clock shows who changed it.</span>
     </div>
   );
 }
