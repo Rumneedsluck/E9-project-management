@@ -10,6 +10,7 @@ import { setToast } from "@plane/blocks/toast";
 import { cn, renderFormattedDate } from "@plane/utils";
 import { e9ProjectService } from "@/services/e9/project.service";
 import { useE9History, useE9Photos } from "../hooks";
+import type { TE9PhotoKind } from "../hooks";
 import type { TE9Attachment, TE9Change, TE9ScopeItem } from "./logic";
 import { E9Modal } from "./modal";
 import { e9Confirm } from "../confirm";
@@ -86,10 +87,21 @@ type TPhotosModalProps = {
   projectId: string;
   item: TE9ScopeItem | null;
   disabled: boolean;
+  /** which photos this dialog is for (default: site photos) */
+  kind?: TE9PhotoKind;
 };
 
-export function E9PhotosModal({ open, onClose, workspaceSlug, projectId, item, disabled }: TPhotosModalProps) {
-  const { data: allPhotos, mutate } = useE9Photos(workspaceSlug, projectId);
+export function E9PhotosModal({
+  open,
+  onClose,
+  workspaceSlug,
+  projectId,
+  item,
+  disabled,
+  kind = "photo",
+}: TPhotosModalProps) {
+  const installed = kind === "install_photo";
+  const { data: allPhotos, mutate } = useE9Photos(workspaceSlug, projectId, kind);
   const photos = useMemo(() => (allPhotos ?? []).filter((photo) => photo.item === item?.id), [allPhotos, item]);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<TE9Attachment | null>(null);
@@ -98,7 +110,7 @@ export function E9PhotosModal({ open, onClose, workspaceSlug, projectId, item, d
     if (!files?.length || !item) return;
     setBusy(true);
     try {
-      await uploadFiles(workspaceSlug, projectId, files, { kind: "photo", item: item.id });
+      await uploadFiles(workspaceSlug, projectId, files, { kind, item: item.id });
       await mutate();
     } catch (error) {
       setToast({ type: "error", title: "Couldn't upload", message: errorText(error) });
@@ -123,7 +135,7 @@ export function E9PhotosModal({ open, onClose, workspaceSlug, projectId, item, d
         onClose();
       }}
       size="xl"
-      title={`${item.item_code} photos`}
+      title={`${item.item_code} ${installed ? "installed photos" : "photos"}`}
       description={[item.floor_area, item.description].filter(Boolean).join(" · ") || undefined}
     >
       <div className="flex flex-col gap-4 px-5 py-4">
@@ -212,7 +224,7 @@ export function E9PhotosModal({ open, onClose, workspaceSlug, projectId, item, d
         {photos.length === 0 && disabled && (
           <p className="py-6 text-center text-body-sm-regular text-tertiary">No photos yet.</p>
         )}
-        {item.photo_link && (
+        {!installed && item.photo_link && (
           <a
             href={safeHref(item.photo_link)}
             target="_blank"

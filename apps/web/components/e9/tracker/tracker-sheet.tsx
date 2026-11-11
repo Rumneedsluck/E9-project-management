@@ -61,6 +61,9 @@ type TRowContext = {
   save: (patch: Partial<TE9ScopeItem>) => void;
   photos: TE9Attachment[];
   openPhotos: () => void;
+  /** photos of the finished installation */
+  installPhotos: TE9Attachment[];
+  openInstallPhotos: () => void;
   floorListId: string;
   boqListId: string;
   /** BOQ numbers on this project's BOQ (upper case); null while there is no BOQ */
@@ -721,6 +724,23 @@ const COLUMNS: TColumn[] = [
     band: "5 · Installation",
     render: text("installed_by", "Installed by", "Team"),
   },
+  {
+    key: "installphoto",
+    hideKey: "installed_photo",
+    label: "Installed photo",
+    width: 120,
+    band: "5 · Installation",
+    render: (ctx) => (
+      <E9PhotoCell
+        workspaceSlug={ctx.workspaceSlug}
+        projectId={ctx.projectId}
+        item={ctx.item}
+        photos={ctx.installPhotos}
+        disabled={ctx.disabled}
+        onOpen={ctx.openInstallPhotos}
+      />
+    ),
+  },
   numberColumn(
     "certh",
     "certified",
@@ -828,6 +848,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const { data: scopes } = useE9Scopes(workspaceSlug, project.id);
   const { data: floors } = useE9Floors(workspaceSlug, project.id);
   const { data: photos } = useE9Photos(workspaceSlug, project.id);
+  const { data: installPhotos } = useE9Photos(workspaceSlug, project.id, "install_photo");
   const floorListId = useId();
   const boqListId = useId();
   const { data: boq } = useE9Boq(workspaceSlug, project.id);
@@ -850,6 +871,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const [adding, setAdding] = useState(false);
   const [panel, setPanel] = useState<TOpenPanel>(null);
   const [photoItem, setPhotoItem] = useState<TE9ScopeItem | null>(null);
+  const [installPhotoItem, setInstallPhotoItem] = useState<TE9ScopeItem | null>(null);
   const [historyItem, setHistoryItem] = useState<TE9ScopeItem | null>(null);
 
   // stay on a scope that is switched on
@@ -870,6 +892,12 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     for (const photo of photos ?? []) if (photo.item) map.set(photo.item, [...(map.get(photo.item) ?? []), photo]);
     return map;
   }, [photos]);
+  const installPhotosByItem = useMemo(() => {
+    const map = new Map<string, TE9Attachment[]>();
+    for (const photo of installPhotos ?? [])
+      if (photo.item) map.set(photo.item, [...(map.get(photo.item) ?? []), photo]);
+    return map;
+  }, [installPhotos]);
 
   const floorNames = useMemo(
     () => [
@@ -1228,6 +1256,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       remove: (item) => void rowActionsRef.current?.remove(item),
       openBand: (band) => rowActionsRef.current?.openBand(band),
       openPhotos: (item) => setPhotoItem(item),
+      openInstallPhotos: (item) => setInstallPhotoItem(item),
       openReprint: (item) => setReprintItem(item),
       openHistory: (item) => setHistoryItem(item),
     }),
@@ -1673,6 +1702,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                           scope={scope}
                           e9={project.e9}
                           photos={photosByItem.get(item.id) ?? NO_PHOTOS}
+                          installPhotos={installPhotosByItem.get(item.id) ?? NO_PHOTOS}
                           layout={layout}
                           shared={rowShared}
                           actions={rowActions}
@@ -1708,6 +1738,15 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
         projectId={project.id}
         item={photoItem}
         disabled={!canEdit}
+      />
+      <E9PhotosModal
+        open={!!installPhotoItem}
+        onClose={() => setInstallPhotoItem(null)}
+        workspaceSlug={workspaceSlug}
+        projectId={project.id}
+        item={installPhotoItem}
+        disabled={!canEdit}
+        kind="install_photo"
       />
       {reprintItem && (
         <E9ReprintQuickModal
@@ -1895,6 +1934,7 @@ type TRowHandlers = {
 };
 type TRowActions = TRowHandlers & {
   openPhotos: (item: TE9ScopeItem) => void;
+  openInstallPhotos: (item: TE9ScopeItem) => void;
   openReprint: (item: TE9ScopeItem) => void;
   openHistory: (item: TE9ScopeItem) => void;
 };
@@ -1908,6 +1948,7 @@ const TrackerRow = memo(function TrackerRow({
   scope,
   e9,
   photos,
+  installPhotos,
   layout,
   shared,
   actions,
@@ -1919,6 +1960,7 @@ const TrackerRow = memo(function TrackerRow({
   scope: TE9ProjectScope | undefined;
   e9: Parameters<typeof isStageOverdue>[2];
   photos: TE9Attachment[];
+  installPhotos: TE9Attachment[];
   layout: TOpenGroup[];
   shared: TRowShared;
   actions: TRowActions;
@@ -1933,6 +1975,8 @@ const TrackerRow = memo(function TrackerRow({
     save: (patch) => actions.save(item, patch),
     photos,
     openPhotos: () => actions.openPhotos(item),
+    installPhotos,
+    openInstallPhotos: () => actions.openInstallPhotos(item),
     openReprint: () => actions.openReprint(item),
   };
   return (

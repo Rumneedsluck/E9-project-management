@@ -39,6 +39,14 @@ class E9ProjectPriority(models.TextChoices):
     LOW = "low", "Low"
 
 
+# Columns the team never uses: hidden on every project (anyone can show them again from the Columns button)
+DEFAULT_HIDDEN_COLUMNS = ["current_stage", "qc_done_by", "installed_by"]
+
+
+def default_hidden_columns():
+    return list(DEFAULT_HIDDEN_COLUMNS)
+
+
 class E9ProjectProfile(BaseModel):
     """E9 business details attached to a Plane project (one profile per project).
 
@@ -70,7 +78,7 @@ class E9ProjectProfile(BaseModel):
     target_installation = models.DateField(null=True, blank=True)
     target_sign_off = models.DateField(null=True, blank=True)
     # Tracker columns this project does not use (their data is kept)
-    hidden_columns = models.JSONField(default=list, blank=True)
+    hidden_columns = models.JSONField(default=default_hidden_columns, blank=True)
     # Billing normally waits for the signed JMC; an admin can open it early for running bills
     allow_part_billing = models.BooleanField(default=False)
 
@@ -270,6 +278,7 @@ class E9AttachmentKind(models.TextChoices):
     PI = "pi", "Proforma invoice"
     WCC = "wcc", "Work completion certificate"
     SNAG = "snag", "Snag photo"
+    INSTALL_PHOTO = "install_photo", "Installed photo"
     JMC = "jmc", "Signed JMC (joint measurement certificate)"
 
 

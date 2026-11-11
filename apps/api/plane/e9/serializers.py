@@ -57,6 +57,7 @@ HIDEABLE_COLUMNS = [
     "installation_status",
     "installation_date",
     "installed_by",
+    "installed_photo",
     "certified",
     "client_sign_off",
     "remarks",

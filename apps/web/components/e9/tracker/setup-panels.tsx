@@ -414,6 +414,7 @@ export const HIDEABLE_COLUMNS: { key: string; label: string }[] = [
   { key: "installation_status", label: "Installation" },
   { key: "installation_date", label: "Install date" },
   { key: "installed_by", label: "Installed by" },
+  { key: "installed_photo", label: "Installed photo" },
   { key: "certified", label: "Certified (joint measurement)" },
   { key: "client_sign_off", label: "Client sign-off" },
   { key: "remarks", label: "Remarks" },

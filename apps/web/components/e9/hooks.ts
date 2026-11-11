@@ -38,7 +38,10 @@ export const useE9Items = (workspaceSlug: string | undefined, projectId: string 
 
 export const e9ScopesKey = (slug: string, projectId: string) => `E9_SCOPES_${slug}_${projectId}`;
 export const e9FloorsKey = (slug: string, projectId: string) => `E9_FLOORS_${slug}_${projectId}`;
-export const e9PhotosKey = (slug: string, projectId: string) => `E9_PHOTOS_${slug}_${projectId}`;
+/** kind "photo" = site photos; "install_photo" = photos of the finished installation */
+export type TE9PhotoKind = "photo" | "install_photo";
+export const e9PhotosKey = (slug: string, projectId: string, kind: TE9PhotoKind = "photo") =>
+  kind === "photo" ? `E9_PHOTOS_${slug}_${projectId}` : `E9_PHOTOS_${kind}_${slug}_${projectId}`;
 export const e9DocsKey = (slug: string, projectId: string) => `E9_DOCS_${slug}_${projectId}`;
 export const e9HistoryKey = (slug: string, projectId: string, entityId?: string) =>
   `E9_HISTORY_${slug}_${projectId}_${entityId ?? "all"}`;
@@ -53,8 +56,8 @@ export const useE9Floors = (slug: string, projectId: string) =>
   useSWR(e9FloorsKey(slug, projectId), () => e9ProjectService.listFloors(slug, projectId), opts);
 
 /** All item photos of a project (grouped by item on the sheet). */
-export const useE9Photos = (slug: string, projectId: string) =>
-  useSWR(e9PhotosKey(slug, projectId), () => e9ProjectService.listAttachments(slug, projectId, "photo"), opts);
+export const useE9Photos = (slug: string, projectId: string, kind: TE9PhotoKind = "photo") =>
+  useSWR(e9PhotosKey(slug, projectId, kind), () => e9ProjectService.listAttachments(slug, projectId, kind), opts);
 
 /** Site audit reports and other project PDFs. */
 export const useE9Documents = (slug: string, projectId: string) =>
@@ -120,6 +123,7 @@ export const refreshE9Tracker = async (slug: string, projectId: string) => {
     mutate(e9ScopesKey(slug, projectId)),
     mutate(e9FloorsKey(slug, projectId)),
     mutate(e9PhotosKey(slug, projectId)),
+    mutate(e9PhotosKey(slug, projectId, "install_photo")),
     mutate(e9DocsKey(slug, projectId)),
     mutate(e9ProjectKey(slug, projectId)),
     mutate(e9BoqKey(slug, projectId)),

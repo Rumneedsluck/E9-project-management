@@ -621,3 +621,54 @@ class TestFirstOpenRace:
 
         services.ensure_floors(project, ["Ground Floor"])
         assert len(services.ensure_floors(project, ["Ground Floor", "1st Floor"])) == 1
+
+
+@pytest.mark.contract
+class TestInstalledPhotosAndHiddenColumns:
+    @pytest.mark.django_db
+    def test_installed_photos_are_kept_apart_from_site_photos(self, session_client, workspace, project):
+        item = session_client.post(url(workspace, project, "items/"), {"scope": "wall_graphics"}, format="json").data[0]
+        upload_url = url(workspace, project, "attachments/")
+        for kind, name in (("photo", "site.png"), ("install_photo", "done.png")):
+            sent = session_client.post(
+                upload_url,
+                {
+                    "kind": kind,
+                    "item": item["id"],
+                    "files": [SimpleUploadedFile(name, tiny_png(), content_type="image/png")],
+                },
+                format="multipart",
+            )
+            assert sent.status_code == 201, sent.data
+        site = session_client.get(f"{upload_url}?kind=photo").data
+        installed = session_client.get(f"{upload_url}?kind=install_photo").data
+        assert [row["name"] for row in site] == ["site.png"]
+        assert [row["name"] for row in installed] == ["done.png"]
+
+    @pytest.mark.django_db
+    def test_new_projects_start_with_the_unused_columns_hidden_and_they_can_be_shown(
+        self, session_client, workspace, project
+    ):
+        profile_url = url(workspace, project)
+        assert session_client.get(profile_url).data["e9"]["hidden_columns"] == [
+            "current_stage",
+            "qc_done_by",
+            "installed_by",
+        ]
+        shown = session_client.patch(profile_url, {"hidden_columns": ["installed_photo"]}, format="json")
+        assert shown.status_code == 200
+        assert session_client.get(profile_url).data["e9"]["hidden_columns"] == ["installed_photo"]
+        assert session_client.patch(profile_url, {"hidden_columns": ["nope"]}, format="json").status_code == 400
+
+    @pytest.mark.django_db
+    def test_migration_hides_the_columns_once_and_keeps_existing_choices(self, project):
+        import importlib
+
+        migration = importlib.import_module("plane.e9.migrations.0007_hide_unused_columns_installed_photo")
+        from django.apps import apps
+
+        E9ProjectProfile.objects.create(project=project, workspace_id=project.workspace_id, hidden_columns=["remarks"])
+        migration.hide_unused_columns(apps, None)
+        migration.hide_unused_columns(apps, None)  # running twice changes nothing more
+        hidden = E9ProjectProfile.objects.get(project=project).hidden_columns
+        assert hidden == ["remarks", "current_stage", "qc_done_by", "installed_by"]
