@@ -17,6 +17,18 @@ import { uploadFiles } from "../tracker/photos-history";
 import type { TE9BoqStatus, TE9BoqUnit } from "./types";
 import { e9Confirm } from "../confirm";
 
+/** Only web / mail addresses may be opened from a stored link (never javascript: …). */
+export const safeHref = (link: string | null | undefined): string | undefined => {
+  const text = (link ?? "").trim();
+  if (!text) return undefined;
+  try {
+    const url = new URL(text, window.location.origin);
+    return ["http:", "https:", "mailto:"].includes(url.protocol) ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 export const errorText = (error: unknown) => {
   if (error && typeof error === "object") {
     const text = Object.values(error as Record<string, unknown>)
@@ -198,7 +210,7 @@ export function E9RefFiles({ slug, projectId, kind, refId, label, canUpload, add
           className="inline-flex items-center gap-1 rounded-md border border-subtle bg-surface-1 py-0.5 pr-1 pl-2"
         >
           <a
-            href={file.has_file ? e9ProjectService.fileUrl(slug, projectId, file.id) : file.link}
+            href={file.has_file ? e9ProjectService.fileUrl(slug, projectId, file.id) : safeHref(file.link)}
             target="_blank"
             rel="noopener noreferrer"
             className="max-w-[160px] truncate text-body-2xs-semibold text-accent-primary hover:underline"

@@ -33,6 +33,7 @@ from .models import (
     E9ReprintKind,
     E9ScopeItem,
 )
+from .safety import clean_link, uuid_or_none
 from .services import item_code, record, record_changes, scope_map, snapshot
 from .tracker import item_area_sqft, item_unit
 from .views import _can_edit, _can_update_items, _visible_projects
@@ -55,6 +56,14 @@ def _text(limit):
         return str(value or "").strip()[:limit]
 
     return parse
+
+
+def _link(field, value):
+    """A web or mail address only (never javascript: and friends)."""
+    cleaned = clean_link(value)
+    if cleaned is None:
+        raise Invalid(field, "Use a web address that starts with http:// or https://.")
+    return cleaned[:1000]
 
 
 def _date(field, value):
@@ -122,7 +131,7 @@ PO_SPEC = {
     "number": _text(80),
     "title": _text(160),
     "po_date": _date,
-    "link": _text(1000),
+    "link": _link,
     "notes": _text(5000),
 }
 LINE_SPEC = {
@@ -141,7 +150,7 @@ AMENDMENT_SPEC = {
     "requested_on": _date,
     "confirmed_on": _date,
     "status": _choice(E9AmendmentStatus.values),
-    "mail_link": _text(1000),
+    "mail_link": _link,
     "notes": _text(5000),
 }
 REPRINT_SPEC = {
@@ -448,12 +457,14 @@ class E9BoqLineListEndpoint(BaseAPIView):
         project, error = _editable(request, slug, project_id)
         if error:
             return error
-        po = E9PurchaseOrder.objects.filter(project=project, pk=request.data.get("po")).first()
+        po = E9PurchaseOrder.objects.filter(project=project, pk=uuid_or_none(request.data.get("po"))).first()
         if po is None:
             return Response({"po": "Choose the PO this line belongs to."}, status=400)
         amendment = None
         if request.data.get("amendment"):
-            amendment = E9Amendment.objects.filter(project=project, po=po, pk=request.data["amendment"]).first()
+            amendment = E9Amendment.objects.filter(
+                project=project, po=po, pk=uuid_or_none(request.data["amendment"])
+            ).first()
             if amendment is None:
                 return Response({"amendment": "Amendment not found on this PO."}, status=400)
         line = E9BoqLine(project=project, workspace_id=project.workspace_id, po=po, amendment=amendment)
@@ -550,7 +561,7 @@ class E9AmendmentListEndpoint(BaseAPIView):
         project, error = _editable(request, slug, project_id)
         if error:
             return error
-        po = E9PurchaseOrder.objects.filter(project=project, pk=request.data.get("po")).first()
+        po = E9PurchaseOrder.objects.filter(project=project, pk=uuid_or_none(request.data.get("po"))).first()
         if po is None:
             return Response({"po": "Choose the PO being amended."}, status=400)
         amendment = E9Amendment(project=project, workspace_id=project.workspace_id, po=po)
@@ -652,12 +663,16 @@ REPRINT_FIELDS = list(REPRINT_SPEC)
 def _reprint_links(project, reprint, data):
     if "boq_line" in data:
         reprint.boq_line = (
-            E9BoqLine.objects.filter(project=project, pk=data["boq_line"]).first() if data["boq_line"] else None
+            E9BoqLine.objects.filter(project=project, pk=uuid_or_none(data["boq_line"])).first()
+            if data["boq_line"]
+            else None
         )
         if data["boq_line"] and reprint.boq_line is None:
             raise Invalid("boq_line", "BOQ line not found.")
     if "item" in data:
-        reprint.item = E9ScopeItem.objects.filter(project=project, pk=data["item"]).first() if data["item"] else None
+        reprint.item = (
+            E9ScopeItem.objects.filter(project=project, pk=uuid_or_none(data["item"])).first() if data["item"] else None
+        )
         if data["item"] and reprint.item is None:
             raise Invalid("item", "Tracker row not found.")
         if reprint.item and not reprint.boq_line and reprint.item.boq_item_no:
@@ -972,7 +987,7 @@ class E9BillListEndpoint(BaseAPIView):
         project, error = _editable(request, slug, project_id)
         if error:
             return error
-        po = E9PurchaseOrder.objects.filter(project=project, pk=request.data.get("po")).first()
+        po = E9PurchaseOrder.objects.filter(project=project, pk=uuid_or_none(request.data.get("po"))).first()
         if po is None:
             return Response({"po": "Choose the PO you are billing."}, status=400)
         certs = list(E9Certification.objects.filter(project=project))

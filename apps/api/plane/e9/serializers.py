@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from .safety import clean_link
 from . import tracker
 from .models import E9Attachment, E9ChangeLog, E9Floor, E9ProjectProfile, E9ProjectScope, E9ScopeItem
 from .services import item_code
@@ -163,6 +164,9 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "scope", "item_number", "updated_at"]
 
+    def validate_photo_link(self, value):
+        return _safe_link(value)
+
     def _scopes(self):
         return self.context.get("scopes", {})
 
@@ -256,8 +260,18 @@ class E9FloorSerializer(serializers.ModelSerializer):
         return value
 
 
+def _safe_link(value):
+    cleaned = clean_link(value)
+    if cleaned is None:
+        raise serializers.ValidationError("Use a web address that starts with http:// or https://.")
+    return cleaned
+
+
 class E9AttachmentSerializer(serializers.ModelSerializer):
     has_file = serializers.SerializerMethodField()
+
+    def validate_link(self, value):
+        return _safe_link(value)
 
     class Meta:
         model = E9Attachment

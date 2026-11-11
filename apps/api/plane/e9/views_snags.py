@@ -13,6 +13,7 @@ from plane.app.views.base import BaseAPIView
 
 from . import tracker
 from .models import E9ScopeItem, E9Snag, E9SnagStatus
+from .safety import uuid_or_none
 from .services import item_code, record, record_changes, scope_map, snapshot
 from .views import _can_update_items
 from .views_boq import Invalid, _apply, _bad, _choice, _date, _editable, _iso, _text
@@ -79,7 +80,9 @@ def _label(snag, project):
 
 def _link_item(project, snag, data):
     if "item" in data:
-        snag.item = E9ScopeItem.objects.filter(project=project, pk=data["item"]).first() if data["item"] else None
+        snag.item = (
+            E9ScopeItem.objects.filter(project=project, pk=uuid_or_none(data["item"])).first() if data["item"] else None
+        )
         if data["item"] and snag.item is None:
             raise Invalid("item", "Tracker row not found.")
 

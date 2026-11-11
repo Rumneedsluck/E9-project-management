@@ -26,7 +26,7 @@ import type { TE9Project } from "../types";
 import { E9ProgressBar } from "../ui";
 import { E9BillingPage } from "./billing-page";
 import { printJmcSheet } from "./jmc-sheet";
-import { E9RefFiles, FormField, SmallButton, inputClass, showError } from "./shared";
+import { E9RefFiles, FormField, SmallButton, inputClass, safeHref, showError } from "./shared";
 import type { TE9Certification, TE9Certifications, TE9Readiness } from "./types";
 import { e9Confirm } from "../confirm";
 
@@ -272,7 +272,7 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
                     />
                     {cert.link && (
                       <a
-                        href={cert.link}
+                        href={safeHref(cert.link)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-body-2xs-semibold text-accent-primary hover:underline"

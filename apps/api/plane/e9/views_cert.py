@@ -18,7 +18,7 @@ from . import certification
 from .models import E9Announcement, E9Certification
 from .services import record, record_changes, scope_map, snapshot
 from .views import _can_edit, _is_workspace_admin
-from .views_boq import Invalid, _apply, _bad, _date, _text
+from .views_boq import Invalid, _apply, _bad, _date, _link, _text
 from .views_setup import WORKSPACE_ROLES, _forbidden, _not_found, _project
 
 CERT_SPEC = {
@@ -28,7 +28,7 @@ CERT_SPEC = {
     "jmc_date": _date,
     "client_signatory": _text(120),
     "done_on": _date,
-    "link": _text(1000),
+    "link": _link,
     "notes": _text(5000),
 }
 CERT_FIELDS = list(CERT_SPEC)

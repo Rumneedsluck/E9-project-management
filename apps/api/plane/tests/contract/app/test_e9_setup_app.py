@@ -201,6 +201,11 @@ class TestAttachments:
 
     @pytest.mark.django_db
     def test_rejects_other_file_types_and_guests(self, session_client, workspace, project):
+        svg = SimpleUploadedFile("x.svg", b"<svg onload=alert(1)>", content_type="image/svg+xml")
+        upload_url = url(workspace, project, "attachments/")
+        assert session_client.post(upload_url, {"files": svg}, format="multipart").status_code == 400
+        disguised = SimpleUploadedFile("x.png", b"<svg onload=alert(1)>", content_type="image/png")
+        assert session_client.post(upload_url, {"files": disguised}, format="multipart").status_code == 400
         bad = SimpleUploadedFile("notes.exe", b"MZ", content_type="application/octet-stream")
         response = session_client.post(
             url(workspace, project, "attachments/"), {"kind": "document", "files": [bad]}, format="multipart"

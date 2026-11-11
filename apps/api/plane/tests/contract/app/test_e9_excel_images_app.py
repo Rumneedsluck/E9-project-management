@@ -10,6 +10,7 @@ import pytest
 from plane.e9.excel_images import sheet_images
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+JPEG = b"\xff\xd8\xff\xe0" + b"0" * 64
 MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKG = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -45,7 +46,7 @@ def build_workbook():
         )
         archive.writestr("xl/drawings/_rels/drawing1.xml.rels", rels(("rId1", "../media/image1.png")))
         archive.writestr("xl/media/image1.png", PNG)
-        archive.writestr("xl/media/image2.jpeg", PNG)
+        archive.writestr("xl/media/image2.jpeg", JPEG)
         archive.writestr(
             "xl/richData/rdrichvalue.xml",
             '<rvData xmlns="http://schemas.microsoft.com/office/spreadsheetml/2017/richdata">'
@@ -71,3 +72,30 @@ def test_finds_floating_and_in_cell_pictures_by_row():
 @pytest.mark.unit
 def test_not_an_excel_file_gives_nothing():
     assert sheet_images(io.BytesIO(b"hello")) == {}
+
+
+@pytest.mark.unit
+def test_link_and_upload_safety_rules():
+    from plane.e9.safety import clean_link, upload_type
+
+    assert clean_link("") == ""
+    assert clean_link("https://drive.google.com/file/d/1") == "https://drive.google.com/file/d/1"
+    assert clean_link("drive.google.com/file/d/1") == "https://drive.google.com/file/d/1"
+    assert clean_link("mailto:a@example.com") == "mailto:a@example.com"
+    for bad in (
+        "javascript:alert(1)",
+        "JaVaScRiPt:alert(1)",
+        "data:text/html,<b>x</b>",
+        "vbscript:x",
+        "ftp://x",
+        "https://",
+    ):
+        assert clean_link(bad) is None, bad
+
+    assert upload_type("a.png", b"\x89PNG\r\n\x1a\n0000") == "image/png"
+    assert upload_type("A.JPG", b"\xff\xd8\xff\xe0 more") == "image/jpeg"
+    assert upload_type("a.pdf", b"%PDF-1.7") == "application/pdf"
+    assert upload_type("x.svg", b"<svg onload=alert(1)>") is None  # scripts could run
+    assert upload_type("x.html", b"<html>") is None
+    assert upload_type("pretend.png", b"<svg onload=alert(1)>") is None  # wrong bytes for a png
+    assert upload_type("noext", b"%PDF-1.7") is None

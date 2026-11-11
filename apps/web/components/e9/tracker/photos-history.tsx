@@ -13,6 +13,7 @@ import { useE9History, useE9Photos } from "../hooks";
 import type { TE9Attachment, TE9Change, TE9ScopeItem } from "./logic";
 import { E9Modal } from "./modal";
 import { e9Confirm } from "../confirm";
+import { safeHref } from "../commercial/shared";
 
 const errorText = (error: unknown) =>
   error && typeof error === "object"
@@ -213,7 +214,7 @@ export function E9PhotosModal({ open, onClose, workspaceSlug, projectId, item, d
         )}
         {item.photo_link && (
           <a
-            href={item.photo_link}
+            href={safeHref(item.photo_link)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-body-xs-semibold text-accent-primary"

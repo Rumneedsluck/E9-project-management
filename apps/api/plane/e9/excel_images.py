@@ -11,11 +11,12 @@ Two ways Excel stores them:
 Result: {sheet title: [(row number starting at 1, file name, bytes, content type), …]}
 """
 
-import mimetypes
 import posixpath
 import re
 import zipfile
 from xml.etree import ElementTree
+
+from .safety import upload_type
 
 NS = {
     "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
@@ -52,7 +53,10 @@ def _picture(archive, path):
     if not data or len(data) > MAX_BYTES:
         return None
     name = posixpath.basename(path)
-    return name, data, mimetypes.guess_type(name)[0] or "image/png"
+    content_type = upload_type(name, data[:16])
+    if content_type is None:  # vector / unusual formats (svg, emf, wmf) are skipped
+        return None
+    return name, data, content_type
 
 
 def _sheet_paths(archive):

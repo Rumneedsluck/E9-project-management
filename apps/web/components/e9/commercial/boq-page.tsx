@@ -29,6 +29,7 @@ import {
   inputClass,
   isPositive,
   money,
+  safeHref,
   showError,
   trackerHref,
   unitText,
@@ -416,7 +417,7 @@ function POCard(props: TPOCardProps) {
         <E9RefFiles slug={slug} projectId={projectId} kind="po" refId={po.id} canUpload={canEdit} />
         {po.link && (
           <a
-            href={po.link}
+            href={safeHref(po.link)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-semibold text-accent-primary"
@@ -684,7 +685,7 @@ function POCard(props: TPOCardProps) {
                   />
                   {amendment.mail_link && (
                     <a
-                      href={amendment.mail_link}
+                      href={safeHref(amendment.mail_link)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-semibold text-accent-primary"

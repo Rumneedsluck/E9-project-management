@@ -432,6 +432,38 @@ class TestAmendedBoq:
 
 
 @pytest.mark.contract
+class TestSafetyRules:
+    @pytest.mark.django_db
+    def test_scripted_links_and_bad_ids_are_refused_cleanly(self, session_client, workspace, project):
+        # a javascript: link in a PO / certification / photo link is refused ...
+        po = session_client.post(
+            url(workspace, project, "boq/pos/"), {"kind": "original", "link": "javascript:alert(1)"}, format="json"
+        )
+        assert po.status_code == 400 and "link" in po.data
+        cert = session_client.post(
+            url(workspace, project, "certifications/"), {"link": "data:text/html,<b>x</b>"}, format="json"
+        )
+        assert cert.status_code == 400 and "link" in cert.data
+        row = make_signages(session_client, workspace, project, count=1)[0]
+        photo = session_client.patch(
+            url(workspace, project, f"items/{row['id']}/"), {"photo_link": "javascript:alert(1)"}, format="json"
+        )
+        assert photo.status_code == 400
+        # ... a plain address is accepted (and a bare one gets https://)
+        ok = session_client.post(
+            url(workspace, project, "boq/pos/"),
+            {"kind": "original", "link": "drive.google.com/file/d/1"},
+            format="json",
+        )
+        assert ok.status_code == 201 and ok.data["pos"][0]["link"] == "https://drive.google.com/file/d/1"
+        # a malformed id means 'not found', never a server error
+        bad = session_client.post(
+            url(workspace, project, "boq/lines/"), {"po": "not-an-id", "line_no": "X"}, format="json"
+        )
+        assert bad.status_code == 400
+
+
+@pytest.mark.contract
 class TestAnnouncements:
     @pytest.mark.django_db
     def test_only_admins_post_and_old_ones_hide(self, session_client, workspace, project):

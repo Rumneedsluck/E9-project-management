@@ -4,7 +4,6 @@
 
 """Project set-up endpoints: scopes, floors, photos & PDFs, history and Excel import."""
 
-import mimetypes
 import uuid
 
 from django.db import models, transaction
@@ -24,6 +23,7 @@ from .serializers import (
     E9FloorSerializer,
     E9ProjectScopeSerializer,
 )
+from .safety import SAFE_UPLOADS, upload_type, uuid_or_none
 from .services import (
     PREFIX_PATTERN,
     ensure_scopes,
@@ -37,7 +37,6 @@ from .services import (
 from .views import _can_edit, _can_update_items, _visible_projects
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-ALLOWED_TYPES = ("image/", "application/pdf")
 WORKSPACE_ROLES = [ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST]
 
 
@@ -295,7 +294,7 @@ class E9AttachmentListEndpoint(BaseAPIView):
                 return Response({"ref_id": "Not a valid id."}, status=400)
         item = None
         if request.data.get("item"):
-            item = E9ScopeItem.objects.filter(project=project, pk=request.data["item"]).first()
+            item = E9ScopeItem.objects.filter(project=project, pk=uuid_or_none(request.data["item"])).first()
             if item is None:
                 return Response({"item": "Item not found."}, status=400)
         meta = E9AttachmentSerializer(
@@ -312,12 +311,19 @@ class E9AttachmentListEndpoint(BaseAPIView):
         files = request.FILES.getlist("files") or request.FILES.getlist("file")
         if not files and not meta.validated_data.get("link") and not meta.validated_data.get("name"):
             return Response({"files": "Choose a file to upload."}, status=400)
+        safe_types = {}
         for upload in files:
-            content_type = upload.content_type or mimetypes.guess_type(upload.name)[0] or ""
-            if not content_type.startswith(ALLOWED_TYPES):
-                return Response({"files": f"'{upload.name}' is not a photo or PDF."}, status=400)
+            # judged by the file's own bytes and extension, never by what the browser claims
+            head = upload.read(16)
+            upload.seek(0)
+            content_type = upload_type(upload.name, head)
+            if content_type is None:
+                return Response(
+                    {"files": f"'{upload.name}' is not a photo (JPG, PNG, GIF, WEBP, HEIC) or PDF."}, status=400
+                )
             if upload.size > MAX_UPLOAD_BYTES:
                 return Response({"files": f"'{upload.name}' is larger than 25 MB."}, status=400)
+            safe_types[upload.name] = content_type
 
         scopes = scope_map(project)
         created = []
@@ -334,7 +340,7 @@ class E9AttachmentListEndpoint(BaseAPIView):
                 if upload is not None:
                     attachment.name = attachment.name or upload.name[:255]
                     attachment.size = upload.size
-                    attachment.content_type = (upload.content_type or mimetypes.guess_type(upload.name)[0] or "")[:120]
+                    attachment.content_type = safe_types[upload.name]
                     attachment.file.save(upload.name, upload, save=False)
                 attachment.save(created_by_id=request.user.id)
                 created.append(attachment)
@@ -397,13 +403,18 @@ class E9AttachmentFileEndpoint(BaseAPIView):
         attachment = None if project is None else E9Attachment.objects.filter(project=project, pk=attachment_id).first()
         if attachment is None or not attachment.file:
             return Response({"error": "File not found."}, status=404)
+        # older uploads may carry a type the browser made up: only plain photos / PDFs are shown inline
+        safe = attachment.content_type if attachment.content_type in SAFE_UPLOADS.values() else ""
         response = FileResponse(
             attachment.file.open("rb"),
-            content_type=attachment.content_type or "application/octet-stream",
-            as_attachment=request.query_params.get("download") == "1",
+            content_type=safe or "application/octet-stream",
+            as_attachment=(request.query_params.get("download") == "1") or not safe,
             filename=attachment.name or "file",
         )
         response["Cache-Control"] = "private, max-age=3600"
+        response["X-Content-Type-Options"] = "nosniff"
+        # even if a file were hostile, it may not run scripts or load anything
+        response["Content-Security-Policy"] = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
         return response
 
 
