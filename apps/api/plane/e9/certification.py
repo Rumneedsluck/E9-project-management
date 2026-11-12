@@ -11,6 +11,8 @@ Big jobs can certify one floor or one scope at a time (running / part bills): ea
 own signed JMC, so every bill is backed by a signature.
 """
 
+from decimal import Decimal
+
 from .models import E9Attachment, E9Certification, E9Floor, E9ProjectStatus, E9ScopeItem
 from .services import split_floors
 
@@ -75,6 +77,36 @@ def covers(cert, item):
     return True
 
 
+def floor_share(cert, item):
+    """How much of an item one floor's JMC covers: an item on 2 floors counts half on each."""
+    if cert is None or not cert.floor:
+        return Decimal(1)
+    return Decimal(1) / max(len(split_floors(item.floor_area)), 1)
+
+
+def floor_totals(items):
+    """Sq ft per floor with multi-floor items split evenly, plus the project total (each item once).
+
+    The floors add up to the total, so nothing is counted twice.
+    """
+    from .tracker import item_area_sqft
+
+    per_floor, total = {}, Decimal(0)
+    for item in items:
+        if not is_filled(item) or item.hold_status == "Cancelled":
+            continue
+        area = item_area_sqft(item.height_in, item.width_in, item.qty) or Decimal(0)
+        names = split_floors(item.floor_area)
+        total += area
+        for name in names or [""]:
+            key = name or "No floor"
+            per_floor[key] = per_floor.get(key, Decimal(0)) + area / Decimal(len(names) or 1)
+    return (
+        [{"floor": name, "sqft": str(value.quantize(Decimal("0.01")))} for name, value in per_floor.items()],
+        str(total.quantize(Decimal("0.01"))),
+    )
+
+
 def readiness(items):
     """How far the certified quantities are filled in, for a group of tracker rows."""
     rows = [item for item in items if is_filled(item) and item.hold_status != "Cancelled"]
@@ -107,6 +139,8 @@ def payload(project, can_edit, scopes):
         "floors": floors,
         "scopes": [{"key": key, "label": scope.label} for key, scope in scopes.items() if scope.enabled],
         "overall": readiness(items),
+        "floor_sqft": floor_totals(items)[0],
+        "total_sqft": floor_totals(items)[1],
         "certifications": [
             {
                 "id": str(cert.id),

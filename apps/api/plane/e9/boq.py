@@ -25,7 +25,7 @@ from .models import (
     E9Reprint,
     E9ScopeItem,
 )
-from . import tracker
+from . import certification, tracker
 
 ZERO = Decimal("0")
 CONFIRMED = E9AmendmentStatus.CONFIRMED
@@ -93,8 +93,13 @@ STAGE_TEXT = {
 }
 
 
-def line_rows(project):
-    """Every BOQ line of the project with its numbers and status."""
+def line_rows(project, cert=None):
+    """Every BOQ line of the project with its numbers and status.
+
+    With a part certification (one floor or scope) only the rows that JMC covers can be billed,
+    and an item on several floors counts evenly across them.
+    """
+    part = cert is not None and not cert.is_whole
     lines = list(
         E9BoqLine.objects.filter(project=project)
         .select_related("po", "amendment")
@@ -107,10 +112,15 @@ def line_rows(project):
         for item in E9ScopeItem.objects.filter(project=project)
         if is_filled(item) and not tracker.is_cancelled(item)
     ]
+    covered = [item for item in items if not part or certification.covers(cert, item)]
+    share = {item.id: (certification.floor_share(cert, item) if part else Decimal(1)) for item in covered}
     scope_rules = dict(E9ProjectScope.objects.filter(project=project).values_list("key", "bill_when"))
     by_no = defaultdict(list)
     for item in items:
         by_no[norm(item.boq_item_no)].append(item)
+    billing_by_no = defaultdict(list)
+    for item in covered:
+        billing_by_no[norm(item.boq_item_no)].append(item)
 
     reprints = defaultdict(lambda: {"internal": ZERO, "client": ZERO, "extra": ZERO})
     for reprint in E9Reprint.objects.filter(project=project, boq_line__isnull=False):
@@ -157,8 +167,10 @@ def line_rows(project):
         installed = sum(
             (measure(item, unit) for item in working if item.installation_status == "Installation Done"), ZERO
         )
-        billable_rows = [item for item in rows_for_line if can_bill(item, scope_rules.get(item.scope))]
-        ready_to_bill = sum((billable_measure(item, unit) for item in billable_rows), ZERO)
+        covered_rows = billing_by_no.get(norm(line.line_no), [])
+        billable_rows = [item for item in covered_rows if can_bill(item, scope_rules.get(item.scope))]
+        ready_to_bill = sum((billable_measure(item, unit) * share[item.id] for item in billable_rows), ZERO)
+        covered_total = sum((billable_measure(item, unit) * share[item.id] for item in covered_rows), ZERO)
         over = on_tracker - allowed
         if over > 0 and over > pending:
             status = "excess"
@@ -170,7 +182,8 @@ def line_rows(project):
         # a row is billable once its 'Bill when' trigger is reached (Signed off / Delivered); the certified
         # quantity counts when typed, and never more than the BOQ allows
         billable_now = min(ready_to_bill, allowed) + client_reprints
-        max_billable = allowed + client_reprints
+        # a whole-project JMC can certify up to the BOQ; a floor / scope JMC only what that part holds
+        max_billable = (min(covered_total, allowed) if part else allowed) + client_reprints
         rows.append(
             {
                 "id": str(line.id),
