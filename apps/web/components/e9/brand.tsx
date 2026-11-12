@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { cn } from "@plane/utils";
 
 /**
@@ -47,9 +47,15 @@ export function E9LogoMark({ className }: TE9LogoMarkProps) {
 }
 
 /** Just the red E9 (no square) – for light or dark backgrounds; the TM follows the text colour. */
-export function E9Wordmark({ className }: TE9LogoMarkProps) {
+export function E9Wordmark({ className, style }: TE9LogoMarkProps & { style?: CSSProperties }) {
   return (
-    <svg viewBox="1700 2400 6760 5360" role="img" aria-label={E9_BRAND.name} className={cn("h-8 w-auto", className)}>
+    <svg
+      viewBox="1700 2400 6760 5360"
+      role="img"
+      aria-label={E9_BRAND.name}
+      className={cn("h-8 w-auto", className)}
+      style={style}
+    >
       <path fill="#DA1E26" d={E9_LOGO_PATH} />
       <path fill="currentColor" d={E9_TM_T} />
       <path fill="currentColor" d={E9_TM_M} />

@@ -6,14 +6,22 @@
 
 import type { ReactNode } from "react";
 import { Button } from "@makeplane/propel/components/button";
+import LatticeLoader from "./vendor/lattice-loader";
 
 export function E9LoadingState() {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3" aria-busy="true" aria-label="Loading">
-      {Array.from({ length: 6 }).map((_, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- static placeholders
-        <div key={index} className="h-32 animate-pulse rounded-xl border border-subtle bg-layer-1" />
-      ))}
+    <div className="flex min-h-[40vh] items-center justify-center text-secondary" aria-busy="true">
+      <LatticeLoader
+        label="Loading"
+        pattern="orbit"
+        grid={3}
+        shape="square"
+        color="var(--brand-default)"
+        cellSize={8}
+        gap={3}
+        fontSize={15}
+        showTimer={false}
+      />
     </div>
   );
 }

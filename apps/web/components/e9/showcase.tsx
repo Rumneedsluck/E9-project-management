@@ -15,7 +15,7 @@ import Link from "next/link";
 import { ChevronLeftOutline, ChevronRightOutline } from "@makeplane/propel/icons";
 import { getStatusMeta } from "./constants";
 import { describeDeadline, getProgressPercent } from "./helpers";
-import { E9LogoMark } from "./brand";
+import { E9Wordmark } from "./brand";
 import type { TE9Project } from "./types";
 import { E9CertSteps, E9CodeTile } from "./ui";
 
@@ -155,8 +155,14 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
                   className="absolute inset-0 transition-transform duration-700 ease-out group-hover:scale-105"
                   style={{ background: "#F2E9D8" }}
                 />
-                {/* the E9 logo as a watermark, in its own colours */}
-                <E9LogoMark className="absolute top-1/2 right-[5%] size-[46%] -translate-y-1/2 rounded-[14%] opacity-95 shadow-raised-200" />
+                {/* the E9 letters as a watermark, in the logo red, fading away to the left */}
+                <E9Wordmark
+                  className="pointer-events-none absolute top-1/2 right-[-2%] h-[88%] w-auto -translate-y-1/2 text-transparent opacity-[0.34]"
+                  style={{
+                    maskImage: "linear-gradient(to left, #000 8%, transparent 92%)",
+                    WebkitMaskImage: "linear-gradient(to left, #000 8%, transparent 92%)",
+                  }}
+                />
                 <div aria-hidden className="absolute inset-x-0 top-0 h-2" style={{ background: stage.color }} />
                 <div className="absolute inset-0 flex flex-col justify-between p-5 pt-7 text-[#1B1512] sm:p-7 sm:pt-9">
                   <div className="flex flex-wrap items-center gap-3">

@@ -583,3 +583,9 @@ html {
   padding-bottom: 0.16em;
   margin-bottom: -0.16em;
 }
+
+/* swipe rows that hold a full-width card: no side padding, content fills the row */
+.e9-swipe-flush .swipe-row__surface {
+  display: block;
+  padding: 0;
+}

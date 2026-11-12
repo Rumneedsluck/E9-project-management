@@ -18,7 +18,9 @@ import { E9_PRIORITIES, E9_STATUSES } from "./constants";
 import { DEFAULT_E9_FILTERS, filterProjects, getProgressPercent, sortProjects } from "./helpers";
 import type { TE9ProjectFilters, TE9SortKey } from "./helpers";
 import { useCanCreateE9Project, useE9Projects } from "./hooks";
+import { E9RingShowcase } from "./ring-showcase";
 import { E9Showcase } from "./showcase";
+import SwipeRow from "./vendor/swipe-row";
 import { E9EmptyState, E9ErrorState, E9LoadingState } from "./states";
 import type { TE9CertState, TE9Project } from "./types";
 import {
@@ -45,7 +47,7 @@ const CERT_FILTERS: { key: TCertFilter; label: string }[] = [
 const matchesCert = (project: TE9Project, filter: TCertFilter) =>
   filter === "all" || (filter === "billing_open" ? project.billing_open : project.cert_state === filter);
 
-type TView = "slider" | "list";
+type TView = "slider" | "ring" | "list";
 const VIEW_KEY = "e9-projects-view";
 
 const SORT_OPTIONS: { key: TE9SortKey; label: string }[] = [
@@ -140,32 +142,88 @@ function ProjectTable({ projects, workspaceSlug }: { projects: TE9Project[]; wor
   );
 }
 
+const ArrowIcon = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </svg>
+);
+const GridIcon = () => (
+  <svg
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M3 9h18M3 15h18M9 3v18" />
+  </svg>
+);
+
 function ProjectCards({ projects, workspaceSlug }: { projects: TE9Project[]; workspaceSlug: string }) {
+  const router = useAppRouter();
   return (
     <ul className="flex flex-col gap-3 md:hidden">
       {projects.map((project) => {
         const progress = getProgressPercent(project);
         return (
           <li key={project.id}>
-            <Link
-              href={`/${workspaceSlug}/e9/projects/${project.id}`}
-              className="flex flex-col gap-3 rounded-xl border border-subtle bg-surface-1 p-4 shadow-raised-100 active:bg-layer-1-hover"
+            {/* phone: swipe a project sideways for quick actions (full swipe opens it) */}
+            <SwipeRow
+              actions={[
+                { id: "open", label: "Open", icon: <ArrowIcon /> },
+                { id: "tracker", label: "Tracker", color: "#3f3f46", icon: <GridIcon /> },
+              ]}
+              actionColor="#DA1E26"
+              drawerColor="#3f3f46"
+              rowColor="var(--background-color-surface-1)"
+              textColor="inherit"
+              height={212}
+              radius={12}
+              actionWidth={84}
+              direction="left"
+              label={`Project: ${project.name}`}
+              className="e9-swipe-flush"
+              onCommit={(action) =>
+                router.push(
+                  `/${workspaceSlug}/e9/projects/${project.id}${action.id === "tracker" ? "?view=tracker" : ""}`
+                )
+              }
             >
-              <ProjectIdentity project={project} />
-              <span className="flex flex-wrap items-center gap-2">
-                <E9StatusBadge status={project.e9.status} />
-                <E9PriorityBadge priority={project.e9.priority} />
-              </span>
-              <E9CertSteps project={project} compact />
-              <span className="flex items-center gap-3">
-                <E9ProgressBar value={progress} />
-                <span className="text-body-xs-medium text-tertiary tabular-nums">{progress}%</span>
-              </span>
-              <span className="flex items-center justify-between gap-3">
-                <E9DeadlineText project={project} />
-                <E9MemberStack userIds={project.member_ids} max={3} />
-              </span>
-            </Link>
+              <Link
+                href={`/${workspaceSlug}/e9/projects/${project.id}`}
+                className="flex h-full flex-col gap-3 rounded-xl border border-subtle bg-surface-1 p-4 active:bg-layer-1-hover"
+              >
+                <ProjectIdentity project={project} />
+                <span className="flex flex-wrap items-center gap-2">
+                  <E9StatusBadge status={project.e9.status} />
+                  <E9PriorityBadge priority={project.e9.priority} />
+                </span>
+                <E9CertSteps project={project} compact />
+                <span className="flex items-center gap-3">
+                  <E9ProgressBar value={progress} />
+                  <span className="text-body-xs-medium text-tertiary tabular-nums">{progress}%</span>
+                </span>
+                <span className="flex items-center justify-between gap-3">
+                  <E9DeadlineText project={project} />
+                  <E9MemberStack userIds={project.member_ids} max={3} />
+                </span>
+              </Link>
+            </SwipeRow>
           </li>
         );
       })}
@@ -190,7 +248,8 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
   useEffect(() => {
     if (initialCert) return;
     try {
-      if (window.localStorage.getItem(VIEW_KEY) === "list") setView("list");
+      const saved = window.localStorage.getItem(VIEW_KEY);
+      if (saved === "list" || saved === "ring") setView(saved);
     } catch {
       // storage blocked: keep the slider
     }
@@ -368,7 +427,7 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
               Showing {visible.length} of {projects?.length ?? 0} projects
             </p>
             <div role="tablist" aria-label="View" className="flex rounded-lg border border-subtle bg-surface-1 p-0.5">
-              {(["slider", "list"] as TView[]).map((option) => (
+              {(["slider", "ring", "list"] as TView[]).map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -385,8 +444,10 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
               ))}
             </div>
           </div>
-          {view === "slider" ? (
+          {view === "slider" || (view === "ring" && visible.length < 3) ? (
             <E9Showcase projects={visible} workspaceSlug={workspaceSlug} />
+          ) : view === "ring" ? (
+            <E9RingShowcase projects={visible} workspaceSlug={workspaceSlug} />
           ) : (
             <>
               <ProjectTable projects={visible} workspaceSlug={workspaceSlug} />

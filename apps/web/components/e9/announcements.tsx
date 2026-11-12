@@ -5,13 +5,12 @@
  */
 
 import { useState } from "react";
-import { CloseOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { cn, renderFormattedDate } from "@plane/utils";
 import { e9ProjectService } from "@/services/e9/project.service";
 import { inputClass, showError } from "./commercial/shared";
 import { useE9Announcements } from "./hooks";
-import { e9Confirm } from "./confirm";
+import SwipeRow from "./vendor/swipe-row";
 
 /** Team notices. Everyone reads them; workspace admins post and remove them. */
 export function E9Announcements({
@@ -33,6 +32,7 @@ export function E9Announcements({
   const [endsOn, setEndsOn] = useState("");
   const [important, setImportant] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [swipeKey, setSwipeKey] = useState(0);
 
   const rows = data?.announcements ?? [];
   const shown = limit ? rows.slice(0, limit) : rows;
@@ -59,12 +59,13 @@ export function E9Announcements({
     }
   };
 
-  const remove = async (id: string) => {
-    if (!(await e9Confirm("Remove this announcement for everyone?"))) return;
+  // the swipe itself is the deliberate gesture (a red "Remove" is shown): no extra question
+  const removeSwiped = async (id: string) => {
     try {
       await mutate(e9ProjectService.deleteAnnouncement(workspaceSlug, id), { revalidate: false });
     } catch (error) {
       showError("Couldn't remove it", error);
+      setSwipeKey((value) => value + 1); // bring the folded row back
     }
   };
 
@@ -72,6 +73,11 @@ export function E9Announcements({
     <section className={cn("flex flex-col gap-3", className)}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-body-xs-semibold tracking-[0.14em] text-tertiary uppercase">Announcements</h2>
+        {data.can_post && shown.length > 0 && (
+          <span className="hidden text-body-2xs-regular text-tertiary sm:inline">
+            Drag a notice sideways to remove it
+          </span>
+        )}
         {canPost && !open && (
           <button
             type="button"
@@ -132,42 +138,63 @@ export function E9Announcements({
         <p className="text-body-sm-regular text-tertiary">No announcements right now.</p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {shown.map((row) => (
-            <li
-              key={row.id}
-              className={cn(
-                "group flex items-start gap-3 rounded-xl border bg-surface-1 px-4 py-3",
-                row.important ? "border-danger-subtle" : "border-subtle"
-              )}
-            >
-              <span
+          {shown.map((row) => {
+            const inner = (
+              <>
+                <span
+                  className={cn(
+                    "mt-1.5 size-2 shrink-0 rounded-full",
+                    row.important ? "bg-[var(--brand-default)]" : "bg-layer-3"
+                  )}
+                />
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className={cn("text-body-sm-semibold", row.important ? "text-danger-primary" : "text-primary")}>
+                    {row.title}
+                  </span>
+                  {row.body && (
+                    <p className="line-clamp-2 text-body-xs-regular whitespace-pre-line text-secondary">{row.body}</p>
+                  )}
+                  <span className="text-body-2xs-regular text-tertiary">
+                    {[row.author, renderFormattedDate(row.created_at)].filter(Boolean).join(" · ")}
+                    {row.ends_on ? ` · until ${renderFormattedDate(row.ends_on)}` : ""}
+                  </span>
+                </div>
+              </>
+            );
+            // admins can swipe a notice sideways (or drag it with the mouse) to remove it
+            if (data.can_post) {
+              return (
+                <li key={`${row.id}-${swipeKey}`}>
+                  <SwipeRow
+                    actions={[{ id: "delete", label: "Remove" }]}
+                    actionColor="#DA1E26"
+                    drawerColor="#3f3f46"
+                    rowColor="var(--background-color-surface-1)"
+                    textColor="inherit"
+                    height={row.body ? 92 : 66}
+                    radius={12}
+                    actionWidth={84}
+                    direction="left"
+                    label={`Announcement: ${row.title}`}
+                    onCommit={() => removeSwiped(row.id)}
+                  >
+                    <div className="flex w-full min-w-0 items-start gap-3 py-3">{inner}</div>
+                  </SwipeRow>
+                </li>
+              );
+            }
+            return (
+              <li
+                key={row.id}
                 className={cn(
-                  "mt-1.5 size-2 shrink-0 rounded-full",
-                  row.important ? "bg-[var(--brand-default)]" : "bg-layer-3"
+                  "flex items-start gap-3 rounded-xl border bg-surface-1 px-4 py-3",
+                  row.important ? "border-danger-subtle" : "border-subtle"
                 )}
-              />
-              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className={cn("text-body-sm-semibold", row.important ? "text-danger-primary" : "text-primary")}>
-                  {row.title}
-                </span>
-                {row.body && <p className="text-body-xs-regular whitespace-pre-line text-secondary">{row.body}</p>}
-                <span className="text-body-2xs-regular text-tertiary">
-                  {[row.author, renderFormattedDate(row.created_at)].filter(Boolean).join(" · ")}
-                  {row.ends_on ? ` · until ${renderFormattedDate(row.ends_on)}` : ""}
-                </span>
-              </div>
-              {data.can_post && (
-                <button
-                  type="button"
-                  aria-label={`Remove ${row.title}`}
-                  onClick={() => remove(row.id)}
-                  className="grid size-6 place-items-center rounded text-tertiary opacity-0 group-hover:opacity-100 hover:text-danger-primary focus:opacity-100"
-                >
-                  <CloseOutline className="size-3.5" />
-                </button>
-              )}
-            </li>
-          ))}
+              >
+                {inner}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
