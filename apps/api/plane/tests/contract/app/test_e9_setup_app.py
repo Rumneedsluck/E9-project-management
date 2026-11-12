@@ -222,6 +222,19 @@ class TestAttachments:
 @pytest.mark.contract
 class TestHistory:
     @pytest.mark.django_db
+    def test_activity_counts_changes_per_day_for_the_heatmap(self, session_client, workspace, project):
+        item = session_client.post(url(workspace, project, "items/"), {"scope": "wall_graphics"}, format="json").data[0]
+        session_client.patch(
+            url(workspace, project, f"items/{item['id']}/"),
+            {"installation_status": "In Progress", "remarks": "Night shift"},
+            format="json",
+        )
+        data = session_client.get(url(workspace, project, "activity/")).data
+        assert data["total"] >= 2
+        assert sum(day["count"] for day in data["days"]) == data["total"]
+        assert all(len(day["date"]) == 10 for day in data["days"])
+        assert data["from"] < data["to"]
+
     def test_records_who_changed_what(self, session_client, workspace, project, create_user):
         item = session_client.post(url(workspace, project, "items/"), {"scope": "wall_graphics"}, format="json").data[0]
         session_client.patch(

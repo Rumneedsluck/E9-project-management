@@ -12,6 +12,7 @@ import { useE9Floors, useE9Items, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
+import { E9ActivityHeatmap } from "../activity-heatmap";
 import { E9DonePie, E9StagePie } from "../charts";
 import type { TE9ScopeItem, TStageTargetRow } from "./logic";
 import {
@@ -192,6 +193,8 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
           tone={kpis.openSiteIssues > 0 ? "danger" : "success"}
         />
       </div>
+
+      <E9ActivityHeatmap workspaceSlug={workspaceSlug} projectId={project.id} />
 
       <E9Panel title="Progress by scope">
         <div className="overflow-x-auto">

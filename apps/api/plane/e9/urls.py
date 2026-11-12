@@ -17,6 +17,7 @@ from .views_setup import (
     E9AttachmentListEndpoint,
     E9FloorDetailEndpoint,
     E9FloorListEndpoint,
+    E9ActivityEndpoint,
     E9HistoryEndpoint,
     E9ImportEndpoint,
     E9ScopeListEndpoint,
@@ -91,6 +92,7 @@ urlpatterns = [
         name="e9-attachment-file",
     ),
     path(f"{P}/history/", E9HistoryEndpoint.as_view(), name="e9-history"),
+    path(f"{P}/activity/", E9ActivityEndpoint.as_view(), name="e9-activity"),
     path(f"{P}/import/", E9ImportEndpoint.as_view(), name="e9-import"),
     # BOQ, POs, amendments, reprints
     path(f"{P}/boq/", E9BoqEndpoint.as_view(), name="e9-boq"),

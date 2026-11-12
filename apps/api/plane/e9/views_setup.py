@@ -4,10 +4,14 @@
 
 """Project set-up endpoints: scopes, floors, photos & PDFs, history and Excel import."""
 
+import datetime
 import uuid
 
 from django.db import models, transaction
+from django.db.models import Count
+from django.db.models.functions import TruncDate
 from django.http import FileResponse
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -426,6 +430,32 @@ class E9AttachmentFileEndpoint(BaseAPIView):
 # ---------------------------------------------------------------------------
 # History
 # ---------------------------------------------------------------------------
+
+
+ACTIVITY_DAYS = 371  # 53 weeks: a full year of week columns
+
+
+class E9ActivityEndpoint(BaseAPIView):
+    """How many changes were made on each day of the last year (for the Overview heatmap)."""
+
+    @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
+    def get(self, request, slug, project_id):
+        project = _project(request, slug, project_id)
+        if project is None:
+            return _not_found()
+        today = timezone.localdate()
+        first = today - datetime.timedelta(days=ACTIVITY_DAYS - 1)
+        rows = (
+            E9ChangeLog.objects.filter(project=project, created_at__date__gte=first)
+            .annotate(day=TruncDate("created_at"))
+            .values("day")
+            .annotate(count=Count("id"))
+            .order_by("day")
+        )
+        days = [{"date": row["day"].isoformat(), "count": row["count"]} for row in rows]
+        return Response(
+            {"from": first.isoformat(), "to": today.isoformat(), "days": days, "total": sum(d["count"] for d in days)}
+        )
 
 
 class E9HistoryEndpoint(BaseAPIView):

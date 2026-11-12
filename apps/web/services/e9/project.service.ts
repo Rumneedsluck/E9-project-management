@@ -180,6 +180,14 @@ export class E9ProjectService extends APIService {
     );
   }
 
+  // ---- activity (heatmap) ----
+  getActivity(
+    workspaceSlug: string,
+    projectId: string
+  ): Promise<{ from: string; to: string; days: { date: string; count: number }[]; total: number }> {
+    return this.call(this.get(`${this.base(workspaceSlug, projectId)}/activity/`));
+  }
+
   // ---- Excel import ----
   importTracker(
     workspaceSlug: string,

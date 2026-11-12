@@ -166,3 +166,7 @@ export const useCanCreateE9Project = (workspaceSlug: string | undefined) => {
     workspaceSlug
   );
 };
+
+/** Changes made per day over the last year (for the Overview heatmap). */
+export const useE9Activity = (slug: string, projectId: string) =>
+  useSWR(["e9-activity", slug, projectId], () => e9ProjectService.getActivity(slug, projectId), opts);
