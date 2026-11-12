@@ -53,7 +53,7 @@ export function E9SnagsPage({ workspaceSlug, project }: Props) {
     send("Couldn't save the snag", () => e9ProjectService.updateSnag(workspaceSlug, project.id, snag.id, body));
 
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   const canEdit = data.can_update;
   const rows = filter === "open" ? data.snags.filter((snag) => snag.status !== "Closed") : data.snags;

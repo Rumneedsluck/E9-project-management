@@ -143,7 +143,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
     const [main, resolvedSub] = resolveView(next, nextSub ?? null);
     router.replace(`${pathname}?view=${main}${resolvedSub ? `&sub=${resolvedSub}` : ""}`);
   };
-  const { data: project, error, isLoading, mutate } = useE9Project(workspaceSlug, projectId);
+  const { data: project, isLoading, mutate } = useE9Project(workspaceSlug, projectId);
 
   if (isLoading && !project)
     return (
@@ -151,7 +151,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
         <E9LoadingState />
       </E9PageBody>
     );
-  if (error || !project)
+  if (!project)
     return (
       <E9PageBody>
         <E9ErrorState message="This project doesn't exist, or you are not part of its team." onRetry={() => mutate()} />

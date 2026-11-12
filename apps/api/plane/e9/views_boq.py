@@ -13,6 +13,7 @@ from rest_framework.response import Response
 
 from plane.app.permissions import allow_permission
 from plane.app.views.base import BaseAPIView
+from plane.db.models import Project
 
 from . import boq, certification, tracker
 from .models import (
@@ -938,9 +939,16 @@ def bills_payload(project, user, slug):
     }
 
 
+def _still_to_bill(line):
+    """Billable now minus what bills already certified (never below zero)."""
+    return max(Decimal(line["billable_now"]) - Decimal(line["certified"]), Decimal("0"))
+
+
 def _save_bill_lines(project, bill, rows):
     if not isinstance(rows, list):
         raise Invalid("lines", "Send a list of certified quantities.")
+    # one bill at a time per project, so two people cannot both certify the last units of a line
+    Project.objects.select_for_update().filter(pk=project.id).first()
     lines = {row["id"]: row for row in boq.line_rows(project)[0]}
     others = defaultdict(lambda: Decimal("0"))
     for other in E9BillLine.objects.filter(project=project, bill__deleted_at__isnull=True).exclude(bill=bill):
@@ -1086,12 +1094,12 @@ class E9SummaryEndpoint(BaseAPIView):
                     "cert_state": state,
                     "bills": bills,
                     "lines": len(lines),
-                    "billable_now": str(sum(Decimal(line["billable_now"]) for line in lines)),
+                    "billable_now": str(sum(_still_to_bill(line) for line in lines)),
                     "certified": str(sum(Decimal(line["certified"]) for line in lines)),
                     "billable_amount": str(
                         sum(
                             (
-                                Decimal(line["billable_now"]) * Decimal(line["rate"])
+                                _still_to_bill(line) * Decimal(line["rate"])
                                 for line in lines
                                 if line["rate"] is not None
                             ),

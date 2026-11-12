@@ -74,7 +74,7 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
   };
 
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   const scopeLabel = (key: string) => data.scopes.find((scope) => scope.key === key)?.label ?? key;
   const partLabel = (part: { floor: string; scope: string }) =>

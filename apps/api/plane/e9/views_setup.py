@@ -8,6 +8,7 @@ import uuid
 
 from django.db import models, transaction
 from django.http import FileResponse
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -274,9 +275,9 @@ class E9AttachmentListEndpoint(BaseAPIView):
         if request.query_params.get("kind"):
             attachments = attachments.filter(kind=request.query_params["kind"])
         if request.query_params.get("item"):
-            attachments = attachments.filter(item_id=request.query_params["item"])
+            attachments = attachments.filter(item_id=uuid_or_none(request.query_params["item"]))
         if request.query_params.get("ref"):
-            attachments = attachments.filter(ref_id=request.query_params["ref"])
+            attachments = attachments.filter(ref_id=uuid_or_none(request.query_params["ref"]))
         return Response(E9AttachmentSerializer(attachments, many=True).data)
 
     @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
@@ -435,9 +436,11 @@ class E9HistoryEndpoint(BaseAPIView):
             return _not_found()
         changes = E9ChangeLog.objects.filter(project=project).select_related("created_by")
         if request.query_params.get("entity_id"):
-            changes = changes.filter(entity_id=request.query_params["entity_id"])
+            changes = changes.filter(entity_id=uuid_or_none(request.query_params["entity_id"]))
         if request.query_params.get("before"):
-            changes = changes.filter(created_at__lt=request.query_params["before"])
+            before = parse_datetime(request.query_params["before"])
+            if before is not None:
+                changes = changes.filter(created_at__lt=before)
         try:
             limit = min(max(int(request.query_params.get("limit", 100)), 1), 500)
         except ValueError:

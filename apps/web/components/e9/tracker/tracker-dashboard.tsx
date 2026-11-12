@@ -131,7 +131,7 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
   const issues = useMemo(() => items.filter(isOpenSiteIssue), [items]);
 
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   if (kpis.totalItems === 0)
     return (

@@ -84,7 +84,7 @@ export function E9BillingPage({ workspaceSlug, project }: Props) {
   };
 
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   return (
     <div className="flex flex-col gap-4">

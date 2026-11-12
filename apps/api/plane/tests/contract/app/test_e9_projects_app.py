@@ -169,8 +169,8 @@ class TestE9DemoSetup:
         from plane.db.models import Workspace
 
         monkeypatch.setenv("SECRET_KEY", "test-secret")
-        call_command("e9_demo_setup", "--email", "owner@example.com", "--password", "Demo-pass-123")
-        call_command("e9_demo_setup", "--email", "owner@example.com", "--password", "Demo-pass-123")
+        call_command("e9_demo_setup", "--email", "owner@example.com", "--password", "Demo-pass-123", "--allow-demo")
+        call_command("e9_demo_setup", "--email", "owner@example.com", "--password", "Demo-pass-123", "--allow-demo")
 
         workspace = Workspace.objects.get(slug="e9-creative")
         assert Project.objects.filter(workspace=workspace).count() == 7
@@ -193,7 +193,7 @@ class TestE9DemoClear:
         from plane.db.models import Workspace
 
         monkeypatch.setenv("SECRET_KEY", "test-secret")
-        call_command("e9_demo_setup", "--email", "owner@example.com", "--password", "Demo-pass-123")
+        call_command("e9_demo_setup", "--email", "owner@example.com", "--password", "Demo-pass-123", "--allow-demo")
         workspace = Workspace.objects.get(slug="e9-creative")
         owner = User.objects.get(email="owner@example.com")
         real = Project.objects.create(name="Cedar Lane Office", identifier="CLO", workspace=workspace)

@@ -21,6 +21,7 @@ from django.db import models, transaction
 from . import tracker
 from .models import E9Attachment, E9ProjectProfile, E9ScopeItem
 from .excel_images import sheet_images
+from .safety import check_workbook_archive
 from .services import PARKED_FROM, ensure_floors, ensure_scopes, record, split_floors
 
 
@@ -600,6 +601,8 @@ def _save_logs(project, workbook, items_by_code, user, warnings, report):
 
 
 def import_tracker(project, upload, user):
+    if not check_workbook_archive(upload):
+        raise ImportProblem("This file could not be read as an Excel tracker (.xlsx).")
     try:
         workbook = openpyxl.load_workbook(upload, data_only=True, read_only=False)
     except Exception as error:  # noqa: BLE001 - any unreadable file gets the same friendly message

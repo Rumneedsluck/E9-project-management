@@ -18,8 +18,9 @@ All names, companies and emails are invented. Never use this on a live server.
 import secrets
 from datetime import timedelta
 
+from django.conf import settings
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
@@ -191,8 +192,18 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--email", default=DEFAULT_ADMIN_EMAIL, help="Email for the admin login")
         parser.add_argument("--password", default=DEFAULT_PASSWORD, help="Password for every demo login")
+        parser.add_argument(
+            "--allow-demo",
+            action="store_true",
+            help="Run outside developer mode. Never do this on a real server: the demo password is public.",
+        )
 
     def handle(self, *args, **options):
+        if not (settings.DEBUG or options["allow_demo"]):
+            raise CommandError(
+                "This makes demo logins with a public password, so it only runs in developer mode "
+                "(DEBUG). Pass --allow-demo if you really mean it on a throwaway copy."
+            )
         email = options["email"].strip().lower()
         password = options["password"]
 

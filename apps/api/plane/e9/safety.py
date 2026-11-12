@@ -10,6 +10,7 @@
   served from the app's own address could run scripts, so only plain photos and PDFs go in.
 """
 
+import zipfile
 from urllib.parse import urlparse
 
 LINK_SCHEMES = ("http", "https", "mailto")
@@ -69,6 +70,8 @@ def upload_type(name, head):
         return None
     if content_type == "image/webp" and head[8:12] != b"WEBP":
         return None
+    if content_type in ("image/heic", "image/heif") and head[4:8] != b"ftyp":
+        return None
     return content_type
 
 
@@ -80,3 +83,30 @@ def uuid_or_none(value):
         return uuid.UUID(str(value))
     except (ValueError, TypeError, AttributeError):
         return None
+
+
+# An .xlsx is a zip of XML files: a tiny upload can unpack to gigabytes (zip bomb) or use XML
+# entities to blow up memory (billion laughs). Look inside before anything reads it.
+MAX_UNPACKED_BYTES = 300 * 1024 * 1024
+MAX_MEMBER_BYTES = 120 * 1024 * 1024
+
+
+def check_workbook_archive(upload):
+    """True when the .xlsx looks like a normal workbook; False for zip bombs / entity tricks."""
+    try:
+        position = upload.tell()
+        with zipfile.ZipFile(upload) as archive:
+            infos = archive.infolist()
+            if sum(info.file_size for info in infos) > MAX_UNPACKED_BYTES:
+                return False
+            if any(info.file_size > MAX_MEMBER_BYTES for info in infos):
+                return False
+            for info in infos:
+                if info.filename.endswith(".xml") and info.file_size < 5 * 1024 * 1024:
+                    head = archive.read(info.filename)[:2048].lower()
+                    if b"<!entity" in head or b"<!doctype" in head:
+                        return False
+        upload.seek(position)
+        return True
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return False

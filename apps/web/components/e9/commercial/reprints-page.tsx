@@ -53,17 +53,14 @@ export function E9ReprintsPage({ workspaceSlug, project }: Props) {
     send("Couldn't save", () => e9ProjectService.boqUpdate(workspaceSlug, project.id, "reprints", reprint.id, body));
 
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   const canEdit = data.can_update;
   const reasons = data.reprint_reasons ?? [];
-  const totals = data.reprints.reduce(
-    (sum, row) => {
-      const key = row.kind === "extra" ? "extra" : row.cause === "client" ? "client" : "ours";
-      return { ...sum, [key]: sum[key] + 1 };
-    },
-    { ours: 0, client: 0, extra: 0 }
-  );
+  const countOf = (key: "ours" | "client" | "extra") =>
+    data.reprints.filter((row) => (row.kind === "extra" ? "extra" : row.cause === "client" ? "client" : "ours") === key)
+      .length;
+  const totals = { ours: countOf("ours"), client: countOf("client"), extra: countOf("extra") };
 
   const create = async () => {
     if (!draft.item) {

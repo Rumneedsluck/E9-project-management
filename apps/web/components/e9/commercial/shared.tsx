@@ -198,8 +198,12 @@ export function E9RefFiles({ slug, projectId, kind, refId, label, canUpload, add
 
   const remove = async (file: TE9Attachment) => {
     if (!(await e9Confirm(`Delete ${file.name}?`))) return;
-    await e9ProjectService.deleteAttachment(slug, projectId, file.id);
-    await mutate();
+    try {
+      await e9ProjectService.deleteAttachment(slug, projectId, file.id);
+      await mutate();
+    } catch (error) {
+      showError("Couldn't delete the file", error);
+    }
   };
 
   return (

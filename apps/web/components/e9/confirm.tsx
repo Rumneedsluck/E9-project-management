@@ -40,9 +40,14 @@ export function e9Confirm(
 export function E9ConfirmHost() {
   const [request, setRequest] = useState<TRequest | null>(null);
   useEffect(() => {
-    listener = setRequest;
+    // a second question while one is open answers the first with "no" instead of leaving it hanging
+    listener = (next) =>
+      setRequest((current) => {
+        current?.resolve(false);
+        return next;
+      });
     return () => {
-      if (listener === setRequest) listener = null;
+      listener = null;
     };
   }, []);
   if (!request) return null;

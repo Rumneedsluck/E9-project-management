@@ -17,7 +17,7 @@ export function E9SiteIssuesPage({ workspaceSlug, project }: { workspaceSlug: st
   const { data, error, isLoading, mutate } = useE9Items(workspaceSlug, project.id);
   const { data: scopes } = useE9Scopes(workspaceSlug, project.id);
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
   const scopeLabel = (key: string) => scopes?.find((scope) => scope.key === key)?.label ?? key;
   const open = data.items.filter(isOpenSiteIssue);
   return (

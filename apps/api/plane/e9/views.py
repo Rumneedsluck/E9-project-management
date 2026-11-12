@@ -316,11 +316,13 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
         if not _can_update_items(request.user, slug, project_id):
             return Response({"error": "Guests can view the tracker but not change it."}, status=403)
         scopes = scope_map(item.project)
-        before = snapshot(item, ITEM_EDITABLE_FIELDS)
-        serializer = E9ScopeItemSerializer(item, data=request.data, partial=True, context={"scopes": scopes})
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
+            # lock the row: two people editing different cells of one row must not overwrite each other
+            item = E9ScopeItem.objects.select_for_update().get(pk=item.pk)
+            before = snapshot(item, ITEM_EDITABLE_FIELDS)
+            serializer = E9ScopeItemSerializer(item, data=request.data, partial=True, context={"scopes": scopes})
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             serializer.save()
             changed = {field: getattr(item, field) for field in serializer.validated_data if field != "sort_order"}
             record_changes(item.project, request.user, "item", item.id, item_code(item, scopes), before, changed)

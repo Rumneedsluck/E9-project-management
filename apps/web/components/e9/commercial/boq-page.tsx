@@ -77,13 +77,15 @@ export function E9BoqPage({ workspaceSlug, project }: Props) {
   };
 
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   /** Add blank BOQ lines (BO next numbers) straight into the sheet. */
   const quickAdd = async (poId: string, count: number) => {
     const used = data.lines.map((line) => Number(line.line_no.replace(/\D/g, ""))).filter(Number.isFinite);
     let next = used.length ? Math.max(...used) + 1 : 1;
     for (let index = 0; index < count; index += 1) {
+      // one line at a time so the numbers stay in order
+      // oxlint-disable-next-line no-await-in-loop
       const ok = await send("Couldn't add the line", () =>
         e9ProjectService.boqCreate(workspaceSlug, project.id, "lines", {
           po: poId,

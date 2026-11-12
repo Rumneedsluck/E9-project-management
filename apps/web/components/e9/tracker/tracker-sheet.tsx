@@ -1194,11 +1194,17 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       to.current = [...to.current, step];
       if (!quiet) setToast({ type: "success", title: `${direction === "undo" ? "Undone" : "Redone"}: ${step.label}` });
     } catch {
+      // keep the step, so "try again" really has something to try
+      from.current = [...from.current, step];
       setToast({ type: "error", title: `Couldn't ${direction}`, message: "Please try again." });
     } finally {
       historyBusy.current = false;
       historyTick((value) => value + 1);
-      await mutate();
+      try {
+        await mutate();
+      } catch {
+        // the sheet refreshes itself on the next change
+      }
     }
   };
   const travelRef = useRef(travel);
@@ -1227,7 +1233,12 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     const before = Object.fromEntries(
       Object.keys(patch).map((key) => [key, item[key as keyof TE9ScopeItem] ?? null])
     ) as Partial<TE9ScopeItem>;
-    pushHistory({ kind: "patch", label: `${item.item_code} edit`, changes: [{ id: item.id, before, after: patch }] });
+    const entry: THistoryStep = {
+      kind: "patch",
+      label: `${item.item_code} edit`,
+      changes: [{ id: item.id, before, after: patch }],
+    };
+    pushHistory(entry);
     await mutate(
       (current) =>
         current && { ...current, items: current.items.map((row) => (row.id === item.id ? { ...row, ...patch } : row)) },
@@ -1241,6 +1252,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       );
     } catch (err) {
       const message = err && typeof err === "object" ? Object.values(err).flat().join(" ") : "";
+      // nothing was saved, so there is nothing to undo
+      undoStack.current = undoStack.current.filter((step) => step !== entry);
+      historyTick((value) => value + 1);
       setToast({ type: "error", title: `Couldn't save ${item.item_code}`, message: message || "Please try again." });
       await mutate();
     }
@@ -1479,7 +1493,11 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     [gridKey]
   );
   const rowIndex = useMemo(() => new Map(rows.map((row, index) => [row.id, index])), [rows]);
-  useEffect(() => setSel(null), [scopeKey, floorFilter, search]);
+  useEffect(() => setSel(null), [scopeKey, floorFilter, search, gridKey]);
+  useEffect(
+    () => setSel((prev) => (prev && Math.max(prev.anchor.row, prev.focus.row) >= rows.length ? null : prev)),
+    [rows.length]
+  );
 
   const cellAt = (target: EventTarget | null): TCell | null => {
     if (!(target instanceof Element)) return null;
@@ -1643,8 +1661,10 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     };
     const up = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointercancel", up);
       setDragging(false);
-      const target = fillToRef.current;
+      // a cancelled touch must not fill anything
+      const target = ev.type === "pointercancel" ? null : fillToRef.current;
       fillToRef.current = null;
       setFillTo(null);
       if (target === null) return;
@@ -1661,6 +1681,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
+    window.addEventListener("pointercancel", up, { once: true });
   };
 
   startFillRef.current = startFill;
@@ -1713,11 +1734,13 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointercancel", up);
       dragRef.current = null;
       setDragging(false);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up, { once: true });
+    window.addEventListener("pointercancel", up, { once: true });
   };
 
   // keyboard, copy and paste work from the page (focus can be in a cell or nowhere, after a block was dragged)
@@ -1806,7 +1829,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   }, [fillChip]);
 
   if ((isLoading && !data) || !scopes) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   const filledRows = rows.filter(isFilled);
   const blankRows = rows.filter((row) => !isFilled(row));

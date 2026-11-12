@@ -254,7 +254,9 @@ def measured(item, unit):
 def production_measure(item, unit):
     """What we send for production. Uses the production size when typed, else the measured size."""
     if unit == "sqft":
-        area = item_area_sqft(item.production_height_in, item.production_width_in, item.production_qty)
+        # a production size without its own quantity means the same number of pieces as measured
+        production_qty = item.production_qty if item.production_qty is not None else item.qty
+        area = item_area_sqft(item.production_height_in, item.production_width_in, production_qty)
         if area is not None:
             return area
         return measured(item, unit)

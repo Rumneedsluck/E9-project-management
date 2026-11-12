@@ -28,12 +28,13 @@ const CERT_TEXT: Record<TE9SummaryProject["cert_state"], string> = {
 export function E9SummaryPage({ workspaceSlug }: { workspaceSlug: string }) {
   const { data, error, isLoading, mutate } = useE9Summary(workspaceSlug);
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   const projects = data.projects;
   const bills = projects.flatMap((project) => project.bills.map((bill) => ({ project, bill })));
   const open = bills.filter(({ bill }) => bill.stage < 4);
   const done = bills.filter(({ bill }) => bill.stage === 4);
+  // oxlint-disable-next-line consistent-function-scoping
   const sum = (rows: typeof bills) => rows.reduce((total, { bill }) => total + Number(bill.amount ?? 0), 0);
   const notStarted = projects.filter((project) => project.bills.length === 0);
 

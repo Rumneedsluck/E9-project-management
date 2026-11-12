@@ -42,7 +42,7 @@ function Tile({ label, value, tone }: { label: string; value: string | number; t
 export function E9ClientReport({ workspaceSlug, project }: { workspaceSlug: string; project: TE9Project }) {
   const { data, error, isLoading, mutate } = useE9Report(workspaceSlug, project.id);
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
   const head = data.headline;
   const th = "px-3 py-2.5";
   return (
@@ -187,7 +187,7 @@ export function E9ClientReport({ workspaceSlug, project }: { workspaceSlug: stri
 export function E9HealthCheck({ workspaceSlug, project }: { workspaceSlug: string; project: TE9Project }) {
   const { data, error, isLoading, mutate } = useE9Health(workspaceSlug, project.id);
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
   return (
     <div className="flex flex-col gap-5">
       <div

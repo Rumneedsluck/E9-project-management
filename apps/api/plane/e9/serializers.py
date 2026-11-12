@@ -228,9 +228,11 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
         if scope and issue and issue not in tracker.site_issues_for(scope):
             raise serializers.ValidationError({"site_issue": f"'{issue}' is not a site issue for this scope."})
         if attrs.get("dc_qty"):
-            bad = [part for part in tracker.split_list(attrs["dc_qty"]) if tracker.to_decimal(part) is None]
-            if bad:
-                raise serializers.ValidationError({"dc_qty": "Type numbers only, separated by commas, e.g. 100, 50."})
+            numbers = [tracker.to_decimal(part) for part in tracker.split_list(attrs["dc_qty"])]
+            if any(number is None or number < 0 for number in numbers):
+                raise serializers.ValidationError(
+                    {"dc_qty": "Type positive numbers only, separated by commas, e.g. 100, 50."}
+                )
         for field in (
             "height_in",
             "width_in",
@@ -343,5 +345,5 @@ class E9ChangeLogSerializer(serializers.ModelSerializer):
         user = change.created_by
         if user is None:
             return None
-        name = f"{user.first_name} {user.last_name}".strip() or user.display_name or user.email
+        name = f"{user.first_name} {user.last_name}".strip() or user.display_name
         return {"id": str(user.id), "name": name}

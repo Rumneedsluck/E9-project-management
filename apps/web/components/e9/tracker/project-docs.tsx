@@ -248,7 +248,7 @@ export function E9SiteAuditPanel({ workspaceSlug, projectId }: TProps) {
 export function E9ProjectHistory({ workspaceSlug, projectId }: TProps) {
   const { data, error, isLoading, mutate } = useE9History(workspaceSlug, projectId);
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
   return (
     <div className="flex flex-col gap-3">
       <p className="text-body-sm-regular text-tertiary">

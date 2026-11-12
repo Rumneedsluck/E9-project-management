@@ -57,6 +57,7 @@ export const canCountUp = (source: string[]): boolean => {
  * `count` = how many new cells, `direction` = which way the fill runs (down = below the selection).
  */
 export const fillValues = (source: string[], count: number, direction: "down" | "up", mode: TFillMode): string[] => {
+  if (source.length === 0) return [];
   const out: string[] = [];
   const sign = direction === "down" ? 1 : -1;
   const series = mode === "series" && canCountUp(source);

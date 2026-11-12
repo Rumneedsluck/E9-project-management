@@ -76,7 +76,7 @@ export function E9LogsPage({ workspaceSlug, project }: Props) {
   const [, setMailVersion] = useState(0);
 
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
 
   const save = async (kind: "jc" | "dc", number: string, field: string, value: string | null) => {
     try {
@@ -449,7 +449,7 @@ function MailSettingsModal({ onClose }: { onClose: () => void }) {
         </FormField>
         <FormField
           label="Extra search words (optional)"
-          hint="Added before the number, e.g. “Job Card” or “from:vendor@imedia.com”. Leave empty to search just the number."
+          hint="Added before the number, e.g. “Job Card” or “from:vendor@example.com”. Leave empty to search just the number."
         >
           <input className={inputClass} value={words} onChange={(event) => setWords(event.target.value)} />
         </FormField>

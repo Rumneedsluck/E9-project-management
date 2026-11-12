@@ -16,7 +16,7 @@ import type { TE9HoldRow } from "./hold-types";
 
 export const formatDay = (value: string | null) => {
   if (!value) return "—";
-  const [year, month, day] = value.split("-").map(Number);
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
@@ -112,7 +112,7 @@ function HoldTable({
 export function E9HoldPage({ workspaceSlug, project }: { workspaceSlug: string; project: TE9Project }) {
   const { data, error, isLoading, mutate } = useE9Hold(workspaceSlug, project.id);
   if (isLoading && !data) return <E9LoadingState />;
-  if (error || !data) return <E9ErrorState onRetry={() => mutate()} />;
+  if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
   return (
     <div className="flex flex-col gap-5">
       <p className="text-body-sm-regular text-tertiary">
