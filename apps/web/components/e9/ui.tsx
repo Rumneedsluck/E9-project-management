@@ -161,15 +161,13 @@ type TPageHeaderProps = {
 
 export function E9PageHeader({ eyebrow, title, description, actions }: TPageHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div className="flex min-w-0 flex-col gap-1">
-        {eyebrow && (
-          <span className="text-body-xs-semibold tracking-[0.14em] text-accent-primary uppercase">{eyebrow}</span>
-        )}
-        <h1 className="text-h3-semibold tracking-tight text-primary">
+    <div className="e9-double-rule flex flex-col gap-4 pt-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex min-w-0 flex-col gap-2">
+        {eyebrow && <span className="e9-eyebrow">{eyebrow}</span>}
+        <h1 className="e9-display [font-size:40px] leading-[1.05] text-primary">
           {typeof title === "string" ? <RevealText text={title} /> : title}
         </h1>
-        {description && <p className="text-body-sm-regular text-tertiary">{description}</p>}
+        {description && <p className="max-w-2xl text-body-sm-regular text-tertiary">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -192,14 +190,14 @@ export function E9Panel({
     <section
       ref={ref}
       className={cn(
-        "e9-reveal flex flex-col rounded-xl border border-subtle bg-surface-1 shadow-raised-100",
+        "e9-reveal e9-crop flex flex-col rounded-lg border border-subtle bg-surface-1",
         inView && "is-in",
         className
       )}
     >
       {(title || action) && (
         <header className="flex items-center justify-between gap-3 border-b border-subtle px-5 py-3.5">
-          {title && <h2 className="text-body-sm-semibold text-primary">{title}</h2>}
+          {title && <h2 className="e9-eyebrow !text-secondary">{title}</h2>}
           {action}
         </header>
       )}
@@ -228,7 +226,7 @@ export function E9CodeTile({
       // colours inline: the class merger drops a plain text colour next to an arbitrary font size
       style={{ backgroundColor: inverse ? "#FFFFFF" : "#0B0B0B", color: inverse ? "#0B0B0B" : "#FFFFFF" }}
       className={cn(
-        "grid shrink-0 place-items-center rounded-lg font-semibold tracking-wide ring-1 ring-white/10",
+        "e9-mono grid shrink-0 place-items-center rounded-lg font-semibold tracking-wide ring-1 ring-white/10",
         size === "sm" && "h-7 w-10 text-[length:9px]",
         size === "md" && "h-10 w-12 text-[length:10px]",
         size === "lg" && "h-12 w-14 text-[length:12px]",
@@ -265,12 +263,12 @@ export function E9CertSteps({ project, compact = false }: { project: TE9Project;
     { key: "billing", label: "Billing" },
   ];
   return (
-    <span className="flex flex-col gap-1">
+    <span className={cn("flex gap-1", compact ? "flex-row items-center gap-2" : "flex-col")}>
       <span className="flex items-center gap-1" aria-hidden>
         {steps.map((step) => (
           <span
             key={step.key}
-            className={cn("h-1 rounded-full", compact ? "w-4" : "w-6", reached[step.key] ? "bg-inverse" : "bg-layer-3")}
+            className={cn("h-[3px]", compact ? "w-3" : "w-6", reached[step.key] ? "bg-inverse" : "bg-layer-3")}
             title={step.label}
           />
         ))}

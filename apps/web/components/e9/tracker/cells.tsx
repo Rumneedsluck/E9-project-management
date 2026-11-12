@@ -9,8 +9,10 @@ import type { KeyboardEvent } from "react";
 import { cn } from "@plane/utils";
 import { statusTone, TONE_CLASSES } from "./constants";
 
+// Full-bleed, like an Excel cell: no border, no background change and no size change on focus.
+// The active cell is drawn by the sheet (the outline around the selection), so nothing jumps.
 const base =
-  "h-8 w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 text-body-xs-regular text-primary outline-none placeholder:text-transparent hover:border-subtle focus:border-accent-strong focus:bg-surface-1 focus:placeholder:text-placeholder disabled:cursor-default disabled:hover:border-transparent";
+  "block h-9 w-full min-w-0 rounded-none border-0 bg-transparent px-2.5 text-body-xs-regular text-primary outline-none placeholder:text-transparent focus:placeholder:text-placeholder disabled:cursor-default";
 
 type TCommon = { disabled?: boolean; overdue?: boolean; label: string };
 
@@ -176,7 +178,7 @@ export function SelectCell({
         base,
         "cursor-pointer appearance-none truncate pr-1 font-medium",
         TONE_CLASSES[tone],
-        overdue && "bg-danger-subtle text-danger-primary ring-1 ring-[var(--border-color-danger-strong)]"
+        overdue && "bg-danger-subtle text-danger-primary ring-1 ring-[var(--border-color-danger-strong)] ring-inset"
       )}
       value={value}
       disabled={disabled}

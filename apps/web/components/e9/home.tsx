@@ -54,17 +54,20 @@ function Door({ door, index }: { door: TDoor; index: number }) {
     <Reveal delay={0.25 + index * 0.06}>
       <Link
         href={door.href}
-        className="e9-lift group flex h-full flex-col justify-between gap-8 rounded-2xl border border-subtle bg-surface-1 p-5 hover:border-strong"
+        className="group flex h-full flex-col gap-10 border-t-2 border-[var(--e9-ink)] pt-4 pb-2 outline-none focus-visible:bg-[var(--e9-hover)]"
       >
         <span className="flex items-center justify-between">
-          <span className="grid size-10 place-items-center rounded-xl bg-layer-2 text-primary transition-colors group-hover:bg-[#0B0B0B] group-hover:text-white">
-            <Icon className="size-5" />
+          <span className="e9-mono text-body-xs-semibold tracking-[0.14em] text-[var(--e9-brass)]">
+            {String(index + 1).padStart(2, "0")}
           </span>
-          <ArrowNarrowRightOutline className="size-4 -translate-x-1 text-placeholder opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+          <Icon className="size-5 text-tertiary transition-colors group-hover:text-accent-primary" />
         </span>
-        <span className="flex flex-col gap-1">
-          <span className="text-h5-semibold tracking-tight text-primary">{door.label}</span>
-          <span className="min-h-[2lh] text-body-xs-regular text-tertiary">{door.hint}</span>
+        <span className="flex flex-col gap-2">
+          <span className="e9-display flex items-center gap-2 text-[28px] leading-none text-primary">
+            {door.label}
+            <ArrowNarrowRightOutline className="size-5 -translate-x-1 text-accent-primary opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+          </span>
+          <span className="max-w-[26ch] text-body-sm-regular text-tertiary">{door.hint}</span>
         </span>
       </Link>
     </Reveal>
@@ -110,23 +113,25 @@ export const E9Home = observer(function E9Home({ workspaceSlug }: { workspaceSlu
 
   return (
     <E9PageBody>
-      <section className="relative flex min-h-[36vh] flex-col justify-center gap-8 py-6">
-        <div aria-hidden className="e9-dot-grid pointer-events-none absolute inset-x-0 top-0 h-full" />
-        <div className="relative flex flex-col gap-6">
+      <section className="flex min-h-[38vh] flex-col justify-between gap-12 py-4">
+        <div className="flex items-start justify-between gap-6">
+          <span className="e9-eyebrow">{E9_BRAND.productName}</span>
           <Reveal>
-            <E9LogoMark className="size-16 rounded-2xl ring-1 ring-white/10 sm:size-20" />
+            <E9LogoMark className="size-14 rounded-lg sm:size-16" />
           </Reveal>
-          <h1 className="text-[clamp(2.6rem,7vw,5.5rem)] leading-[0.95] font-semibold tracking-[-0.035em] text-primary">
-            <RevealText text={E9_BRAND.name} />
+        </div>
+        <div className="flex flex-col gap-5">
+          <h1 className="e9-display [font-size:clamp(3.2rem,9vw,7.5rem)] leading-[0.95] text-primary">
+            <RevealText text={greeting(hour)} />
+            {currentUser?.first_name && (
+              <span className="block [font-size:0.62em] text-[var(--e9-brass)] italic">{currentUser.first_name}.</span>
+            )}
           </h1>
           <Reveal delay={0.15}>
-            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-md-regular text-tertiary">
-              <span className="text-primary">
-                {greeting(hour)}
-                {currentUser?.first_name ? `, ${currentUser.first_name}` : ""}
-              </span>
-              <span aria-hidden className="h-3 w-px bg-layer-3" />
-              <span className="tabular-nums">
+            <p className="e9-mono flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm-regular text-tertiary">
+              <span className="e9-eyebrow !text-tertiary">{E9_BRAND.name}</span>
+              <span aria-hidden className="h-3 w-px bg-[var(--e9-grid)]" />
+              <span>
                 {now
                   ? `${renderFormattedDate(now, "EEEE, dd MMMM")} · ${now.toLocaleTimeString("en-IN", {
                       hour: "2-digit",
@@ -140,7 +145,7 @@ export const E9Home = observer(function E9Home({ workspaceSlug }: { workspaceSlu
         </div>
       </section>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
         {doors.map((door, index) => (
           <Door key={door.href} door={door} index={index} />
         ))}

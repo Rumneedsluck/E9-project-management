@@ -119,7 +119,7 @@ export function printJmcSheet({
   @media screen { body { padding: 24px; max-width: 1200px; margin: auto; } }
 </style></head><body>
 <header>
-  <div class="brand"><div class="mark">E9</div><div><b>E9 CREATIVE</b><br><span style="color:#666">Signage &amp; Branding</span></div></div>
+  <div class="brand"><div class="mark">E9</div><div><b>E9 CREATIVE</b></div></div>
   <h1>Joint Measurement Certificate<br><span style="font-weight:400;font-size:12px">${escape(part.label)}</span></h1>
 </header>
 <div class="meta">

@@ -14,11 +14,11 @@ import { cn } from "@plane/utils";
 export const E9_BRAND = {
   name: "E9 Creative",
   shortName: "E9",
-  tagline: "Signage & Branding",
+  tagline: "Projects & Operations",
   productName: "E9 Operations",
-  loginHeadline: "Every site, every sign, on schedule.",
+  loginHeadline: "Every project, every site, on schedule.",
   loginDescription:
-    "Plan, produce and install signage and branding projects with your whole team in one place — from site audit to client sign-off.",
+    "Plan, produce and deliver projects with your whole team in one place — from the first site visit to client sign-off.",
 } as const;
 
 type TE9LogoMarkProps = {

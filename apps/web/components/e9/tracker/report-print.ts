@@ -41,7 +41,7 @@ export function printClientReport(project: TE9Project, report: TE9Report) {
   .note { color: #555; margin: 4px 0 10px; }
   @media screen { body { max-width: 1100px; margin: 24px auto; } }
 </style></head><body>
-<header><div><b>E9 CREATIVE</b> · Signage &amp; Branding</div>
+<header><div><b>E9 CREATIVE</b></div>
 <h1>Client progress report<br><span style="font-weight:400;font-size:12px">${escape(report.project_name)}</span></h1></header>
 <p class="note">As on ${escape(day(report.as_on))}. Items on hold are in the totals but add no progress; cancelled items are not counted.</p>
 <div class="tiles">

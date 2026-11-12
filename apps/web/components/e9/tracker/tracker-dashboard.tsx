@@ -93,10 +93,8 @@ function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
   return (
     <section className="flex flex-col gap-4">
       {/* the whole project's outcome: one big pie */}
-      <div className="e9-glow-card relative flex flex-col items-center gap-3 overflow-hidden rounded-2xl border border-subtle bg-surface-1 px-6 py-8 shadow-raised-100">
-        <span className="text-body-xs-semibold tracking-[0.18em] text-tertiary uppercase">
-          Work done · whole project
-        </span>
+      <div className="e9-crop relative flex flex-col items-center gap-3 border border-subtle bg-surface-1 px-6 py-8">
+        <span className="e9-eyebrow">Work done · whole project</span>
         <E9DonePie percent={done.percent} size={280} label="installed" />
       </div>
       {/* the 5 stages, smaller, in one row */}

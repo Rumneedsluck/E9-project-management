@@ -37,15 +37,15 @@ function StatTile({ label, value, hint, href, tone = "default" }: TStatTileProps
   return (
     <Link
       href={href}
-      className="e9-lift group flex h-full flex-col gap-3 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 hover:border-strong"
+      className="group flex h-full flex-col gap-4 px-6 py-6 transition-colors hover:bg-[var(--e9-hover)]"
     >
-      <span className="flex items-center justify-between text-body-xs-medium text-tertiary">
+      <span className="e9-eyebrow flex items-center justify-between !text-tertiary">
         {label}
         <ArrowNarrowRightOutline className="size-4 text-placeholder transition-transform group-hover:translate-x-0.5" />
       </span>
       <span
         className={cn(
-          "text-h2-semibold leading-none tracking-tight text-primary tabular-nums",
+          "e9-figure [font-size:68px] text-primary",
           tone === "warning" && value > 0 && "text-warning-primary",
           tone === "danger" && value > 0 && "text-danger-primary",
           tone === "success" && "text-success-primary"
@@ -53,7 +53,7 @@ function StatTile({ label, value, hint, href, tone = "default" }: TStatTileProps
       >
         <CountUp value={value} />
       </span>
-      <span className="text-body-xs-regular text-placeholder">{hint}</span>
+      <span className="text-body-xs-regular text-tertiary">{hint}</span>
     </Link>
   );
 }
@@ -229,7 +229,7 @@ function ProjectsProgressPanel({ projects, workspaceSlug }: { projects: TE9Proje
                         className="e9-grow block h-full rounded-full"
                         style={{
                           width: `${progress}%`,
-                          background: "linear-gradient(90deg, #DA1E26, #F2542D 60%, #F5A524)",
+                          background: "var(--brand-default)",
                           animationDelay: `${index * 0.05}s`,
                         }}
                       />
@@ -284,7 +284,7 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
         <E9ErrorState onRetry={() => mutate()} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 divide-x divide-subtle border-y border-subtle lg:grid-cols-4">
             <Reveal delay={0.0}>
               <StatTile
                 label="Active sites"

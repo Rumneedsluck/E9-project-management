@@ -114,7 +114,7 @@ const BAND_COLORS: Record<string, string> = {
   "On hold / cancel / billing": "#B45309",
 };
 
-const text = (field: keyof TE9ScopeItem, label: string, placeholder?: string) => (ctx: TRowContext) => (
+const textCol = (field: keyof TE9ScopeItem, label: string, placeholder?: string) => (ctx: TRowContext) => (
   <TextCell
     label={label}
     value={(ctx.item[field] as string) ?? ""}
@@ -138,10 +138,10 @@ function AutoCell({
 }) {
   const number = value === null || value === undefined ? null : Number(value);
   return (
-    <div className="flex flex-col px-2 text-right leading-tight" title={hint}>
+    <div className="flex h-9 items-baseline justify-end gap-1 px-2.5 pt-2" title={hint}>
       <span
         className={cn(
-          "text-body-xs-semibold tabular-nums",
+          "e9-mono text-body-xs-semibold",
           tone === "warn" ? "text-warning-primary" : tone === "ok" ? "text-success-primary" : "text-primary"
         )}
       >
@@ -350,7 +350,7 @@ const COLUMNS: TColumn[] = [
             onClick={ctx.openFloors}
             aria-label={`Choose floors for ${ctx.item.item_code}`}
             title="How many floors, and which"
-            className="grid size-7 shrink-0 place-items-center rounded-md text-body-xs-semibold text-tertiary hover:bg-layer-1-hover hover:text-accent-primary"
+            className="mr-1 grid size-6 shrink-0 place-items-center rounded text-body-2xs-semibold text-tertiary opacity-0 transition-opacity group-hover:opacity-100 hover:bg-layer-1-hover hover:text-accent-primary focus-visible:opacity-100"
           >
             ▤
           </button>
@@ -364,7 +364,7 @@ const COLUMNS: TColumn[] = [
     label: "Floor plan",
     width: 96,
     band: "Item details",
-    render: text("floor_plan_ref", "Floor plan"),
+    render: textCol("floor_plan_ref", "Floor plan"),
   },
   {
     key: "desc",
@@ -372,7 +372,7 @@ const COLUMNS: TColumn[] = [
     label: "Description",
     width: 200,
     band: "Item details",
-    render: text("description", "Description", "e.g. Wall 01"),
+    render: textCol("description", "Description", "e.g. Wall 01"),
   },
   {
     key: "audit",
@@ -437,10 +437,9 @@ const COLUMNS: TColumn[] = [
     label: "Area / unit",
     width: 110,
     band: "1 · Site audit",
-    className: "px-2",
     render: ({ item, scope, empty, disabled, save }) => (
-      <div className="flex flex-col leading-tight">
-        <span className="text-right text-body-xs-semibold text-primary tabular-nums">
+      <div className="flex h-9 items-baseline justify-end gap-1 px-2.5 pt-2">
+        <span className="e9-mono text-right text-body-xs-semibold text-primary">
           {item.unit === "sqft"
             ? item.area_sqft
               ? Number(item.area_sqft).toLocaleString("en-IN", { minimumFractionDigits: 2 })
@@ -450,7 +449,7 @@ const COLUMNS: TColumn[] = [
         {scope?.unit_mode === "either" && !disabled ? (
           <select
             aria-label="Count in"
-            className="mt-0.5 cursor-pointer bg-transparent text-right text-body-2xs-regular text-tertiary outline-none"
+            className="cursor-pointer bg-transparent text-right text-body-2xs-regular text-tertiary outline-none"
             value={item.unit_override}
             onChange={(event) => save({ unit_override: event.target.value as TE9ScopeItem["unit_override"] })}
           >
@@ -674,7 +673,7 @@ const COLUMNS: TColumn[] = [
     label: "QC by",
     width: 110,
     band: "4 · Quality & dispatch",
-    render: text("qc_done_by", "QC done by"),
+    render: textCol("qc_done_by", "QC done by"),
   },
   {
     key: "dcs",
@@ -779,7 +778,7 @@ const COLUMNS: TColumn[] = [
     label: "Installed by",
     width: 130,
     band: "5 · Installation",
-    render: text("installed_by", "Installed by", "Team"),
+    render: textCol("installed_by", "Installed by", "Team"),
   },
   {
     key: "installphoto",
@@ -848,7 +847,7 @@ const COLUMNS: TColumn[] = [
     label: "Remarks",
     width: 200,
     band: "Notes",
-    render: text("remarks", "Remarks"),
+    render: textCol("remarks", "Remarks"),
   },
   {
     key: "resent",
@@ -942,7 +941,7 @@ const COLUMNS: TColumn[] = [
     label: "Replaced by (item code) / note",
     width: 190,
     band: "On hold / cancel / billing",
-    render: text("replaced_by", "Replaced by", "Item code"),
+    render: textCol("replaced_by", "Replaced by", "Item code"),
   },
   {
     key: "billnow",
@@ -1153,7 +1152,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const runStep = async (step: THistoryStep, direction: "undo" | "redo"): Promise<void> => {
     const undoing = direction === "undo";
     if (step.kind === "batch") {
-      const steps = undoing ? [...step.steps].reverse() : step.steps;
+      const steps = undoing ? step.steps.toReversed() : step.steps;
+      // one step at a time: later steps depend on earlier ones
+      // oxlint-disable-next-line no-await-in-loop
       for (const inner of steps) await runStep(inner, direction);
       return;
     }
@@ -1168,7 +1169,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     // add (undo = put rows aside) / delete (undo = bring them back)
     const bringBack = (step.kind === "delete") === undoing;
     for (const id of step.ids) {
+      // oxlint-disable-next-line no-await-in-loop
       if (bringBack) await e9ProjectService.restoreItem(workspaceSlug, project.id, id);
+      // oxlint-disable-next-line no-await-in-loop
       else await e9ProjectService.deleteItem(workspaceSlug, project.id, id);
     }
   };
@@ -1366,6 +1369,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     const done: string[] = [];
     for (const id of ids) {
       try {
+        // oxlint-disable-next-line no-await-in-loop
         await e9ProjectService.deleteItem(workspaceSlug, project.id, id);
         done.push(id);
       } catch {
@@ -1377,7 +1381,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     await mutate();
     setSelected(new Set());
     if (done.length) {
-      pushHistory({ kind: "delete", label: `delete of ${done.length} row(s)`, ids: [...done].reverse() });
+      pushHistory({ kind: "delete", label: `delete of ${done.length} row(s)`, ids: done.toReversed() });
       setToast({ type: "success", title: `Deleted ${done.length} row(s)`, message: "Press Ctrl + Z to undo." });
     }
   };
@@ -1979,16 +1983,16 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                     aria-selected={active}
                     onClick={() => setScopeKey(entry.key)}
                     className={cn(
-                      "flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-body-xs-semibold whitespace-nowrap transition-all duration-200",
+                      "flex shrink-0 items-center gap-2 rounded-md px-3.5 py-1.5 text-body-xs-semibold whitespace-nowrap transition-colors duration-150",
                       active
-                        ? "bg-[#0B0B0B] text-white shadow-raised-100 ring-1 ring-[var(--brand-default)]"
-                        : "text-secondary hover:bg-layer-1-hover hover:text-primary"
+                        ? "bg-[var(--e9-band)] text-[color:var(--e9-band-text)] shadow-[inset_0_-2px_0_var(--brand-default)]"
+                        : "text-secondary hover:bg-[var(--e9-hover)] hover:text-primary"
                     )}
                   >
                     {entry.label}
                     <span
                       className={cn(
-                        "rounded-full px-1.5 text-body-2xs-semibold tabular-nums",
+                        "e9-mono rounded-[3px] px-1.5 text-body-2xs-semibold",
                         active ? "bg-[var(--brand-default)] text-white" : "bg-layer-2 text-tertiary"
                       )}
                     >
@@ -2103,7 +2107,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
           </div>
 
           {/* Sheet */}
-          <div className="overflow-hidden rounded-xl border border-subtle bg-surface-1 shadow-raised-100">
+          <div className="overflow-hidden rounded-lg border border-[color-mix(in_srgb,var(--e9-ink)_28%,transparent)] bg-surface-1">
             <div
               ref={sheetRef}
               onScroll={onSheetScroll}
@@ -2134,8 +2138,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                 <thead className="sticky top-0 z-[3]">
                   <tr>
                     <th
-                      className="sticky left-0 z-[4] border-b border-subtle px-2 py-1.5"
-                      style={{ backgroundColor: GREY }}
+                      className="sticky left-0 z-[4] border-b border-[var(--e9-grid)] px-2 py-1.5"
+                      style={{ backgroundColor: "var(--e9-band)" }}
                     />
                     {bandGroups.map((group) => {
                       const open = group.label === ALWAYS_OPEN_BAND || bandOpenness(group.label) > 0;
@@ -2147,8 +2151,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                         <th
                           key={group.label}
                           colSpan={span}
-                          className="overflow-hidden border-b border-l border-black/20 p-0 text-body-2xs-semibold tracking-wide whitespace-nowrap text-white uppercase"
-                          style={{ backgroundColor: color }}
+                          className="e9-bandhead overflow-hidden border-l border-white/10 p-0 whitespace-nowrap uppercase"
+                          style={{ backgroundColor: "var(--e9-band)", boxShadow: `inset 0 -3px 0 ${color}` }}
                         >
                           {group.label === ALWAYS_OPEN_BAND ? (
                             <span className="block px-2 py-1.5">{group.label}</span>
@@ -2171,10 +2175,10 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                         </th>
                       );
                     })}
-                    <th className="border-b border-subtle" style={{ backgroundColor: GREY }} />
+                    <th className="border-b border-[var(--e9-grid)]" style={{ backgroundColor: "var(--e9-band)" }} />
                   </tr>
                   <tr>
-                    <th className="sticky left-0 z-[4] border-b border-subtle bg-layer-1 px-2 py-2 text-body-2xs-semibold text-tertiary">
+                    <th className="e9-colhead sticky left-0 z-[4] border-r border-b border-[var(--e9-grid)] bg-[var(--e9-paper)] px-2.5 py-2 text-tertiary uppercase">
                       <span className="flex items-center gap-1.5">
                         {canEdit && rows.length > 0 && (
                           <input
@@ -2200,7 +2204,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                         onOpen={() => toggleBand(group.label)}
                       />
                     ))}
-                    <th className="border-b border-subtle bg-layer-1" />
+                    <th className="border-b border-[var(--e9-grid)] bg-[var(--e9-paper)]" />
                   </tr>
                 </thead>
                 <tbody>
@@ -2409,7 +2413,10 @@ function BandHeads({
   return (
     <>
       {door && (
-        <th className="overflow-hidden border-b border-subtle p-0" style={{ backgroundColor: `${color}22` }}>
+        <th
+          className="overflow-hidden border-r border-b border-[var(--e9-grid)] p-0"
+          style={{ backgroundColor: `${color}22` }}
+        >
           {!doorOpen && (
             <button
               type="button"
@@ -2427,7 +2434,7 @@ function BandHeads({
           key={column.key}
           title={column.auto ? `${column.label}: worked out for you, nothing to type here` : undefined}
           className={cn(
-            "overflow-hidden border-b border-subtle bg-layer-1 px-2 py-2 text-body-2xs-semibold whitespace-nowrap text-tertiary",
+            "e9-colhead overflow-hidden border-r border-b border-[var(--e9-grid)] bg-[var(--e9-paper)] px-2.5 py-2 whitespace-nowrap text-tertiary uppercase",
             column.auto && "italic"
           )}
         >
@@ -2517,7 +2524,7 @@ function BandCells({
         <td
           onClick={onOpen}
           title={`Open ${shortBand(group.label)}`}
-          className="cursor-pointer overflow-hidden border-b border-subtle p-0 transition-[filter] hover:brightness-95 dark:hover:brightness-125"
+          className="cursor-pointer overflow-hidden border-r border-b border-[var(--e9-grid)] p-0 transition-[filter] hover:brightness-95 dark:hover:brightness-125"
           style={{ backgroundColor: `${color}0D`, boxShadow: `inset 1px 0 0 ${color}40` }}
         />
       )}
@@ -2528,7 +2535,10 @@ function BandCells({
             key={column.key}
             data-col={column.key}
             style={mark.style}
-            className={cn("relative overflow-hidden border-b border-subtle px-1 py-1 align-middle", column.className)}
+            className={cn(
+              "relative overflow-hidden border-r border-b border-[var(--e9-grid)] p-0 align-middle",
+              column.className
+            )}
           >
             {column.render(ctx)}
             {mark.handle && (
@@ -2629,8 +2639,7 @@ const TrackerRow = memo(function TrackerRow({
     <tr
       data-item={item.id}
       className={cn(
-        "group",
-        odd && "bg-layer-1/40",
+        "group hover:bg-[var(--e9-hover)]",
         ctx.empty && "opacity-70",
         item.hold_status === "On Hold" && "bg-[#F59E0B]/[0.08]",
         item.hold_status === "Cancelled" && "opacity-50"
@@ -2638,7 +2647,7 @@ const TrackerRow = memo(function TrackerRow({
     >
       <td
         className={cn(
-          "sticky left-0 z-[2] border-b border-subtle bg-surface-1 px-2 py-1 align-middle text-body-xs-semibold text-primary group-hover:bg-layer-1",
+          "sticky left-0 z-[2] border-r border-b border-[var(--e9-grid)] bg-surface-1 px-2.5 py-0 align-middle text-body-xs-semibold text-primary group-hover:bg-[var(--e9-hover)]",
           isSelected && "bg-accent-subtle"
         )}
       >
@@ -2679,8 +2688,8 @@ const TrackerRow = memo(function TrackerRow({
           onFillStart={actions.startFill}
         />
       ))}
-      <td className="border-b border-subtle px-1 py-1 align-middle">
-        <div className="flex items-center justify-end gap-0.5">
+      <td className="border-b border-[var(--e9-grid)] px-1 py-0 align-middle">
+        <div className="flex h-9 items-center justify-end gap-0.5">
           {canEdit && !ctx.empty && (
             <button
               type="button"

@@ -149,20 +149,20 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
                 aria-current={index === current ? "true" : undefined}
                 onMouseEnter={() => glideTo(index)}
                 onMouseLeave={cancelGlide}
-                className="group relative aspect-[16/9] w-[min(720px,78vw)] shrink-0 snap-center overflow-hidden rounded-2xl shadow-raised-200 will-change-transform"
+                className="group relative aspect-[16/9] w-[min(720px,78vw)] shrink-0 snap-center overflow-hidden shadow-raised-200 will-change-transform"
               >
                 <div
                   className="absolute inset-0 transition-transform duration-700 ease-out group-hover:scale-105"
                   style={{
-                    background: `radial-gradient(90% 120% at 15% 10%, ${stage.color} 0%, transparent 55%), radial-gradient(80% 90% at 95% 100%, ${stage.color}88 0%, transparent 60%), linear-gradient(135deg, #0b0b0b 0%, #1d1d21 100%)`,
+                    background: "var(--e9-band)",
                   }}
                 />
-                <div aria-hidden className="e9-dot-grid absolute inset-0 opacity-40" />
+                <div aria-hidden className="absolute inset-x-0 top-0 h-1.5" style={{ background: stage.color }} />
                 <E9LogoMark className="absolute -right-6 -bottom-6 size-48 opacity-10 sm:size-64" />
                 <div className="absolute inset-0 flex flex-col justify-between p-5 text-white sm:p-7">
                   <div className="flex items-start justify-between gap-3">
                     <E9CodeTile code={project.identifier} size="lg" inverse />
-                    <span className="rounded-full bg-black/40 px-3 py-1 text-body-2xs-semibold tracking-[0.12em] uppercase backdrop-blur">
+                    <span className="border border-white/30 px-3 py-1 text-body-2xs-semibold tracking-[0.14em] uppercase">
                       {stage.label}
                     </span>
                   </div>
@@ -170,12 +170,12 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
                     <span className="text-body-xs-semibold tracking-[0.18em] text-white/70 uppercase">
                       {[project.e9.city, project.e9.client_name].filter(Boolean).join(" · ") || project.identifier}
                     </span>
-                    <span className="text-[clamp(1.4rem,3.2vw,2.6rem)] leading-none font-semibold tracking-tight">
+                    <span className="e9-display [font-size:clamp(1.6rem,3.4vw,2.8rem)] leading-none">
                       {project.name}
                     </span>
-                    <span className="mt-3 h-1 w-full overflow-hidden rounded-full bg-white/20">
+                    <span className="mt-3 h-[3px] w-full overflow-hidden bg-white/20">
                       <span
-                        className="block h-full rounded-full bg-white"
+                        className="block h-full bg-[var(--brand-default)]"
                         style={{ width: `${getProgressPercent(project)}%` }}
                       />
                     </span>

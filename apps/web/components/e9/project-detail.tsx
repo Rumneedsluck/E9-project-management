@@ -6,7 +6,6 @@
 
 import type { ReactNode } from "react";
 import { observer } from "mobx-react";
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { EditOutline, NewTabArrowOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
@@ -113,7 +112,7 @@ function SubTabs({
   onChange: (key: TSub) => void;
 }) {
   return (
-    <div role="tablist" className="flex w-fit gap-1 rounded-lg border border-subtle bg-surface-1 p-0.5">
+    <div role="tablist" className="flex w-fit gap-0.5 rounded-md border border-subtle bg-surface-1 p-0.5">
       {options.map((option) => (
         <button
           key={option.key}
@@ -122,8 +121,10 @@ function SubTabs({
           aria-selected={value === option.key}
           onClick={() => onChange(option.key)}
           className={cn(
-            "rounded-md px-3 py-1 text-body-xs-semibold transition-colors",
-            value === option.key ? "bg-[#0B0B0B] text-white" : "text-tertiary hover:text-primary"
+            "rounded-[3px] px-3 py-1 text-body-xs-semibold transition-colors",
+            value === option.key
+              ? "bg-[var(--e9-band)] text-[color:var(--e9-band-text)]"
+              : "text-tertiary hover:bg-[var(--e9-hover)] hover:text-primary"
           )}
         >
           {option.label}
@@ -166,9 +167,9 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
       {/* Title: one compact line so the sheet starts high on the screen */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <E9CodeTile code={project.identifier} size="lg" className="rounded-xl" />
+          <E9CodeTile code={project.identifier} size="lg" className="rounded-md" />
           <div className="flex min-w-0 flex-col">
-            <h1 className="truncate text-h5-semibold tracking-tight text-primary">{project.name}</h1>
+            <h1 className="e9-display truncate text-[30px] leading-tight text-primary">{project.name}</h1>
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-xs-regular text-tertiary">
               {[e9.client_name, e9.city].filter(Boolean).join(" · ") || "No client added yet"}
               <E9StatusBadge status={e9.status} />
@@ -215,10 +216,10 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
             aria-selected={view === entry.key}
             onClick={() => setView(entry.key)}
             className={cn(
-              "-mb-px shrink-0 border-b-2 px-3.5 py-2 text-body-sm-semibold whitespace-nowrap transition-colors",
+              "-mb-px shrink-0 border-b-2 px-4 py-2.5 text-body-sm-medium tracking-wide whitespace-nowrap transition-colors",
               view === entry.key
-                ? "border-[var(--brand-default)] text-primary"
-                : "border-transparent text-tertiary hover:text-secondary"
+                ? "border-[var(--brand-default)] font-semibold text-primary"
+                : "border-transparent text-tertiary hover:border-[var(--e9-brass)] hover:text-primary"
             )}
           >
             {entry.label}

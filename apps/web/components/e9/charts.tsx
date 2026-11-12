@@ -12,7 +12,7 @@
  * row to see it in the middle.
  */
 
-import { useId, useState } from "react";
+import { useState } from "react";
 import type { CSSProperties } from "react";
 import { cn } from "@plane/utils";
 
@@ -160,12 +160,11 @@ export function E9DonePie({
   label?: string;
   className?: string;
 }) {
-  const stroke = size * 0.16;
+  const stroke = size * 0.07;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const value = Math.max(0, Math.min(100, percent));
   const done = (value / 100) * circumference;
-  const gradientId = useId();
   return (
     <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
       <svg
@@ -174,14 +173,6 @@ export function E9DonePie({
         role="img"
         aria-label={`${value}% ${label}`}
       >
-        <defs>
-          {/* warm E9 sweep: red → coral → amber */}
-          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#DA1E26" />
-            <stop offset="55%" stopColor="#F2542D" />
-            <stop offset="100%" stopColor="#F5A524" />
-          </linearGradient>
-        </defs>
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -197,9 +188,9 @@ export function E9DonePie({
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke={`url(#${gradientId})`}
+            stroke="var(--brand-default)"
             strokeWidth={stroke}
-            strokeLinecap={value < 100 ? "round" : "butt"}
+            strokeLinecap="butt"
             strokeDasharray={`${done} ${circumference}`}
             className="e9-pie-fill"
             style={{ "--e9-pie-len": `${done}` } as CSSProperties}
@@ -207,10 +198,7 @@ export function E9DonePie({
         )}
       </svg>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <span
-          className="leading-none font-semibold tracking-tight text-primary tabular-nums"
-          style={{ fontSize: size * 0.2 }}
-        >
+        <span className="e9-display leading-none text-primary tabular-nums" style={{ fontSize: size * 0.26 }}>
           {value}%
         </span>
         <span className="mt-1 text-body-xs-medium text-tertiary">{label}</span>
