@@ -4,8 +4,9 @@
 # Run it in its own Ubuntu tab and leave it open:
 #     bash ~/E9-project-management/e9-auto-update.sh
 # Every 5 minutes it checks GitHub. When Claude has pushed changes it downloads
-# them and updates the database. The website (pnpm dev, in the other tab) picks
-# the changes up on its own – just refresh Chrome. Stop it with Ctrl + C.
+# them and updates the database. In fast mode it also rebuilds the website (1 to 3 minutes);
+# in developer mode the website picks the changes up on its own. Then refresh Chrome.
+# Stop it with Ctrl + C.
 
 cd "$(dirname "$0")" || exit 1
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -29,6 +30,9 @@ while true; do
         fi
         if git diff --name-only "$BEFORE" HEAD | grep -qE 'pnpm-lock.yaml|apps/api/(pyproject.toml|uv.lock)'; then
           echo "   NOTE: new software packages were added. Ask Claude for the one-time restart steps."
+        fi
+        if [ "${E9_MODE:-dev}" = "fast" ]; then
+          bash ./e9-build.sh | sed 's/^/   /'
         fi
         echo "   Done. Refresh Chrome (Ctrl + Shift + R) to see the changes."
       else
