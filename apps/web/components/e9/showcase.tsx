@@ -14,7 +14,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeftOutline, ChevronRightOutline } from "@makeplane/propel/icons";
 import { getStatusMeta } from "./constants";
-import { getProgressPercent } from "./helpers";
+import { describeDeadline, getProgressPercent } from "./helpers";
+import { E9LogoMark } from "./brand";
 import type { TE9Project } from "./types";
 import { E9CertSteps, E9CodeTile } from "./ui";
 
@@ -152,30 +153,36 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
               >
                 <div
                   className="absolute inset-0 transition-transform duration-700 ease-out group-hover:scale-105"
-                  style={{
-                    background: "var(--e9-band)",
-                  }}
+                  style={{ background: "#F2E9D8" }}
                 />
-                <div aria-hidden className="absolute inset-x-0 top-0 h-1.5" style={{ background: stage.color }} />
-                <div className="absolute inset-0 flex flex-col justify-between p-5 text-white sm:p-7">
-                  <div className="flex items-start justify-between gap-3">
+                {/* the E9 logo as a watermark, in its own colours */}
+                <E9LogoMark className="absolute top-1/2 right-[5%] size-[46%] -translate-y-1/2 rounded-[14%] opacity-95 shadow-raised-200" />
+                <div aria-hidden className="absolute inset-x-0 top-0 h-2" style={{ background: stage.color }} />
+                <div className="absolute inset-0 flex flex-col justify-between p-5 pt-7 text-[#1B1512] sm:p-7 sm:pt-9">
+                  <div className="flex flex-wrap items-center gap-3">
                     <E9CodeTile code={project.identifier} size="lg" inverse />
-                    <span className="border border-white/30 px-3 py-1 text-body-2xs-semibold tracking-[0.14em] uppercase">
+                    <span
+                      className="px-3 py-1 text-body-2xs-semibold tracking-[0.14em] text-white uppercase"
+                      style={{ background: stage.color }}
+                    >
                       {stage.label}
                     </span>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-body-xs-semibold tracking-[0.18em] text-white/70 uppercase">
+                  <div className="flex max-w-[58%] flex-col gap-1">
+                    <span className="text-body-xs-semibold tracking-[0.18em] text-[#1B1512]/70 uppercase">
                       {[project.e9.city, project.e9.client_name].filter(Boolean).join(" · ") || project.identifier}
                     </span>
-                    <span className="e9-display [font-size:clamp(1.6rem,3.4vw,2.8rem)] leading-none">
+                    <span className="e9-display [font-size:clamp(1.5rem,3.1vw,2.6rem)] leading-none">
                       {project.name}
                     </span>
-                    <span className="mt-3 h-[3px] w-full overflow-hidden bg-white/20">
+                    <span className="mt-3 h-[3px] w-full overflow-hidden bg-[#1B1512]/15">
                       <span
                         className="block h-full bg-[var(--brand-default)]"
                         style={{ width: `${getProgressPercent(project)}%` }}
                       />
+                    </span>
+                    <span className="e9-mono text-body-xs-medium text-[#1B1512]/80">
+                      {getProgressPercent(project)}% done · {describeDeadline(project)}
                     </span>
                   </div>
                 </div>
