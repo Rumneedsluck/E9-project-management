@@ -21,6 +21,7 @@ import { E9_STATUSES, getStatusMeta } from "./constants";
 import { getAttentionProjects, getProgressPercent, sortProjects, summarizeProjects } from "./helpers";
 import { useCanCreateE9Project, useE9Projects, useE9Summary } from "./hooks";
 import { CountUp, Reveal } from "./motion";
+import { E9LookAhead } from "./look-ahead";
 import { E9ErrorState, E9LoadingState } from "./states";
 import type { TE9Project } from "./types";
 import { E9CodeTile, E9DeadlineText, E9MemberAvatar, E9PageBody, E9PageHeader, E9Panel, E9ProgressBar } from "./ui";
@@ -321,6 +322,8 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
               />
             </Reveal>
           </div>
+
+          <E9LookAhead projects={projects ?? []} workspaceSlug={workspaceSlug} />
 
           <ProjectsProgressPanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
 
