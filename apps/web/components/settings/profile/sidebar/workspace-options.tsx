@@ -8,7 +8,7 @@ import { MailOutline, PlusCircleOutline } from "@makeplane/propel/icons";
 import { observer } from "mobx-react";
 // plane imports
 import { List } from "@makeplane/propel/components/list";
-import { WorkspaceAvatar } from "@makeplane/propel/components/workspace-avatar";
+import { WorkspaceAvatar } from "@/components/e9/workspace-avatar";
 import { useTranslation } from "@plane/i18n";
 import { getFileURL } from "@plane/utils";
 // components

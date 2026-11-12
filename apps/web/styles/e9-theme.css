@@ -28,7 +28,7 @@
   --brand-1000: oklch(0.39 0.15 27);
   --brand-1100: oklch(0.31 0.11 27);
   --brand-1200: oklch(0.24 0.08 27);
-  --brand-default: oklch(0.55 0.215 27);
+  --brand-default: #da1e26; /* exactly the logo red */
 }
 
 :root[data-theme*="dark"]:not([data-custom-theme="true"]) {

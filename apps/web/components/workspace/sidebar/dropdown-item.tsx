@@ -12,7 +12,7 @@ import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 import { SettingsOutline, TickOutline, UserPlusOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/elements/button";
-import { WorkspaceAvatar } from "@makeplane/propel/components/workspace-avatar";
+import { WorkspaceAvatar } from "@/components/e9/workspace-avatar";
 // plane imports
 import { EUserPermissions } from "@plane/constants";
 import { useTranslation } from "@plane/i18n";

@@ -13,7 +13,7 @@ import { ChevronDownOutline, LogOutOutline, MailsOutline, PlusCircleOutline } fr
 import { Icon } from "@makeplane/propel/components/icon";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@makeplane/propel/components/menu";
 import { ScrollArea } from "@makeplane/propel/components/scroll-area";
-import { WorkspaceAvatar } from "@makeplane/propel/components/workspace-avatar";
+import { WorkspaceAvatar } from "@/components/e9/workspace-avatar";
 import { useTranslation } from "@plane/i18n";
 import { setToast } from "@plane/blocks/toast";
 import type { IWorkspace } from "@plane/types";

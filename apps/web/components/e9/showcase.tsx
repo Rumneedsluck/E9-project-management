@@ -15,7 +15,6 @@ import Link from "next/link";
 import { ChevronLeftOutline, ChevronRightOutline } from "@makeplane/propel/icons";
 import { getStatusMeta } from "./constants";
 import { getProgressPercent } from "./helpers";
-import { E9LogoMark } from "./brand";
 import type { TE9Project } from "./types";
 import { E9CertSteps, E9CodeTile } from "./ui";
 
@@ -158,7 +157,6 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
                   }}
                 />
                 <div aria-hidden className="absolute inset-x-0 top-0 h-1.5" style={{ background: stage.color }} />
-                <E9LogoMark className="absolute -right-6 -bottom-6 size-48 opacity-10 sm:size-64" />
                 <div className="absolute inset-0 flex flex-col justify-between p-5 text-white sm:p-7">
                   <div className="flex items-start justify-between gap-3">
                     <E9CodeTile code={project.identifier} size="lg" inverse />
