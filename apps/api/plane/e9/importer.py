@@ -30,6 +30,20 @@ class ImportProblem(Exception):
 
 
 SHEET_TO_SCOPE = {label.lower(): key for key, (label, _prefix, _unit) in tracker.SCOPES.items()}
+# other names the same work goes by on real trackers
+SHEET_ALIASES = {
+    "writing film": "glass_film",
+    "writing films": "glass_film",
+    "window film": "glass_film",
+    "window films": "glass_film",
+    "glass films": "glass_film",
+    "wall graphic": "wall_graphics",
+    "frame": "frames",
+    "3d item": "3d_items",
+    "hand painting": "hand_paintings",
+    "internal signage": "internal_signages",
+    "external signage": "external_signages",
+}
 
 PROJECT_INFO_FIELDS = {
     "client (company)": "client_name",
@@ -231,6 +245,30 @@ def _read_bill_when_defaults(workbook):
     return found
 
 
+def _has_item_code_header(sheet):
+    for row in sheet.iter_rows(min_row=1, max_row=12, values_only=True):
+        if any(_header(cell) == "item code" for cell in row):
+            return True
+    return False
+
+
+def _scope_for_sheet(sheet, warnings):
+    """Which scope a sheet belongs to. Unknown names are never dropped silently."""
+    name = sheet.title.strip().lower()
+    scope_key = SHEET_TO_SCOPE.get(name) or SHEET_ALIASES.get(name)
+    if scope_key:
+        return scope_key
+    if not _has_item_code_header(sheet):
+        return None  # not an item sheet (BOQ, info, logs ...)
+    if "film" in name or "glass" in name:
+        scope_key = "glass_film"
+    else:
+        scope_key = "others"
+    label = tracker.SCOPES[scope_key][0]
+    warnings.append(f"Sheet '{sheet.title}' is not a known scope name, so its items were added under {label}.")
+    return scope_key
+
+
 def _read_scope_sheet(sheet, scope_key, warnings):
     header_row = None
     for index, row in enumerate(sheet.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
@@ -263,6 +301,7 @@ def _read_scope_sheet(sheet, scope_key, warnings):
         if not any(record_values.get(field) not in (None, "") for field in FILLED_FIELDS):
             continue  # empty ready-made row
         record_values["_row"] = row_number  # where pasted photos for this item sit
+        record_values["_sheet"] = sheet.title
         rows.append(record_values)
     return rows
 
@@ -272,7 +311,7 @@ def _clean_item(values, scope_key, sheet_title, warnings):
     item = {}
     label = values.get("description") or values.get("floor_area") or ""
     for field, value in values.items():
-        if field in ("number", "unit", "_row"):
+        if field in ("number", "unit", "_row", "_sheet"):
             continue
         if field in CHOICES:
             if value not in CHOICES[field]:
@@ -613,9 +652,14 @@ def import_tracker(project, upload, user):
     boq_lines = _read_boq_sheet(workbook, warnings)
     sheets = {}
     for sheet in workbook.worksheets:
-        scope_key = SHEET_TO_SCOPE.get(sheet.title.strip().lower())
+        scope_key = _scope_for_sheet(sheet, warnings)
         if scope_key:
-            sheets[scope_key] = (sheet.title, _read_scope_sheet(sheet, scope_key, warnings))
+            rows = _read_scope_sheet(sheet, scope_key, warnings)
+            if scope_key in sheets:  # two sheets for one scope: keep both
+                first_title, first_rows = sheets[scope_key]
+                sheets[scope_key] = (first_title, first_rows + rows)
+            else:
+                sheets[scope_key] = (sheet.title, rows)
     if not sheets:
         raise ImportProblem("No scope sheets (Wall Graphics, Glass Film, ...) were found in this file.")
 
@@ -690,7 +734,7 @@ def import_tracker(project, upload, user):
                         **fields,
                     )
                 )
-                rows_of_created.append(values.get("_row"))
+                rows_of_created.append((values.get("_sheet"), values.get("_row")))
                 if fields.get("floor_area"):
                     floors.extend(split_floors(fields["floor_area"]))
             E9ScopeItem.objects.bulk_create(created)
@@ -698,9 +742,12 @@ def import_tracker(project, upload, user):
             report["on_hold"] += sum(1 for row in created if row.hold_status == "On Hold")
             report["cancelled"] += sum(1 for row in created if row.hold_status == "Cancelled")
             # photos pasted on a row of this sheet -> that item's photos
-            by_row = {row: item for row, item in zip(rows_of_created, created) if row}
-            for row, name, data, content_type in pictures.get(title, []):
-                item = by_row.get(row)
+            by_row = {key: item for key, item in zip(rows_of_created, created) if key[1]}
+            sheet_titles = {key[0] for key in by_row}
+            for sheet_title, (row, name, data, content_type) in (
+                (sheet_title, picture) for sheet_title in sheet_titles for picture in pictures.get(sheet_title, [])
+            ):
+                item = by_row.get((sheet_title, row))
                 if item is None:
                     continue
                 photo = E9Attachment(

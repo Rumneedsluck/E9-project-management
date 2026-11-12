@@ -431,6 +431,24 @@ class TestExcelImport:
         assert codes == [1, 2, 3, 4]
 
     @pytest.mark.django_db
+    @pytest.mark.django_db
+    def test_a_writing_film_sheet_is_imported_and_odd_sheets_are_reported(self, session_client, workspace, project):
+        workbook = openpyxl.load_workbook(io.BytesIO(build_tracker_workbook()))
+        source = workbook["Wall Graphics"]
+        for title in ("Writing Film", "Frosted Window Stuff"):
+            sheet = workbook.create_sheet(title)
+            for row in source.iter_rows(min_row=6, max_row=7):
+                for cell in row:
+                    sheet.cell(cell.row - 5, cell.column, cell.value)
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        upload = SimpleUploadedFile("film.xlsx", buffer.getvalue())
+        response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
+        assert response.status_code == 201, response.data
+        assert response.data["items"]["Glass Film"] == 1  # Writing Film is Glass Film
+        assert response.data["items"]["Others"] == 1  # unknown name: kept, and reported
+        assert any("Frosted Window Stuff" in warning for warning in response.data["warnings"])
+
     def test_rejects_non_excel(self, session_client, workspace, project):
         upload = SimpleUploadedFile("photo.xlsx", b"not a workbook")
         response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
