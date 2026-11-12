@@ -114,6 +114,9 @@ const BAND_COLORS: Record<string, string> = {
   "On hold / cancel / billing": "#B45309",
 };
 
+/** A reversed copy (the target library has no toReversed yet). */
+const reversed = <T,>(list: readonly T[]): T[] => list.map((_, index) => list[list.length - 1 - index] as T);
+
 const textCol = (field: keyof TE9ScopeItem, label: string, placeholder?: string) => (ctx: TRowContext) => (
   <TextCell
     label={label}
@@ -1152,7 +1155,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const runStep = async (step: THistoryStep, direction: "undo" | "redo"): Promise<void> => {
     const undoing = direction === "undo";
     if (step.kind === "batch") {
-      const steps = undoing ? step.steps.toReversed() : step.steps;
+      const steps = undoing ? reversed(step.steps) : step.steps;
       // one step at a time: later steps depend on earlier ones
       // oxlint-disable-next-line no-await-in-loop
       for (const inner of steps) await runStep(inner, direction);
@@ -1381,7 +1384,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     await mutate();
     setSelected(new Set());
     if (done.length) {
-      pushHistory({ kind: "delete", label: `delete of ${done.length} row(s)`, ids: done.toReversed() });
+      pushHistory({ kind: "delete", label: `delete of ${done.length} row(s)`, ids: reversed(done) });
       setToast({ type: "success", title: `Deleted ${done.length} row(s)`, message: "Press Ctrl + Z to undo." });
     }
   };
