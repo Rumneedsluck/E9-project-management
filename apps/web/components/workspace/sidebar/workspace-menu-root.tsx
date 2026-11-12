@@ -13,6 +13,7 @@ import { ChevronDownOutline, LogOutOutline, MailsOutline, PlusCircleOutline } fr
 import { Icon } from "@makeplane/propel/components/icon";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@makeplane/propel/components/menu";
 import { ScrollArea } from "@makeplane/propel/components/scroll-area";
+import { E9Text } from "@/components/e9/brand";
 import { WorkspaceAvatar } from "@/components/e9/workspace-avatar";
 import { useTranslation } from "@plane/i18n";
 import { setToast } from "@plane/blocks/toast";
@@ -132,7 +133,9 @@ export const WorkspaceMenuRoot = observer(function WorkspaceMenuRoot(props: Work
                     alt={activeWorkspace?.name}
                     aria-hidden
                   />
-                  <h4 className="truncate text-body-sm-medium text-primary">{activeWorkspace?.name ?? t("loading")}</h4>
+                  <h4 className="truncate text-body-sm-medium text-primary">
+                    {activeWorkspace?.name ? <E9Text>{activeWorkspace.name}</E9Text> : t("loading")}
+                  </h4>
                 </div>
                 <ChevronDownOutline
                   className={cn("size-4 flex-shrink-0 text-placeholder duration-300", {

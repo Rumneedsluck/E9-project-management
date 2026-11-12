@@ -13,7 +13,7 @@ import { ListItemLink } from "@makeplane/propel/elements/list";
 // hooks
 import { useAppTheme } from "@/hooks/store/use-app-theme";
 // local
-import { E9_BRAND } from "./brand";
+import { E9_BRAND, E9Text } from "./brand";
 
 const LINKS = [
   { key: "home", label: "Home", path: "e9", icon: HomeOutline, exact: true },
@@ -36,7 +36,9 @@ export const E9SidebarSection = observer(function E9SidebarSection() {
 
   return (
     <div className="flex w-full flex-col gap-px">
-      <span className="px-2 pt-1 pb-1.5 text-body-xs-semibold whitespace-nowrap text-tertiary">{E9_BRAND.name}</span>
+      <span className="px-2 pt-1 pb-1.5 text-body-xs-semibold whitespace-nowrap text-tertiary">
+        <E9Text>{E9_BRAND.name}</E9Text>
+      </span>
       {LINKS.map((link) => {
         const href = `/${workspaceSlug.toString()}/${link.path}`;
         const isActive = link.exact

@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import { Fragment, type ReactNode } from "react";
 import { cn } from "@plane/utils";
 
 /**
@@ -56,6 +57,27 @@ export function E9Wordmark({ className }: TE9LogoMarkProps) {
   );
 }
 
+/** Writes any text so that "E9" shows as the real red E9 logo letters, never as plain text. */
+export function E9Text({ children }: { children: string }): ReactNode {
+  const parts = children.split("E9");
+  return parts.map((part, index) => (
+    // eslint-disable-next-line react/no-array-index-key
+    <Fragment key={index}>
+      {index > 0 && (
+        <svg
+          viewBox="1700 2400 6760 5360"
+          role="img"
+          aria-label="E9"
+          className="mx-[0.06em] inline-block h-[0.82em] w-auto align-baseline"
+        >
+          <path fill="#DA1E26" d={E9_LOGO_PATH} />
+        </svg>
+      )}
+      {part}
+    </Fragment>
+  ));
+}
+
 type TE9LogoProps = {
   className?: string;
   /** Show the tagline under the name */
@@ -79,7 +101,7 @@ export function E9Logo({ className, withTagline = false, inverse = false, large 
             inverse ? "text-white" : "text-primary"
           )}
         >
-          {E9_BRAND.name}
+          <E9Text>{E9_BRAND.name}</E9Text>
         </span>
         {withTagline && (
           <span className={cn("mt-1 text-body-2xs-medium", inverse ? "text-white/70" : "text-tertiary")}>

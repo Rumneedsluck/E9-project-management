@@ -17,7 +17,7 @@ import { CustomizeNavigationDialog } from "@/components/navigation/customize-nav
 import { useAppTheme } from "@/hooks/store/use-app-theme";
 import useSize from "@/hooks/use-window-size";
 // plane web components
-import { E9_BRAND } from "@/components/e9/brand";
+import { E9_BRAND, E9Text } from "@/components/e9/brand";
 import { AppSidebarToggleButton } from "./sidebar-toggle-button";
 import { IconButton } from "@makeplane/propel/components/icon-button";
 import { Icon } from "@makeplane/propel/components/icon";
@@ -86,7 +86,7 @@ export const SidebarWrapper = observer(function SidebarWrapper(props: TSidebarWr
         <div className="flex h-12 items-center justify-between border-t border-subtle bg-surface-1 p-3">
           {/* E9 Creative: replaces Plane's "Community" edition / upgrade badge */}
           <span className="px-1 text-body-xs-medium text-tertiary">
-            {E9_BRAND.name} · {E9_BRAND.tagline}
+            <E9Text>{E9_BRAND.name}</E9Text> · {E9_BRAND.tagline}
           </span>
           {/* TODO: To be checked if we need this */}
           {/* <div className="flex items-center gap-2">

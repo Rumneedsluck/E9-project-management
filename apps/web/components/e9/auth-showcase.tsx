@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { E9_BRAND, E9Logo } from "./brand";
+import { E9_BRAND, E9Logo, E9Text } from "./brand";
 
 const JOURNEY = ["Site audit", "Pre-press", "Production", "Delivery", "Installation", "Sign-off"];
 
@@ -27,7 +27,9 @@ export function E9AuthShowcase() {
       </span>
 
       <div className="e9-enter relative flex flex-col gap-6">
-        <span className="text-body-xs-semibold tracking-[0.2em] text-[#C9A15A] uppercase">{E9_BRAND.productName}</span>
+        <span className="text-body-xs-semibold tracking-[0.2em] text-[#C9A15A] uppercase">
+          <E9Text>{E9_BRAND.productName}</E9Text>
+        </span>
         <h1 className="e9-display max-w-md [font-size:3.1rem] leading-[1.05]">{E9_BRAND.loginHeadline}</h1>
         <p className="max-w-md text-body-md-regular text-white/65">{E9_BRAND.loginDescription}</p>
       </div>

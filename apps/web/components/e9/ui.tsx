@@ -11,6 +11,7 @@ import { cn, getFileURL } from "@plane/utils";
 // hooks
 import { useMember } from "@/hooks/store/use-member";
 // local
+import { E9Text } from "./brand";
 import { E9_STAGES, getPriorityMeta, getStageIndex, getStatusMeta } from "./constants";
 import { describeDeadline, getDeadlineState, getInitials } from "./helpers";
 import { E9ConfirmHost } from "./confirm";
@@ -163,7 +164,11 @@ export function E9PageHeader({ eyebrow, title, description, actions }: TPageHead
   return (
     <div className="e9-double-rule flex flex-col gap-4 pt-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="flex min-w-0 flex-col gap-2">
-        {eyebrow && <span className="e9-eyebrow">{eyebrow}</span>}
+        {eyebrow && (
+          <span className="e9-eyebrow">
+            <E9Text>{eyebrow}</E9Text>
+          </span>
+        )}
         <h1 className="e9-display [font-size:40px] leading-[1.05] text-primary">
           {typeof title === "string" ? <RevealText text={title} /> : title}
         </h1>

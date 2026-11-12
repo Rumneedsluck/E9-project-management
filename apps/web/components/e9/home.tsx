@@ -24,7 +24,7 @@ import {
 import { renderFormattedDate } from "@plane/utils";
 import { useUser } from "@/hooks/store/user";
 import { E9Announcements } from "./announcements";
-import { E9_BRAND, E9LogoMark } from "./brand";
+import { E9_BRAND, E9LogoMark, E9Text } from "./brand";
 import { useCanCreateE9Project } from "./hooks";
 import { Reveal, RevealText } from "./motion";
 import { E9PageBody } from "./ui";
@@ -115,7 +115,9 @@ export const E9Home = observer(function E9Home({ workspaceSlug }: { workspaceSlu
     <E9PageBody>
       <section className="flex min-h-[38vh] flex-col justify-between gap-12 py-4">
         <div className="flex items-start justify-between gap-6">
-          <span className="e9-eyebrow">{E9_BRAND.productName}</span>
+          <span className="e9-eyebrow">
+            <E9Text>{E9_BRAND.productName}</E9Text>
+          </span>
           <Reveal>
             <E9LogoMark className="size-14 rounded-lg sm:size-16" />
           </Reveal>
@@ -129,7 +131,9 @@ export const E9Home = observer(function E9Home({ workspaceSlug }: { workspaceSlu
           </h1>
           <Reveal delay={0.15}>
             <p className="e9-mono flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm-regular text-tertiary">
-              <span className="e9-eyebrow !text-tertiary">{E9_BRAND.name}</span>
+              <span className="e9-eyebrow !text-tertiary">
+                <E9Text>{E9_BRAND.name}</E9Text>
+              </span>
               <span aria-hidden className="h-3 w-px bg-[var(--e9-grid)]" />
               <span>
                 {now

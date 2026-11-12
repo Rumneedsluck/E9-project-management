@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { E9_BRAND, E9LogoMark } from "./brand";
+import { E9_BRAND, E9LogoMark, E9Text } from "./brand";
 
 const SEEN_KEY = "e9-intro-seen";
 
@@ -46,7 +46,9 @@ export function E9Intro() {
     >
       <E9LogoMark className="e9-intro-mark size-24 sm:size-28" />
       <span className="flex flex-col items-center gap-2">
-        <span className="text-body-sm-semibold tracking-[0.4em] uppercase">{E9_BRAND.name}</span>
+        <span className="text-body-sm-semibold tracking-[0.4em] uppercase">
+          <E9Text>{E9_BRAND.name}</E9Text>
+        </span>
         <span className="e9-intro-line block h-0.5 w-40 bg-[#DA1E26]" />
         <span className="text-body-2xs-medium tracking-[0.3em] text-white/50 uppercase">Operations</span>
       </span>
