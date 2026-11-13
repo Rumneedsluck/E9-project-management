@@ -479,6 +479,23 @@ class TestExcelImport:
         assert response.data["items"]["Others"] == 1  # unknown name: kept, and reported
         assert any("Frosted Window Stuff" in warning for warning in response.data["warnings"])
 
+    @pytest.mark.django_db
+    def test_the_templates_own_report_sheets_are_not_imported_as_items(self, session_client, workspace, project):
+        workbook = openpyxl.load_workbook(io.BytesIO(build_tracker_workbook()))
+        source = workbook["Wall Graphics"]
+        for title in ("Open Snags", "Held Items", "Cancelled Items", "Production Sent"):
+            sheet = workbook.create_sheet(title)  # these repeat item codes but only report on them
+            for row in source.iter_rows(min_row=6, max_row=7):
+                for cell in row:
+                    sheet.cell(cell.row - 5, cell.column, cell.value)
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        upload = SimpleUploadedFile("reports.xlsx", buffer.getvalue())
+        response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
+        assert response.status_code == 201, response.data
+        assert "Others" not in response.data["items"]
+        assert not any("not a known scope name" in warning for warning in response.data["warnings"])
+
     def test_rejects_non_excel(self, session_client, workspace, project):
         upload = SimpleUploadedFile("photo.xlsx", b"not a workbook")
         response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")

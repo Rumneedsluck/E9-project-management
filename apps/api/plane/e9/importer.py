@@ -252,9 +252,35 @@ def _has_item_code_header(sheet):
     return False
 
 
+# sheets the template builds itself (lists, logs, reports): they repeat item codes but are never item sheets
+REPORT_SHEETS = {
+    "dashboard",
+    "boq",
+    "project info",
+    "dc log",
+    "jc log",
+    "snag list",
+    "reprints & extras",
+    "production sent",
+    "variance",
+    "lists",
+    "chart data",
+    "item index",
+    "open snags",
+    "site issues",
+    "health check",
+    "held items",
+    "cancelled items",
+    "billing",
+    "client report",
+}
+
+
 def _scope_for_sheet(sheet, warnings):
     """Which scope a sheet belongs to. Unknown names are never dropped silently."""
     name = sheet.title.strip().lower()
+    if name in REPORT_SHEETS:
+        return None
     scope_key = SHEET_TO_SCOPE.get(name) or SHEET_ALIASES.get(name)
     if scope_key:
         return scope_key
