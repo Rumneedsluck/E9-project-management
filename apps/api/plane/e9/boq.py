@@ -109,7 +109,8 @@ def line_rows(project, cert=None):
     # cancelled items leave every number; held ones stay in the totals but add no progress
     items = [
         item
-        for item in E9ScopeItem.objects.filter(project=project)
+        # a wall made of parts is ONE item: parts are folded into it (their sizes add to its totals)
+        for item in tracker.fold_parts(list(E9ScopeItem.objects.filter(project=project)))
         if is_filled(item) and not tracker.is_cancelled(item)
     ]
     covered = [item for item in items if not part or certification.covers(cert, item)]

@@ -4,6 +4,7 @@
 
 import os
 import uuid
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
@@ -105,6 +106,9 @@ class E9ScopeItem(BaseModel):
     scope = models.CharField(max_length=40)
     item_number = models.PositiveIntegerField(help_text="W1 -> 1. Never reused within a project and scope.")
     sort_order = models.FloatField(default=65535)
+    # A wall made of several pieces stays ONE item: the extra pieces are "part" rows. A part belongs to the
+    # nearest non-part row above it, is not counted as an item and takes no W-number.
+    is_part = models.BooleanField(default=False)
 
     # Item details
     boq_item_no = models.CharField(max_length=60, blank=True, default="")
@@ -189,7 +193,13 @@ class E9ScopeItem(BaseModel):
 
     @property
     def area_sqft(self):
-        return tracker.item_area_sqft(self.height_in, self.width_in, self.qty)
+        own = tracker.item_area_sqft(self.height_in, self.width_in, self.qty)
+        areas = [
+            own,
+            *(tracker.item_area_sqft(part.height_in, part.width_in, part.qty) for part in tracker.parts_of(self)),
+        ]
+        typed = [area for area in areas if area is not None]
+        return sum(typed, Decimal(0)) if typed else None
 
     @property
     def current_stage(self):
@@ -211,6 +221,8 @@ class E9ProjectScope(BaseModel):
     label = models.CharField(max_length=80)
     prefix = models.CharField(max_length=6, help_text="Item code prefix, e.g. W -> W1, W2")
     unit_mode = models.CharField(max_length=8, choices=E9UnitMode.choices, default=E9UnitMode.SQFT)
+    # What the Height / Width columns of this sheet are typed in. Stored data is always inches.
+    size_unit = models.CharField(max_length=4, choices=tracker.SIZE_UNIT_CHOICES, default="in")
     is_standard = models.BooleanField(default=False)
     enabled = models.BooleanField(default=True)
     sort_order = models.FloatField(default=65535)

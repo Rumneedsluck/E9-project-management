@@ -36,7 +36,7 @@ from .models import (
 )
 from .safety import clean_link, uuid_or_none
 from .services import item_code, record, record_changes, scope_map, snapshot
-from .tracker import item_area_sqft, item_unit
+from .tracker import item_unit
 from .views import _can_edit, _can_update_items, _visible_projects
 from .views_setup import WORKSPACE_ROLES, _forbidden, _not_found, _project
 
@@ -770,12 +770,14 @@ def _split_dcs(value):
 
 def logs_payload(project, user, slug):
     scopes = scope_map(project)
-    items = [item for item in E9ScopeItem.objects.filter(project=project) if boq.is_filled(item)]
+    items = [
+        item for item in tracker.fold_parts(list(E9ScopeItem.objects.filter(project=project))) if boq.is_filled(item)
+    ]
     jcs, dcs = defaultdict(list), defaultdict(list)
     for item in items:
         scope = scopes.get(item.scope)
         unit = item_unit(scope.unit_mode if scope else "either", item.height_in, item.width_in, item.unit_override)
-        area = item_area_sqft(item.height_in, item.width_in, item.qty) if unit == "sqft" else None
+        area = item.area_sqft if unit == "sqft" else None  # includes the wall's parts
         row = {
             "id": str(item.id),
             "code": item_code(item, scopes),

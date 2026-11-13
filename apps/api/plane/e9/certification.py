@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from .models import E9Attachment, E9Certification, E9Floor, E9ProjectStatus, E9ScopeItem
 from .services import split_floors
+from .tracker import fold_parts
 
 # stages where the work on site is over and the JMC is the next step
 WORK_DONE_STATUSES = {E9ProjectStatus.SIGN_OFF, E9ProjectStatus.COMPLETED}
@@ -89,13 +90,12 @@ def floor_totals(items):
 
     The floors add up to the total, so nothing is counted twice.
     """
-    from .tracker import item_area_sqft
 
     per_floor, total = {}, Decimal(0)
     for item in items:
         if not is_filled(item) or item.hold_status == "Cancelled":
             continue
-        area = item_area_sqft(item.height_in, item.width_in, item.qty) or Decimal(0)
+        area = item.area_sqft or Decimal(0)  # includes the wall's parts
         names = split_floors(item.floor_area)
         total += area
         for name in names or [""]:
@@ -122,7 +122,7 @@ def _iso(value):
 def payload(project, can_edit, scopes):
     profile = getattr(project, "e9_profile", None)
     certs = list(E9Certification.objects.filter(project=project))
-    items = list(E9ScopeItem.objects.filter(project=project))
+    items = fold_parts(list(E9ScopeItem.objects.filter(project=project)))  # a wall counts once
     files = {}
     for attachment in E9Attachment.objects.filter(project=project, kind="jmc", ref_id__isnull=False):
         files[attachment.ref_id] = files.get(attachment.ref_id, 0) + 1

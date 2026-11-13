@@ -20,7 +20,10 @@ from .serializers import (
     E9ScopeItemSerializer,
     default_profile_data,
 )
+from .safety import uuid_or_none
 from .services import (
+    reorder_scope,
+    link_parts,
     ensure_floors,
     split_floors,
     item_code,
@@ -217,6 +220,21 @@ def _resent_counts(project):
     return counts
 
 
+def _serialize_rows(project, scopes, ids):
+    """The current form of these rows, with each wall's parts attached so totals and codes are right."""
+    wanted = {str(row_id) for row_id in ids}
+    if not wanted:
+        return []
+    rows = list(E9ScopeItem.objects.filter(project=project, scope__in={row.scope for row in _rows_by_id(project, ids)}))
+    tracker.fold_parts(rows)
+    chosen = [row for row in rows if str(row.id) in wanted]
+    return E9ScopeItemSerializer(chosen, many=True, context={"scopes": scopes}).data
+
+
+def _rows_by_id(project, ids):
+    return list(E9ScopeItem.objects.filter(project=project, pk__in=list(ids)).only("id", "scope"))
+
+
 def _blocked_fields(user, slug, project_id, datas):
     """A message when this person may not change one of these fields (nothing is blocked yet)."""
     return None
@@ -233,7 +251,8 @@ class E9ScopeItemListEndpoint(BaseAPIView):
         project = self._project(request, slug, project_id)
         if project is None:
             return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
-        items = E9ScopeItem.objects.filter(project=project)
+        items = list(E9ScopeItem.objects.filter(project=project))
+        tracker.fold_parts(items)  # a wall's parts are attached to it, so its totals include them
         scopes = scope_map(project)
         return Response(
             {
@@ -383,7 +402,7 @@ class E9ScopeItemBulkEndpoint(BaseAPIView):
                     for item in E9ScopeItem.objects.select_for_update().filter(project=project, pk__in=wanted)
                 }
             )
-            updated, floors, errors = [], [], {}
+            updated, floors, errors, renumber = [], [], {}, set()
             for position, change in enumerate(changes):
                 key = str(change.get("id"))
                 if key.startswith("new:"):
@@ -412,20 +431,173 @@ class E9ScopeItemBulkEndpoint(BaseAPIView):
                     record_changes(item.project, request.user, "item", item.id, item_code(item, scopes), before, done)
                 if "floor_area" in serializer.validated_data:
                     floors.extend(split_floors(item.floor_area))
+                if "is_part" in serializer.validated_data:
+                    renumber.add(item.scope)
                 updated.append(item)
             if errors:
                 transaction.set_rollback(True)
                 return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
             if floors:
                 ensure_floors(project, floors, request.user)
-        context = {"scopes": scopes}
+            for scope_key in renumber:  # parts take no W-number
+                renumber_scope(project, scope_key, request.user)
         return Response(
             {
-                "created": E9ScopeItemSerializer(created, many=True, context=context).data,
-                "updated": E9ScopeItemSerializer(updated, many=True, context=context).data,
+                "created": _serialize_rows(project, scopes, [item.id for item in created]),
+                "updated": _serialize_rows(project, scopes, [item.id for item in updated]),
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class E9ScopeItemInsertEndpoint(BaseAPIView):
+    """Insert new rows in the MIDDLE of a sheet (above or below a row), or add a part under a wall.
+
+    Body: {"before": "<item id>"} or {"after": "<item id>"}, optional "count" (default 1) and
+    "is_part": true. Inserting above W3 makes the new row W3 and pushes the old W3 to W4 with all its data.
+    """
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
+    def post(self, request, slug, project_id):
+        project = _visible_projects(request.user, slug).filter(pk=project_id).first()
+        if project is None:
+            return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_update_items(request.user, slug, project.id):
+            return Response({"error": "Guests can view the tracker but not change it."}, status=403)
+        anchor_id = request.data.get("before") or request.data.get("after")
+        below = bool(request.data.get("after"))
+        try:
+            count = int(request.data.get("count", 1))
+        except (TypeError, ValueError):
+            count = 0
+        if not 1 <= count <= MAX_ROWS_PER_ADD:
+            return Response({"count": "Insert a sensible number of rows."}, status=400)
+        as_part = bool(request.data.get("is_part"))
+        scopes = scope_map(project)
+        with transaction.atomic():
+            Project.objects.select_for_update().filter(pk=project.id).first()
+            anchor = E9ScopeItem.objects.filter(project=project, pk=uuid_or_none(anchor_id)).first()
+            if anchor is None:
+                return Response({"error": "Pick the row to insert next to."}, status=status.HTTP_404_NOT_FOUND)
+            if scopes.get(anchor.scope) is None or not scopes[anchor.scope].enabled:
+                return Response({"scope": "That sheet is switched off."}, status=400)
+            existing = E9ScopeItem.all_objects.filter(project=project, scope=anchor.scope)
+            top = (
+                existing.filter(item_number__lt=PARKED_FROM).aggregate(models.Max("item_number"))["item_number__max"]
+                or 0
+            )
+            created = E9ScopeItem.objects.bulk_create(
+                [
+                    E9ScopeItem(
+                        project=project,
+                        workspace_id=project.workspace_id,
+                        scope=anchor.scope,
+                        item_number=top + index,
+                        sort_order=anchor.sort_order,
+                        floor_area=anchor.floor_area,
+                        is_part=as_part,
+                        created_by_id=request.user.id,
+                    )
+                    for index in range(1, count + 1)
+                ]
+            )
+            order = [
+                row.id
+                for row in E9ScopeItem.objects.filter(project=project, scope=anchor.scope).order_by(
+                    "sort_order", "item_number"
+                )
+                if row.id not in {c.id for c in created}
+            ]
+            at = order.index(anchor.id) + (1 if below else 0)
+            if below and not as_part:
+                # "below a wall" means below the wall AND its parts
+                while at < len(order) and E9ScopeItem.objects.filter(pk=order[at], is_part=True).exists():
+                    at += 1
+            order[at:at] = [row.id for row in created]
+            moved = reorder_scope(project, anchor.scope, order, request.user)
+            kind = "part" if as_part else "row"
+            side = "below" if below else "above"
+            record(
+                project,
+                request.user,
+                "item",
+                "created",
+                None,
+                item_code(anchor, scopes),
+                new=f"{count} {kind}(s) inserted {side} the row; {moved} code(s) moved",
+            )
+        return Response(
+            {"created": _serialize_rows(project, scopes, [row.id for row in created]), "renumbered": moved},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class E9ScopeItemMoveEndpoint(BaseAPIView):
+    """Move rows (drag, or cut and paste) to a new place on the SAME sheet. Rows keep their photos, DCs and snags.
+
+    Body: {"ids": ["<item id>", ...], "before": "<item id>" | null}. null = to the end of the sheet.
+    A wall moves with its parts. The codes follow the new order.
+    """
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
+    def post(self, request, slug, project_id):
+        project = _visible_projects(request.user, slug).filter(pk=project_id).first()
+        if project is None:
+            return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_update_items(request.user, slug, project.id):
+            return Response({"error": "Guests can view the tracker but not change it."}, status=403)
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids or len(ids) > MAX_ROWS_PER_ADD:
+            return Response({"ids": "Pick the rows to move."}, status=400)
+        scopes = scope_map(project)
+        with transaction.atomic():
+            Project.objects.select_for_update().filter(pk=project.id).first()
+            wanted = {str(value) for value in ids}
+            picked = list(E9ScopeItem.objects.filter(project=project, pk__in=[uuid_or_none(value) for value in ids]))
+            if len(picked) != len(wanted):
+                return Response({"ids": "Some rows were not found."}, status=404)
+            scope_keys = {row.scope for row in picked}
+            if len(scope_keys) != 1:
+                return Response({"ids": "Rows can only be moved within one sheet."}, status=400)
+            scope_key = scope_keys.pop()
+            rows = list(
+                E9ScopeItem.objects.filter(project=project, scope=scope_key).order_by("sort_order", "item_number")
+            )
+            tracker.fold_parts(rows)
+            # a wall moves together with its parts
+            moving = []
+            for row in rows:
+                parent = getattr(row, "_parent", None)
+                if str(row.id) in wanted or (parent is not None and str(parent.id) in wanted):
+                    moving.append(row)
+            moving_ids = {row.id for row in moving}
+            rest = [row for row in rows if row.id not in moving_ids]
+            before = request.data.get("before")
+            if before:
+                target = uuid_or_none(before)
+                if target in moving_ids:
+                    return Response({"before": "Drop the rows somewhere else."}, status=400)
+                at = next((index for index, row in enumerate(rest) if row.id == target), None)
+                if at is None:
+                    return Response({"before": "That row is not on the same sheet."}, status=400)
+                # dropping "before a part" would split its wall: go above the wall instead
+                while at > 0 and rest[at].is_part:
+                    at -= 1
+            else:
+                at = len(rest)
+            order = [row.id for row in rest[:at]] + [row.id for row in moving] + [row.id for row in rest[at:]]
+            moved = reorder_scope(project, scope_key, order, request.user)
+            record(
+                project,
+                request.user,
+                "item",
+                "updated",
+                None,
+                scopes[scope_key].label,
+                field="order",
+                new=f"{len(moving)} row(s) moved; {moved} code(s) changed",
+            )
+        return Response({"moved": len(moving), "renumbered": moved}, status=status.HTTP_200_OK)
 
 
 class E9ScopeItemDetailEndpoint(BaseAPIView):
@@ -457,7 +629,13 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
             record_changes(item.project, request.user, "item", item.id, item_code(item, scopes), before, changed)
             if "floor_area" in serializer.validated_data:
                 ensure_floors(item.project, split_floors(item.floor_area), request.user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            if "is_part" in serializer.validated_data:
+                # a part takes no W-number: the real items renumber around it
+                Project.objects.select_for_update().filter(pk=item.project_id).first()
+                renumber_scope(item.project, item.scope, request.user)
+                item.refresh_from_db()
+        link_parts(item)
+        return Response(E9ScopeItemSerializer(item, context={"scopes": scopes}).data, status=status.HTTP_200_OK)
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
     def delete(self, request, slug, project_id, item_id):
@@ -472,9 +650,13 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
             # lock the project so two people deleting at once renumber one after the other
             Project.objects.select_for_update().filter(pk=item.project_id).first()
             scope_key, project, deleted_id = item.scope, item.project, item.id
+            link_parts(item)
+            parts = list(item._parts)  # a wall's parts go with it (and come back together on Undo)
             # put aside (not erased) so Undo can bring the row back with its photos; its number moves out of
             # the way so the codes can close the gap
             park_item(item)
+            for part in parts:
+                park_item(part)
             record(project, request.user, "item", "deleted", deleted_id, code, old=details or code)
             moved = renumber_scope(project, scope_key, request.user)
             if moved:
@@ -488,6 +670,10 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
                     field="item_code",
                     new=f"{moved} code(s) moved up to close the gap after {code}",
                 )
+        if parts:
+            return Response(
+                {"deleted": [str(deleted_id), *(str(part.id) for part in parts)]}, status=status.HTTP_200_OK
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -510,4 +696,5 @@ class E9ScopeItemRestoreEndpoint(BaseAPIView):
             item.refresh_from_db()
             scopes = scope_map(item.project)
             record(item.project, request.user, "item", "restored", item.id, item_code(item, scopes))
+        link_parts(item)
         return Response(E9ScopeItemSerializer(item, context={"scopes": scopes}).data, status=status.HTTP_200_OK)

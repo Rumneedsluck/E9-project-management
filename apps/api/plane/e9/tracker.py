@@ -29,6 +29,10 @@ SCOPES = {
 
 SCOPE_CHOICES = [(key, value[0]) for key, value in SCOPES.items()]
 
+# What size columns can be typed in. Everything is stored in inches; sq ft always comes from inches / 144.
+SIZE_UNITS = {"in": Decimal(1), "ft": Decimal(12), "mm": Decimal(1) / Decimal("25.4")}
+SIZE_UNIT_CHOICES = [("in", "Inches"), ("ft", "Feet (decimal)"), ("mm", "Millimetres")]
+
 _COMMON_ISSUES_TAIL = ["Size differs from drawing", "Access / permission needed", "Other"]
 SITE_ISSUES = {
     "wall_graphics": [
@@ -244,35 +248,93 @@ def to_decimal(value):
         return None
 
 
-def measured(item, unit):
-    """Site-measured quantity: sq ft for sq-ft items, Nos otherwise."""
+def parts_of(item):
+    """The extra pieces of a wall (attached by fold_parts); none for an ordinary item or a part."""
+    return getattr(item, "_parts", ())
+
+
+def fold_parts(items):
+    """From tracker rows to the REAL items. Part rows are not items: each one is attached to the nearest
+    non-part row above it in the same scope (item._parts, and part._parent), so counts and totals
+    everywhere treat a wall made of several pieces as one item.
+
+    A part with nothing above it (e.g. the first row of a sheet) is simply an ordinary item.
+    Returns the real items in sheet order (scope, then position).
+    """
+    ordered = sorted(
+        items,
+        key=lambda row: (getattr(row, "scope", ""), getattr(row, "sort_order", 0), getattr(row, "item_number", 0)),
+    )
+    real = []
+    last = {}
+    for row in ordered:
+        parent = last.get(getattr(row, "scope", ""))
+        if getattr(row, "is_part", False) and parent is not None:
+            parent._parts.append(row)
+            row._parent = parent
+        else:
+            row._parts = []
+            real.append(row)
+            last[getattr(row, "scope", "")] = row
+    return real
+
+
+def _own_measured(item, unit):
+    """One row's own site-measured quantity (not counting parts)."""
     if unit == "sqft":
         return item_area_sqft(item.height_in, item.width_in, item.qty) or Decimal(0)
     return Decimal(item.qty) if item.qty else Decimal(1)
 
 
-def production_measure(item, unit):
-    """What we send for production. Uses the production size when typed, else the measured size."""
+def measured(item, unit):
+    """Site-measured quantity: sq ft for sq-ft items, Nos otherwise. A wall counts its parts too."""
+    return _own_measured(item, unit) + sum((_own_measured(part, unit) for part in parts_of(item)), Decimal(0))
+
+
+def _own_production_area(item):
+    """One row's production area in sq ft, or None when no production size is typed."""
+    # a production size without its own quantity means the same number of pieces as measured
+    production_qty = item.production_qty if item.production_qty is not None else item.qty
+    return item_area_sqft(item.production_height_in, item.production_width_in, production_qty)
+
+
+def _own_production(item, unit):
+    """What one row sends for production. Uses the production size when typed, else the measured size."""
     if unit == "sqft":
-        # a production size without its own quantity means the same number of pieces as measured
-        production_qty = item.production_qty if item.production_qty is not None else item.qty
-        area = item_area_sqft(item.production_height_in, item.production_width_in, production_qty)
-        if area is not None:
-            return area
-        return measured(item, unit)
+        area = _own_production_area(item)
+        return area if area is not None else _own_measured(item, unit)
     if item.production_qty is not None:
         return Decimal(item.production_qty)
-    return measured(item, unit)
+    return _own_measured(item, unit)
+
+
+def production_measure(item, unit):
+    """What we send for production. A wall adds up its parts, each with its own production size."""
+    return _own_production(item, unit) + sum((_own_production(part, unit) for part in parts_of(item)), Decimal(0))
 
 
 def wastage(item, unit):
-    """Production area minus measured area (only when a production size is typed)."""
-    if unit != "sqft":
+    """Production quantity minus site-measured quantity (sq ft for sq-ft items, pieces for Nos).
+
+    Nothing (None) until a production size / quantity is typed somewhere on the wall. A wall adds up its parts.
+    """
+    pieces = [item, *parts_of(item)]
+    if unit == "sqft":
+        typed = any(_own_production_area(piece) is not None for piece in pieces)
+    else:
+        typed = any(piece.production_qty is not None for piece in pieces)
+    if not typed:
         return None
-    area = item_area_sqft(item.production_height_in, item.production_width_in, item.production_qty)
-    if area is None:
+    return (production_measure(item, unit) - measured(item, unit)).quantize(Decimal("0.01"))
+
+
+def wastage_percent(item, unit):
+    """Wastage as a share of the site-measured quantity. None when there is no wastage figure or nothing measured."""
+    waste = wastage(item, unit)
+    site = measured(item, unit)
+    if waste is None or not site:
         return None
-    return (area - measured(item, unit)).quantize(Decimal("0.01"))
+    return (waste / site * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
 
 
 def dc_breakdown(item, unit):
@@ -334,6 +396,9 @@ PROGRESS_FIELDS = (
     "installation_status",
     "hold_status",
     "bill_now",
+    "sort_order",
+    "item_number",
+    "is_part",
 )
 
 
@@ -351,7 +416,7 @@ def progress(items, unit_modes):
         "nos_total": Decimal(0),
         "nos_done": Decimal(0),
     }
-    for item in items:
+    for item in fold_parts(items):  # parts are not items: the wall counts once, with its parts' sizes
         if not (item.floor_area.strip() or item.description.strip() or item.height_in or item.width_in or item.qty):
             continue
         if is_cancelled(item):

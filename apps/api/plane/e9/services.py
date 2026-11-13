@@ -324,6 +324,26 @@ def snapshot(instance, fields):
     return {field: getattr(instance, field) for field in fields}
 
 
+def link_parts(item):
+    """Attach item._parts / item._parent from the rows next to it, for responses about ONE row.
+
+    (A list of rows uses tracker.fold_parts instead.)
+    """
+    from .tracker import fold_parts
+
+    rows = list(E9ScopeItem.objects.filter(project=item.project, scope=item.scope))
+    fold_parts(rows)
+    for row in rows:
+        if row.id == item.id:
+            item._parts = getattr(row, "_parts", [])
+            if getattr(row, "_parent", None) is not None:
+                item._parent = row._parent
+                # the response must show the freshly saved row, not the copy loaded above
+                row._parent._parts[row._parent._parts.index(row)] = item
+            break
+    return item
+
+
 def item_code(item, scopes):
     scope = scopes.get(item.scope)
     prefix = scope.prefix if scope else tracker.SCOPES.get(item.scope, ("", "?"))[1]
@@ -331,6 +351,8 @@ def item_code(item, scopes):
 
 
 PARKED_FROM = 5_000_000
+# part rows keep a hidden number here, so they never use up a W-number (W1, part, W2 ...)
+PART_FROM = 2_000_000
 
 
 def park_item(item):
@@ -359,13 +381,54 @@ def renumber_scope(project, scope_key, user=None):
 
     # rows put aside by a delete keep a number of PARKED_FROM or more, out of the way
     rows = list(E9ScopeItem.objects.filter(project=project, scope=scope_key).order_by("sort_order", "item_number"))
-    wanted = {row.id: index for index, row in enumerate(rows, start=1)}
+    # real items are W1, W2, W3... in sheet order; a part (not the first row) takes a hidden number instead
+    wanted = {}
+    items_seen = parts_seen = 0
+    for row in rows:
+        if row.is_part and items_seen:
+            parts_seen += 1
+            wanted[row.id] = PART_FROM + parts_seen
+        else:
+            items_seen += 1
+            wanted[row.id] = items_seen
     changed = [row for row in rows if row.item_number != wanted[row.id]]
     if not changed:
         return 0
     ids = [row.id for row in changed]
+    # "Replaced by" is the one place a typed item code is stored: rewrite codes that moved (old code -> new code)
+    scope = scope_map(project).get(scope_key)
+    prefix = scope.prefix if scope else tracker.SCOPES.get(scope_key, ("", "?"))[1]
+    moved_codes = {
+        f"{prefix}{row.item_number}".upper(): f"{prefix}{wanted[row.id]}"
+        for row in changed
+        if row.item_number < PART_FROM and wanted[row.id] < PART_FROM
+    }
     # two steps so no two rows ever share a number on the way
     E9ScopeItem.objects.filter(id__in=ids).update(item_number=F("item_number") + 1_000_000)
     for row in changed:
         E9ScopeItem.objects.filter(id=row.id).update(item_number=wanted[row.id])
+    if moved_codes:
+        for other in E9ScopeItem.objects.filter(project=project).exclude(replaced_by=""):
+            new_code = moved_codes.get(other.replaced_by.strip().upper())
+            if new_code:
+                E9ScopeItem.objects.filter(id=other.id).update(replaced_by=new_code)
     return len(changed)
+
+
+def reorder_scope(project, scope_key, ordered_ids, user=None):
+    """Put the rows of one scope in this order (ids not listed keep their relative order, at the end),
+    then renumber so the codes follow the new order. Returns how many codes changed."""
+    rows = list(E9ScopeItem.objects.filter(project=project, scope=scope_key).order_by("sort_order", "item_number"))
+    known = {row.id: row for row in rows}
+    first = [known[row_id] for row_id in ordered_ids if row_id in known]
+    listed = {row.id for row in first}
+    final = first + [row for row in rows if row.id not in listed]
+    changed = []
+    for index, row in enumerate(final, start=1):
+        wanted = float(index * 1000)
+        if row.sort_order != wanted:
+            row.sort_order = wanted
+            changed.append(row)
+    if changed:
+        E9ScopeItem.objects.bulk_update(changed, ["sort_order"])
+    return renumber_scope(project, scope_key, user)

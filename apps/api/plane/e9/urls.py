@@ -8,6 +8,8 @@ from .views import (
     E9ProjectDetailEndpoint,
     E9ProjectListEndpoint,
     E9ScopeItemBulkEndpoint,
+    E9ScopeItemInsertEndpoint,
+    E9ScopeItemMoveEndpoint,
     E9ScopeItemDetailEndpoint,
     E9ScopeItemRestoreEndpoint,
     E9ScopeItemListEndpoint,
@@ -67,6 +69,16 @@ urlpatterns = [
         "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/",
         E9ScopeItemListEndpoint.as_view(),
         name="e9-scope-items",
+    ),
+    path(
+        "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/insert/",
+        E9ScopeItemInsertEndpoint.as_view(),
+        name="e9-scope-items-insert",
+    ),
+    path(
+        "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/move/",
+        E9ScopeItemMoveEndpoint.as_view(),
+        name="e9-scope-items-move",
     ),
     path(
         "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/bulk/",

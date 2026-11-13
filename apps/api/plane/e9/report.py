@@ -35,7 +35,10 @@ def _unit(item, scopes):
 
 def _load(project):
     scopes = scope_map(project)
-    items = [item for item in E9ScopeItem.objects.filter(project=project) if boq.is_filled(item)]
+    # a wall made of parts is ONE item: parts are folded into it
+    items = [
+        item for item in tracker.fold_parts(list(E9ScopeItem.objects.filter(project=project))) if boq.is_filled(item)
+    ]
     codes = {item_code(item, scopes).upper(): item for item in items}
     return scopes, items, codes
 

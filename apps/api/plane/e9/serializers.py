@@ -132,6 +132,7 @@ ITEM_EDITABLE_FIELDS = [
     "bill_now",
     "bill_when",
     "sort_order",
+    "is_part",
 ]
 
 
@@ -144,6 +145,9 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
     current_stage = serializers.CharField(read_only=True)
     production_measure = serializers.SerializerMethodField()
     wastage = serializers.SerializerMethodField()
+    wastage_pct = serializers.SerializerMethodField()
+    part_of = serializers.SerializerMethodField()
+    parts_count = serializers.SerializerMethodField()
     dispatched = serializers.SerializerMethodField()
     balance = serializers.SerializerMethodField()
     certified_measure = serializers.SerializerMethodField()
@@ -162,6 +166,9 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
             "current_stage",
             "production_measure",
             "wastage",
+            "wastage_pct",
+            "part_of",
+            "parts_count",
             "dispatched",
             "balance",
             "certified_measure",
@@ -179,7 +186,22 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
         return self.context.get("scopes", {})
 
     def get_item_code(self, item):
+        parent = getattr(item, "_parent", None)
+        if item.is_part and parent is not None:
+            # a part has no W-number of its own: "W1.1", "W1.2" ...
+            return f"{item_code(parent, self._scopes())}.{parent._parts.index(item) + 1}"
         return item_code(item, self._scopes())
+
+    def get_part_of(self, item):
+        parent = getattr(item, "_parent", None)
+        return item_code(parent, self._scopes()) if item.is_part and parent is not None else None
+
+    def get_parts_count(self, item):
+        return len(tracker.parts_of(item))
+
+    def get_wastage_pct(self, item):
+        value = tracker.wastage_percent(item, self.get_unit(item))
+        return None if value is None else str(value)
 
     def get_unit(self, item):
         scope = self._scopes().get(item.scope)
