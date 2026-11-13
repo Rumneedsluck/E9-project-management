@@ -27,6 +27,9 @@ type TRow = {
   jc: string;
   vendor: string;
   qty: number;
+  /** extra over the site-measured quantity (first sends only) */
+  wastage?: number | null;
+  wastagePct?: string | null;
   unit: TE9BoqUnit;
   causedBy: string;
   reason: string;
@@ -52,6 +55,8 @@ export function E9ProductionSent({ slug, projectId, logs }: { slug: string; proj
         jc: jc.number,
         vendor: jc.vendor,
         qty: Number(item.unit === "sqft" ? item.area : item.qty) || 0,
+        wastage: item.wastage === null || item.wastage === undefined ? null : Number(item.wastage),
+        wastagePct: item.wastage_pct ?? null,
         unit: item.unit,
         causedBy: "",
         reason: "",
@@ -103,11 +108,15 @@ export function E9ProductionSent({ slug, projectId, logs }: { slug: string; proj
                   "JC No.",
                   "Vendor",
                   "Qty sent",
+                  "Wastage",
                   "Caused by",
                   "Reason",
                   "Approved by client?",
                 ].map((heading) => (
-                  <th key={heading} className={cn("px-3 py-2.5", heading === "Qty sent" && "text-right")}>
+                  <th
+                    key={heading}
+                    className={cn("px-3 py-2.5", (heading === "Qty sent" || heading === "Wastage") && "text-right")}
+                  >
                     {heading}
                   </th>
                 ))}
@@ -137,6 +146,17 @@ export function E9ProductionSent({ slug, projectId, logs }: { slug: string; proj
                   <td className="px-3 py-2">{row.vendor || "—"}</td>
                   <td className="px-3 py-2 text-right tabular-nums">
                     {fmt(row.qty)} {unitText(row.unit)}
+                  </td>
+                  <td
+                    className={cn(
+                      "px-3 py-2 text-right tabular-nums",
+                      row.wastage && row.wastage > 0 && "text-warning-primary"
+                    )}
+                    title="Quantity sent minus the site-measured quantity"
+                  >
+                    {row.wastage === null || row.wastage === undefined
+                      ? "—"
+                      : `${fmt(row.wastage)} ${unitText(row.unit)}${row.wastagePct ? ` · ${fmt(row.wastagePct)}%` : ""}`}
                   </td>
                   <td className="px-3 py-2">{row.causedBy || "—"}</td>
                   <td className="px-3 py-2">{row.reason || "—"}</td>

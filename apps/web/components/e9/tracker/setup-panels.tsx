@@ -4,6 +4,8 @@
  * See the LICENSE file for details.
  */
 
+import { SIZE_UNIT_LABEL } from "./sizes";
+import type { TE9SizeUnit } from "./sizes";
 import { useEffect, useState } from "react";
 import { AddOutline, CloseOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
@@ -63,13 +65,14 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
       await e9ProjectService.saveScopes(
         workspaceSlug,
         project.id,
-        rows.map(({ key, label, prefix, unit_mode, enabled, bill_when }) => ({
+        rows.map(({ key, label, prefix, unit_mode, enabled, bill_when, size_unit }) => ({
           key,
           label,
           prefix,
           unit_mode,
           enabled,
           bill_when,
+          size_unit,
         }))
       );
       await refreshE9Tracker(workspaceSlug, project.id);
@@ -107,6 +110,9 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
               <th className="w-40 pb-2" title="When items of this scope can be billed">
                 Bill when
               </th>
+              <th className="w-36 pb-2" title="The unit you type sizes in on this sheet (saved as inches underneath)">
+                Sizes typed in
+              </th>
               <th className="w-20 pb-2 text-right">Items</th>
               <th className="w-10 pb-2" />
             </tr>
@@ -115,6 +121,7 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
             {rows.map((row, index) => {
               const hasItems = (row.item_count ?? 0) > 0;
               return (
+                // oxlint-disable-next-line react/no-array-index-key -- a new row has no key yet
                 <tr key={row.key ?? `new-${index}`} className={cn(!row.enabled && "opacity-60")}>
                   <td className="py-1.5">
                     <input
@@ -178,6 +185,20 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
                       ))}
                     </select>
                   </td>
+                  <td className="py-1.5 pr-2">
+                    <select
+                      className={inputClass}
+                      value={row.size_unit ?? "in"}
+                      aria-label={`${row.label} sizes typed in`}
+                      onChange={(event) => update(index, { size_unit: event.target.value as TE9SizeUnit })}
+                    >
+                      {(Object.keys(SIZE_UNIT_LABEL) as TE9SizeUnit[]).map((unit) => (
+                        <option key={unit} value={unit}>
+                          {SIZE_UNIT_LABEL[unit]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="py-1.5 text-right text-body-xs-medium text-tertiary tabular-nums">
                     {row.item_count ?? 0}
                   </td>
@@ -203,7 +224,15 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
           onClick={() =>
             setRows((prev) => [
               ...prev,
-              { label: "", prefix: "", unit_mode: "sqft", enabled: true, bill_when: "Signed off", item_count: 0 },
+              {
+                label: "",
+                prefix: "",
+                unit_mode: "sqft",
+                enabled: true,
+                bill_when: "Signed off",
+                size_unit: "in",
+                item_count: 0,
+              },
             ])
           }
           className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-strong px-3 py-2 text-body-xs-semibold text-accent-primary hover:bg-accent-subtle"

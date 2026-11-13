@@ -20,6 +20,8 @@ export type TE9ProjectScope = {
   sort_order: number;
   /** when items of this scope can be billed */
   bill_when: "Signed off" | "Delivered";
+  /** the unit sizes are typed in on this sheet (always stored in inches) */
+  size_unit: "in" | "ft" | "mm";
   item_count?: number;
 };
 
@@ -85,6 +87,13 @@ export type TE9ScopeItem = {
   production_qty: string | null;
   production_measure: string | null;
   wastage: string | null;
+  /** wastage as a percent of the site-measured quantity */
+  wastage_pct: string | null;
+  /** a part of the item above (a glass panel inside a wall, say) */
+  is_part: boolean;
+  /** item code of the wall this part belongs to */
+  part_of: string | null;
+  parts_count: number;
   dc_qty: string;
   dispatched: string | null;
   balance: string | null;
@@ -182,6 +191,7 @@ export const isHeld = (item: TE9ScopeItem): boolean => item.hold_status === "On 
 export const counted = (items: TE9ScopeItem[]): TE9ScopeItem[] =>
   items
     .filter((item) => !isCancelled(item))
+    // oxlint-disable-next-line oxc/no-map-spread -- each row is copied on purpose
     .map((item) =>
       isHeld(item)
         ? {
@@ -291,18 +301,21 @@ export type TFloorProgress = ReturnType<typeof groupTotals> & {
 export const floorProgress = (items: TE9ScopeItem[], floors: TE9Floor[]): TFloorProgress[] => {
   const rows = counted(items).filter(isFilled);
   const names = [...floors.map((floor) => floor.name), ...rows.flatMap(floorsOf)];
-  return [...new Set(names)]
-    .map((name) => {
-      // an item on two floors counts on each of them
-      const floorRows = rows.filter((item) => floorsOf(item).includes(name));
-      return {
-        name,
-        floor: floors.find((floor) => floor.name === name) ?? null,
-        rows: floorRows.length,
-        ...groupTotals(floorRows),
-      };
-    })
-    .filter((row) => row.rows > 0 || row.floor);
+  return (
+    [...new Set(names)]
+      // oxlint-disable-next-line oxc/no-map-spread -- each row is copied on purpose
+      .map((name) => {
+        // an item on two floors counts on each of them
+        const floorRows = rows.filter((item) => floorsOf(item).includes(name));
+        return {
+          name,
+          floor: floors.find((floor) => floor.name === name) ?? null,
+          rows: floorRows.length,
+          ...groupTotals(floorRows),
+        };
+      })
+      .filter((row) => row.rows > 0 || row.floor)
+  );
 };
 
 export const scopeProgress = (
@@ -419,8 +432,8 @@ export const workDone = (items: TE9ScopeItem[]) => {
       if (done) nosDone += qty;
     }
   }
-  const percent = sqftTotal > 0 ? (sqftDone / sqftTotal) * 100 : nosTotal > 0 ? (nosDone / nosTotal) * 100 : 0;
-  return { rows: rows.length, sqftTotal, sqftDone, nosTotal, nosDone, percent: Math.round(percent) };
+  const overall = sqftTotal > 0 ? (sqftDone / sqftTotal) * 100 : nosTotal > 0 ? (nosDone / nosTotal) * 100 : 0;
+  return { rows: rows.length, sqftTotal, sqftDone, nosTotal, nosDone, percent: Math.round(overall) };
 };
 
 /** The 5 stage pies of the Excel scope sheets (counts of rows per status). */

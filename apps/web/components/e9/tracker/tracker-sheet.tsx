@@ -16,6 +16,9 @@ import { useE9Boq, useE9Floors, useE9Items, useE9Photos, useE9Scopes } from "../
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { DateCell, NumberCell, SelectCell, TextCell } from "./cells";
+import { errorText } from "../commercial/shared";
+import { fromDisplay, sizeHeading, toDisplay } from "./sizes";
+import type { TE9SizeUnit } from "./sizes";
 import {
   BILL_NOW,
   BILL_WHEN,
@@ -114,6 +117,21 @@ const BAND_COLORS: Record<string, string> = {
   "On hold / cancel / billing": "#B45309",
 };
 
+/** A part (a glass panel inside a wall…) has its own sizes; status, DCs and billing are set once on the wall. */
+const PART_COLUMNS = new Set([
+  "floor",
+  "plan",
+  "desc",
+  "h",
+  "w",
+  "qty",
+  "area",
+  "prodh",
+  "prodw",
+  "prodqty",
+  "remarks",
+]);
+
 /** A reversed copy (the target library has no toReversed yet). */
 const reversed = <T,>(list: readonly T[]): T[] => list.map((_, index) => list[list.length - 1 - index] as T);
 
@@ -163,7 +181,8 @@ const numberColumn = (
   label: string,
   band: string,
   field: keyof TE9ScopeItem,
-  ariaLabel: string
+  ariaLabel: string,
+  size = false
 ): TColumn => ({
   key,
   hideKey,
@@ -171,19 +190,53 @@ const numberColumn = (
   width: 80,
   band,
   render: (ctx) => (
-    <NumberCell
+    <SizeOrNumberCell
       label={ariaLabel}
-      value={(ctx.item[field] as string | null) ?? null}
+      stored={(ctx.item[field] as string | null) ?? null}
+      size={size}
+      unit={ctx.scope?.size_unit ?? "in"}
       disabled={ctx.disabled}
       onSave={(v) => ctx.save({ [field]: v })}
     />
   ),
 });
 
+/** A number box; for sizes it shows and takes the sheet's unit but saves inches. */
+function SizeOrNumberCell({
+  label,
+  stored,
+  size,
+  unit,
+  disabled,
+  onSave,
+}: {
+  label: string;
+  stored: string | null;
+  size: boolean;
+  unit: TE9SizeUnit;
+  disabled: boolean;
+  onSave: (value: string | null) => void;
+}) {
+  if (!size || unit === "in") return <NumberCell label={label} value={stored} disabled={disabled} onSave={onSave} />;
+  return (
+    <NumberCell
+      label={label}
+      value={toDisplay(stored, unit)}
+      disabled={disabled}
+      onSave={(typed) => {
+        const inches = fromDisplay(typed, unit);
+        if (inches !== undefined) onSave(inches);
+      }}
+    />
+  );
+}
+
 /** How a pasted Excel cell lands in each typed column (calculated columns are skipped). */
 type TPasteSpec = {
   field: keyof TE9ScopeItem;
   kind: "text" | "upper" | "number" | "date" | "select" | "dcs";
+  /** a size: typed in the sheet's unit, stored in inches */
+  size?: boolean;
   options?: (item: TE9ScopeItem) => string[];
 };
 const PASTE: Record<string, TPasteSpec> = {
@@ -192,13 +245,13 @@ const PASTE: Record<string, TPasteSpec> = {
   plan: { field: "floor_plan_ref", kind: "text" },
   desc: { field: "description", kind: "text" },
   audit: { field: "site_audit_status", kind: "select", options: () => SITE_AUDIT_STATUS },
-  h: { field: "height_in", kind: "number" },
-  w: { field: "width_in", kind: "number" },
+  h: { field: "height_in", kind: "number", size: true },
+  w: { field: "width_in", kind: "number", size: true },
   qty: { field: "qty", kind: "number" },
   issue: { field: "site_issue", kind: "select", options: (item) => siteIssuesFor(item.scope) },
   resolved: { field: "issue_resolved", kind: "select", options: () => ISSUE_RESOLVED },
-  prodh: { field: "production_height_in", kind: "number" },
-  prodw: { field: "production_width_in", kind: "number" },
+  prodh: { field: "production_height_in", kind: "number", size: true },
+  prodw: { field: "production_width_in", kind: "number", size: true },
   prodqty: { field: "production_qty", kind: "number" },
   prepress: { field: "pre_press", kind: "select", options: () => PRE_PRESS },
   jc: { field: "jc_no", kind: "text" },
@@ -211,8 +264,8 @@ const PASTE: Record<string, TPasteSpec> = {
   install: { field: "installation_status", kind: "select", options: () => INSTALLATION_STATUS },
   installdate: { field: "installation_date", kind: "date" },
   installedby: { field: "installed_by", kind: "text" },
-  certh: { field: "certified_height_in", kind: "number" },
-  certw: { field: "certified_width_in", kind: "number" },
+  certh: { field: "certified_height_in", kind: "number", size: true },
+  certw: { field: "certified_width_in", kind: "number", size: true },
   certqty: { field: "certified_qty", kind: "number" },
   signoff: { field: "client_sign_off", kind: "select", options: () => CLIENT_SIGN_OFF },
   remarks: { field: "remarks", kind: "text" },
@@ -225,13 +278,19 @@ const PASTE: Record<string, TPasteSpec> = {
 };
 
 /** One pasted text -> the value to save, or undefined when it does not fit the column. */
-export const pastedValue = (spec: TPasteSpec, raw: string, item: TE9ScopeItem): string | null | undefined => {
+export const pastedValue = (
+  spec: TPasteSpec,
+  raw: string,
+  item: TE9ScopeItem,
+  unit: TE9SizeUnit = "in"
+): string | null | undefined => {
   const value = raw.trim();
   if (spec.kind === "text" || spec.kind === "dcs") return value;
   if (spec.kind === "upper") return value.toUpperCase();
   if (spec.kind === "number") {
     const clean = value.replace(/,/g, "");
     if (clean === "") return null;
+    if (spec.size && unit !== "in") return fromDisplay(clean, unit);
     return Number.isFinite(Number(clean)) && Number(clean) >= 0 ? clean : undefined;
   }
   if (spec.kind === "date") return value === "" ? null : (parsePastedDate(value) ?? undefined);
@@ -240,15 +299,21 @@ export const pastedValue = (spec: TPasteSpec, raw: string, item: TE9ScopeItem): 
 };
 
 /** The text a cell holds (what Excel would copy). */
-export const cellText = (spec: TPasteSpec, item: TE9ScopeItem): string => {
+export const cellText = (spec: TPasteSpec, item: TE9ScopeItem, unit: TE9SizeUnit = "in"): string => {
   if (spec.kind === "dcs") return joinDcs(item.dc_nos, item.dc_qty);
   const value = item[spec.field];
+  if (spec.size && unit !== "in") return toDisplay(value as string | null, unit) ?? "";
   return value === null || value === undefined ? "" : String(value);
 };
 
 /** The change that writing `text` into a cell makes; undefined when the text does not fit the column. */
-export const patchFor = (spec: TPasteSpec, text: string, item: TE9ScopeItem): Partial<TE9ScopeItem> | undefined => {
-  const value = pastedValue(spec, text, item);
+export const patchFor = (
+  spec: TPasteSpec,
+  text: string,
+  item: TE9ScopeItem,
+  unit: TE9SizeUnit = "in"
+): Partial<TE9ScopeItem> | undefined => {
+  const value = pastedValue(spec, text, item, unit);
   if (value === undefined) return undefined;
   if (spec.kind === "dcs") return splitDcs(value ?? "") as Partial<TE9ScopeItem>;
   return { [spec.field]: value } as Partial<TE9ScopeItem>;
@@ -401,9 +466,11 @@ const COLUMNS: TColumn[] = [
     width: 76,
     band: "1 · Site audit",
     render: (ctx) => (
-      <NumberCell
+      <SizeOrNumberCell
         label="Height in inches"
-        value={ctx.item.height_in}
+        stored={ctx.item.height_in}
+        size
+        unit={ctx.scope?.size_unit ?? "in"}
         disabled={ctx.disabled}
         onSave={(v) => ctx.save({ height_in: v })}
       />
@@ -416,9 +483,11 @@ const COLUMNS: TColumn[] = [
     width: 76,
     band: "1 · Site audit",
     render: (ctx) => (
-      <NumberCell
+      <SizeOrNumberCell
         label="Width in inches"
-        value={ctx.item.width_in}
+        stored={ctx.item.width_in}
+        size
+        unit={ctx.scope?.size_unit ?? "in"}
         disabled={ctx.disabled}
         onSave={(v) => ctx.save({ width_in: v })}
       />
@@ -463,6 +532,9 @@ const COLUMNS: TColumn[] = [
         ) : (
           <span className="text-right text-body-2xs-regular text-tertiary">
             {item.unit === "sqft" ? "sq ft" : "Nos"}
+            {item.unit === "nos" && item.area_sqft && Number(item.area_sqft) > 0
+              ? ` · ${Number(item.area_sqft).toLocaleString("en-IN", { maximumFractionDigits: 1 })} sq ft`
+              : ""}
           </span>
         )}
       </div>
@@ -528,7 +600,8 @@ const COLUMNS: TColumn[] = [
     "Prod. H (in)",
     "Production size (what we send)",
     "production_height_in",
-    "Production height in inches"
+    "Production height in inches",
+    true
   ),
   numberColumn(
     "prodw",
@@ -536,7 +609,8 @@ const COLUMNS: TColumn[] = [
     "Prod. W (in)",
     "Production size (what we send)",
     "production_width_in",
-    "Production width in inches"
+    "Production width in inches",
+    true
   ),
   numberColumn(
     "prodqty",
@@ -566,6 +640,34 @@ const COLUMNS: TColumn[] = [
           tone={item.wastage && Number(item.wastage) > 0 ? "warn" : undefined}
         />
       ),
+  },
+  {
+    key: "wastage",
+    auto: true,
+    hideKey: "production_size",
+    label: "Wastage",
+    width: 112,
+    band: "Production size (what we send)",
+    render: ({ item, empty }) => {
+      if (empty || item.wastage === null || item.wastage === undefined) return null;
+      const extra = Number(item.wastage);
+      return (
+        <div
+          className="flex h-9 items-baseline justify-end gap-1 px-2.5 pt-2"
+          title="Production quantity minus site-measured quantity (as % of the measured quantity)"
+        >
+          <span className={cn("e9-mono text-body-xs-semibold", extra > 0 ? "text-warning-primary" : "text-primary")}>
+            {extra.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+          </span>
+          <span className="text-body-2xs-regular text-tertiary">
+            {item.unit === "sqft" ? "sq ft" : "Nos"}
+            {item.wastage_pct
+              ? ` · ${Number(item.wastage_pct).toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`
+              : ""}
+          </span>
+        </div>
+      );
+    },
   },
   {
     key: "prepress",
@@ -806,7 +908,8 @@ const COLUMNS: TColumn[] = [
     "Cert. H (in)",
     "6 · Certify & hand over",
     "certified_height_in",
-    "Certified height in inches"
+    "Certified height in inches",
+    true
   ),
   numberColumn(
     "certw",
@@ -814,7 +917,8 @@ const COLUMNS: TColumn[] = [
     "Cert. W (in)",
     "6 · Certify & hand over",
     "certified_width_in",
-    "Certified width in inches"
+    "Certified width in inches",
+    true
   ),
   numberColumn("certqty", "certified", "Cert. Qty", "6 · Certify & hand over", "certified_qty", "Certified quantity"),
   {
@@ -989,6 +1093,8 @@ type THistoryStep =
       changes: { id: string; before: Partial<TE9ScopeItem>; after: Partial<TE9ScopeItem> }[];
     }
   | { kind: "add" | "delete"; label: string; ids: string[] }
+  /** rows moved: undo puts them before `from` (null = the end); redo before `to` */
+  | { kind: "move"; label: string; ids: string[]; from: string | null; to: string | null }
   | { kind: "batch"; label: string; steps: THistoryStep[] };
 const HISTORY_LIMIT = 50;
 
@@ -1029,6 +1135,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     }
   }, [linkScope, linkQuery]);
   const [adding, setAdding] = useState(false);
+  const [rowMenu, setRowMenu] = useState<{ item: TE9ScopeItem; x: number; y: number } | null>(null);
+  /** rows cut with "Cut rows", waiting for "Paste rows here" */
+  const [cutIds, setCutIds] = useState<string[]>([]);
   const [panel, setPanel] = useState<TOpenPanel>(null);
   const [photoItem, setPhotoItem] = useState<TE9ScopeItem | null>(null);
   const [installPhotoItem, setInstallPhotoItem] = useState<TE9ScopeItem | null>(null);
@@ -1044,6 +1153,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const canEdit = data?.can_edit ?? false;
   const canSetUp = project.can_edit;
   const scope = enabledScopes.find((entry) => entry.key === scopeKey);
+  const sizeUnit: TE9SizeUnit = scope?.size_unit ?? "in";
   const hidden = new Set(project.e9.hidden_columns ?? []);
   const columns = COLUMNS.filter((column) => !hidden.has(column.hideKey));
 
@@ -1167,6 +1277,13 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       });
       return;
     }
+    if (step.kind === "move") {
+      await e9ProjectService.moveItems(workspaceSlug, project.id, {
+        ids: step.ids,
+        before: undoing ? step.from : step.to,
+      });
+      return;
+    }
     // add (undo = put rows aside) / delete (undo = bring them back)
     const bringBack = (step.kind === "delete") === undoing;
     for (const id of step.ids) {
@@ -1248,6 +1365,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
         (current) => current && { ...current, items: current.items.map((row) => (row.id === item.id ? updated : row)) },
         { revalidate: false }
       );
+      // a wall's totals include its parts, so a change to either one needs the sheet read again
+      if (updated.is_part || updated.parts_count > 0) await mutate();
     } catch (err) {
       const message = err && typeof err === "object" ? Object.values(err).flat().join(" ") : "";
       // nothing was saved, so there is nothing to undo
@@ -1308,7 +1427,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
           if (text.trim()) skipped += 1;
           return;
         }
-        const value = pastedValue(spec, text, item ?? ({} as TE9ScopeItem));
+        const value = pastedValue(spec, text, item ?? ({} as TE9ScopeItem), sizeUnit);
         if (value === undefined) skipped += 1;
         else if (spec.kind === "dcs") {
           Object.assign(patch, splitDcs(value ?? ""));
@@ -1428,6 +1547,76 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     }
   };
 
+  /** Put a new row (or a part of the wall above) next to a row; the codes below move down. */
+  const insertRow = async (anchor: TE9ScopeItem, side: "above" | "below", asPart = false) => {
+    try {
+      const result = await e9ProjectService.insertItems(workspaceSlug, project.id, {
+        [side === "above" ? "before" : "after"]: anchor.id,
+        is_part: asPart,
+      });
+      pushHistory({
+        kind: "add",
+        label: asPart ? "new part" : "new row",
+        ids: result.created.map((row) => row.id),
+      });
+      await mutate();
+      setToast({
+        type: "success",
+        title: asPart ? "Part added" : "Row inserted",
+        message:
+          result.renumbered > 0 && !asPart
+            ? `The rows below moved down by one (${result.renumbered} codes changed). Ctrl + Z undoes it.`
+            : "Ctrl + Z undoes it.",
+      });
+    } catch (failure) {
+      setToast({ type: "error", title: "Couldn't insert the row", message: errorText(failure) });
+    }
+  };
+
+  /** Move rows to sit above `target` (null = the end of the sheet). Works for drag and for cut & paste. */
+  const moveRows = async (ids: string[], target: TE9ScopeItem | null) => {
+    const order = items.filter((row) => row.scope === scopeKey).map((row) => row.id);
+    const moving = new Set(ids);
+    const lastIndex = Math.max(...ids.map((id) => order.indexOf(id)));
+    // the first row after the moved ones that stays put: where undo sends them back to
+    const from = order.slice(lastIndex + 1).find((id) => !moving.has(id)) ?? null;
+    if (target && moving.has(target.id)) return;
+    try {
+      const result = await e9ProjectService.moveItems(workspaceSlug, project.id, {
+        ids,
+        before: target?.id ?? null,
+      });
+      pushHistory({ kind: "move", label: `${ids.length} row(s) moved`, ids, from, to: target?.id ?? null });
+      await mutate();
+      setToast({
+        type: "success",
+        title: `${result.moved} row(s) moved`,
+        message: "Photos, DCs and issues went with them. Ctrl + Z undoes it.",
+      });
+    } catch (failure) {
+      setToast({ type: "error", title: "Couldn't move the rows", message: errorText(failure) });
+    }
+  };
+
+  const cutRows = (ids: string[]) => {
+    setCutIds(ids);
+    setToast({
+      type: "info",
+      title: `${ids.length} row(s) cut`,
+      message: "Right-click a row and choose Paste cut rows here.",
+    });
+  };
+  const pasteCutRows = async (target: TE9ScopeItem | null) => {
+    const ids = cutIds;
+    setCutIds([]);
+    if (ids.length) await moveRows(ids, target);
+  };
+  const dropRow = async (draggedId: string, onto: TE9ScopeItem) => {
+    // dragging one of several ticked rows takes all ticked rows along
+    const ids = selected.has(draggedId) ? rows.filter((row) => selected.has(row.id)).map((row) => row.id) : [draggedId];
+    await moveRows(ids, onto);
+  };
+
   // ---- speed: rows are memoised (one edit redraws one row) and long sheets draw only what is on screen ----
   const rowActionsRef = useRef<TRowHandlers | null>(null);
   const startFillRef = useRef<((event: ReactPointerEvent) => void) | null>(null);
@@ -1443,6 +1632,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       openFloors: (item) => setFloorPickItem(item),
       openHistory: (item) => setHistoryItem(item),
       startFill: (event) => startFillRef.current?.(event),
+      openMenu: (item, x, y) => setRowMenu({ item, x, y }),
+      dropRow: (draggedId, onto) => void rowActionsRef.current?.dropRow?.(draggedId, onto),
     }),
     []
   );
@@ -1576,11 +1767,11 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     for (let c = block.c1; c <= block.c2; c += 1) {
       const spec = gridCols[c] ? PASTE[gridCols[c].key] : undefined;
       if (!spec) continue;
-      const source = rows.slice(block.r1, block.r2 + 1).map((item) => cellText(spec, item));
+      const source = rows.slice(block.r1, block.r2 + 1).map((item) => cellText(spec, item, sizeUnit));
       fillValues(source, last - first + 1, down ? "down" : "up", mode).forEach((value, i) => {
         const r = down ? first + i : last - i;
         const item = rows[r];
-        const patch = item ? patchFor(spec, value, item) : undefined;
+        const patch = item ? patchFor(spec, value, item, sizeUnit) : undefined;
         if (patch) patches.set(r, { ...patches.get(r), ...patch });
       });
     }
@@ -1593,7 +1784,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const seriesPossible = (block: TBlock) => {
     for (let c = block.c1; c <= block.c2; c += 1) {
       const spec = gridCols[c] ? PASTE[gridCols[c].key] : undefined;
-      if (spec && canCountUp(rows.slice(block.r1, block.r2 + 1).map((item) => cellText(spec, item)))) return true;
+      if (spec && canCountUp(rows.slice(block.r1, block.r2 + 1).map((item) => cellText(spec, item, sizeUnit))))
+        return true;
     }
     return false;
   };
@@ -1620,7 +1812,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       .map((item) =>
         gridCols
           .slice(block.c1, block.c2 + 1)
-          .map((column) => (PASTE[column.key] ? cellText(PASTE[column.key], item) : ""))
+          .map((column) => (PASTE[column.key] ? cellText(PASTE[column.key], item, sizeUnit) : ""))
           .join("\t")
       )
       .join("\n");
@@ -1951,7 +2143,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     };
     requestAnimationFrame(frame);
   };
-  rowActionsRef.current = { save, toggle, remove: removeRow, openBand: toggleBand };
+  rowActionsRef.current = { save, toggle, remove: removeRow, openBand: toggleBand, dropRow };
   const setAllBands = (open: boolean) => {
     const next = new Set(
       open ? bandGroups.map((group) => group.label).filter((label) => label !== ALWAYS_OPEN_BAND) : []
@@ -2117,9 +2309,31 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                   onClick={() => addRows(1)}
                 />
               )}
+              {canEdit && selected.size > 0 && (
+                <Button
+                  variant="secondary"
+                  size="md"
+                  stretch="auto"
+                  label="Insert row"
+                  onClick={() => {
+                    const anchor = rows.find((row) => selected.has(row.id));
+                    if (anchor) void insertRow(anchor, "above");
+                  }}
+                />
+              )}
               <MoreMenu
                 items={[
                   canEdit && { label: "Add 10 rows", onClick: () => addRows(10) },
+                  canEdit &&
+                    selected.size > 0 && {
+                      label: `Cut ${selected.size} ticked row(s)`,
+                      onClick: () => cutRows(rows.filter((row) => selected.has(row.id)).map((row) => row.id)),
+                    },
+                  canEdit &&
+                    cutIds.length > 0 && {
+                      label: `Paste ${cutIds.length} cut row(s) at the end`,
+                      onClick: () => void pasteCutRows(null),
+                    },
                   canEdit &&
                     blankRows.length > 0 && {
                       label: `Delete ${blankRows.length} blank row(s)`,
@@ -2142,6 +2356,25 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
               />
             </div>
           </div>
+
+          {rowMenu && (
+            <RowMenu
+              menu={rowMenu}
+              cutCount={cutIds.length}
+              onClose={() => setRowMenu(null)}
+              onInsert={(side) => void insertRow(rowMenu.item, side)}
+              onAddPart={() => void insertRow(rowMenu.item, "below", true)}
+              onCut={() =>
+                cutRows(
+                  selected.has(rowMenu.item.id)
+                    ? rows.filter((r) => selected.has(r.id)).map((r) => r.id)
+                    : [rowMenu.item.id]
+                )
+              }
+              onPaste={() => void pasteCutRows(rowMenu.item)}
+              onDelete={() => void removeRow(rowMenu.item)}
+            />
+          )}
 
           {/* Sheet */}
           <div className="overflow-hidden rounded-lg border border-[color-mix(in_srgb,var(--e9-ink)_28%,transparent)] bg-surface-1">
@@ -2239,6 +2472,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                         doorOpen={bandOpenness(group.label) >= 1}
                         columns={group.columns.filter((column) => bandOpenness(column.band) > 0)}
                         onOpen={() => toggleBand(group.label)}
+                        sizeUnit={sizeUnit}
                       />
                     ))}
                     <th className="border-b border-[var(--e9-grid)] bg-[var(--e9-paper)]" />
@@ -2439,12 +2673,14 @@ function BandHeads({
   doorOpen,
   columns,
   onOpen,
+  sizeUnit,
 }: {
   group: TBandGroup;
   door: boolean;
   doorOpen: boolean;
   columns: TColumn[];
   onOpen: () => void;
+  sizeUnit: TE9SizeUnit;
 }) {
   const color = BAND_COLORS[group.label] ?? GREY;
   return (
@@ -2475,7 +2711,7 @@ function BandHeads({
             column.auto && "italic"
           )}
         >
-          {column.label}
+          {sizeHeading(column.label, sizeUnit)}
         </th>
       ))}
     </>
@@ -2577,7 +2813,7 @@ function BandCells({
               column.className
             )}
           >
-            {column.render(ctx)}
+            {column.render(ctx.item.is_part && !PART_COLUMNS.has(column.key) ? { ...ctx, disabled: true } : ctx)}
             {mark.handle && (
               <span
                 data-fill-handle=""
@@ -2618,6 +2854,7 @@ type TRowHandlers = {
   toggle: (id: string) => void;
   remove: (item: TE9ScopeItem) => unknown;
   openBand: (band: string) => void;
+  dropRow?: (draggedId: string, onto: TE9ScopeItem) => unknown;
 };
 type TRowActions = TRowHandlers & {
   openPhotos: (item: TE9ScopeItem) => void;
@@ -2626,6 +2863,10 @@ type TRowActions = TRowHandlers & {
   openFloors: (item: TE9ScopeItem) => void;
   openHistory: (item: TE9ScopeItem) => void;
   startFill: (event: ReactPointerEvent) => void;
+  /** right-click menu for a row */
+  openMenu: (item: TE9ScopeItem, x: number, y: number) => void;
+  /** a row was dragged onto another row (drop above it) */
+  dropRow: (draggedId: string, onto: TE9ScopeItem) => void;
 };
 
 /** One tracker row. Memoised: it redraws only when its own item (or the layout) changes. */
@@ -2675,8 +2916,30 @@ const TrackerRow = memo(function TrackerRow({
   return (
     <tr
       data-item={item.id}
+      onContextMenu={
+        canEdit
+          ? (event) => {
+              event.preventDefault();
+              actions.openMenu(item, event.clientX, event.clientY);
+            }
+          : undefined
+      }
+      onDragOver={
+        canEdit ? (event) => event.dataTransfer.types.includes("text/e9-row") && event.preventDefault() : undefined
+      }
+      onDrop={
+        canEdit
+          ? (event) => {
+              const draggedId = event.dataTransfer.getData("text/e9-row");
+              if (!draggedId) return;
+              event.preventDefault();
+              actions.dropRow(draggedId, item);
+            }
+          : undefined
+      }
       className={cn(
         "group hover:bg-[var(--e9-hover)]",
+        item.is_part && "bg-[var(--e9-band)]/60",
         ctx.empty && "opacity-70",
         item.hold_status === "On Hold" && "bg-[#F59E0B]/[0.08]",
         item.hold_status === "Cancelled" && "opacity-50"
@@ -2698,7 +2961,33 @@ const TrackerRow = memo(function TrackerRow({
               onChange={() => actions.toggle(item.id)}
             />
           )}
-          {item.item_code}
+          {canEdit && (
+            <span
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.setData("text/e9-row", item.id);
+                event.dataTransfer.effectAllowed = "move";
+              }}
+              role="img"
+              aria-label={`Drag ${item.item_code} to move it`}
+              title="Drag to move this row"
+              className="cursor-grab text-placeholder opacity-0 group-hover:opacity-100"
+            >
+              ⠿
+            </span>
+          )}
+          {item.is_part ? (
+            <span title={`A part of ${item.part_of ?? "the item above"}`}>
+              ↳ <span className="text-body-2xs-regular text-tertiary">part of {item.part_of}</span>
+            </span>
+          ) : (
+            item.item_code
+          )}
+          {item.parts_count > 0 && (
+            <span className="text-body-2xs-regular text-tertiary" title={`${item.parts_count} part(s) below`}>
+              +{item.parts_count}
+            </span>
+          )}
           {item.hold_status && (
             <span
               role="img"
@@ -2763,6 +3052,71 @@ const TrackerRow = memo(function TrackerRow({
     </tr>
   );
 });
+
+/** Right-click menu on a row. */
+function RowMenu({
+  menu,
+  cutCount,
+  onClose,
+  onInsert,
+  onAddPart,
+  onCut,
+  onPaste,
+  onDelete,
+}: {
+  menu: { item: TE9ScopeItem; x: number; y: number };
+  cutCount: number;
+  onClose: () => void;
+  onInsert: (side: "above" | "below") => void;
+  onAddPart: () => void;
+  onCut: () => void;
+  onPaste: () => void;
+  onDelete: () => void;
+}) {
+  useEffect(() => {
+    const close = () => onClose();
+    const key = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", key);
+    };
+  }, [onClose]);
+  const entries: { label: string; run: () => void; danger?: boolean }[] = [
+    { label: "Insert row above", run: () => onInsert("above") },
+    { label: "Insert row below", run: () => onInsert("below") },
+    ...(menu.item.is_part ? [] : [{ label: "Add part below", run: onAddPart }]),
+    { label: "Cut row", run: onCut },
+    ...(cutCount > 0 ? [{ label: `Paste ${cutCount} cut row(s) here`, run: onPaste }] : []),
+    { label: "Delete row", run: onDelete, danger: true },
+  ];
+  return (
+    <div
+      role="menu"
+      aria-label={`Row ${menu.item.item_code}`}
+      className="fixed z-50 min-w-48 rounded-xl border border-subtle bg-surface-1 py-1 shadow-raised-200"
+      style={{ left: Math.min(menu.x, window.innerWidth - 220), top: Math.min(menu.y, window.innerHeight - 220) }}
+    >
+      {entries.map((entry) => (
+        <button
+          key={entry.label}
+          type="button"
+          role="menuitem"
+          onClick={entry.run}
+          className={cn(
+            "block w-full px-3 py-1.5 text-left text-body-xs-medium hover:bg-layer-1-hover",
+            entry.danger ? "text-danger-primary" : "text-primary"
+          )}
+        >
+          {entry.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function MoreMenu({ items }: { items: (false | undefined | { label: string; onClick: () => void })[] }) {
   const [open, setOpen] = useState(false);

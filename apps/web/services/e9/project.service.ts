@@ -87,6 +87,32 @@ export class E9ProjectService extends APIService {
       });
   }
 
+  /** Put new rows in the middle of a sheet (or add a part under a wall). The codes below move down. */
+  async insertItems(
+    workspaceSlug: string,
+    projectId: string,
+    body: { before?: string; after?: string; count?: number; is_part?: boolean }
+  ): Promise<{ created: TE9ScopeItem[]; renumbered: number }> {
+    return this.post(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/items/insert/`, body)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  /** Move rows (drag, or cut and paste) on the same sheet. before = null puts them at the end. */
+  async moveItems(
+    workspaceSlug: string,
+    projectId: string,
+    body: { ids: string[]; before: string | null }
+  ): Promise<{ moved: number; renumbered: number }> {
+    return this.post(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/items/move/`, body)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
   async updateItem(
     workspaceSlug: string,
     projectId: string,

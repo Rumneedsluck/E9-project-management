@@ -31,6 +31,9 @@ export type TE9BoqLine = {
   pending: TE9Num;
   allowed: TE9Num;
   on_tracker: TE9Num;
+  /** production minus site-measured quantity, and as % of the measured quantity (null = no production typed) */
+  wastage?: TE9Num | null;
+  wastage_pct?: string | null;
   produced: TE9Num;
   installed: TE9Num;
   extra: TE9Num;
@@ -144,6 +147,9 @@ export type TE9LogItem = {
   /** DC log only: quantity sent on this DC (null = not typed) and whether the item went in parts */
   sent?: TE9Num | null;
   partial?: boolean;
+  wastage?: TE9Num | null;
+  wastage_pct?: string | null;
+  part_count?: number;
 };
 
 export type TE9JobCard = {

@@ -39,11 +39,18 @@ export function E9VariancePanel({ lines }: { lines: TE9BoqLine[] }) {
     "Status",
     "Client change (billable)",
     "Billable qty",
+    "Wastage",
   ];
+  // wastage added up per unit (sq ft and Nos are never mixed)
+  const wasteByUnit = new Map<string, number>();
+  for (const line of lines)
+    if (line.wastage !== null && line.wastage !== undefined)
+      wasteByUnit.set(line.unit, (wasteByUnit.get(line.unit) ?? 0) + n(line.wastage));
+  const wasteTotals = [...wasteByUnit];
   return (
     <E9Panel title="Variance · BOQ vs produced vs certified">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1100px] text-left text-body-xs-regular">
+        <table className="w-full min-w-[1200px] text-left text-body-xs-regular">
           <thead>
             <tr className="border-b border-subtle text-body-2xs-semibold text-tertiary">
               {headings.map((heading, index) => (
@@ -88,10 +95,28 @@ export function E9VariancePanel({ lines }: { lines: TE9BoqLine[] }) {
                   <td className="px-3 py-2 text-right font-semibold tabular-nums">
                     {billable === null ? "—" : fmt(billable)}
                   </td>
+                  <td
+                    className={cn("px-3 py-2 text-right tabular-nums", n(line.wastage) > 0 && "text-warning-primary")}
+                    title="Production minus site-measured quantity. It does not change when the BOQ is amended."
+                  >
+                    {line.wastage === null || line.wastage === undefined
+                      ? "—"
+                      : `${fmt(line.wastage)}${line.wastage_pct ? ` · ${fmt(line.wastage_pct)}%` : ""}`}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
+          <tfoot>
+            {wasteTotals.map(([unit, total]) => (
+              <tr key={unit} className="border-t border-subtle text-body-2xs-semibold text-secondary">
+                <td className="px-3 py-2" colSpan={12}>
+                  Total wastage in {unitText(unit as TE9BoqLine["unit"])}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmt(total)}</td>
+              </tr>
+            ))}
+          </tfoot>
         </table>
       </div>
       <p className="border-t border-subtle px-5 py-2.5 text-body-2xs-regular text-tertiary">
