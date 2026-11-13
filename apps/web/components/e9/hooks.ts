@@ -38,7 +38,10 @@ type TItemsData = Awaited<ReturnType<typeof e9ProjectService.listItems>>;
 export const keepUnchangedRows = (previous: TItemsData | undefined, fresh: TItemsData): TItemsData => {
   if (!previous) return fresh;
   const before = new Map(previous.items.map((item) => [item.id, item]));
-  let same = previous.items.length === fresh.items.length && previous.can_edit === fresh.can_edit;
+  let same =
+    previous.items.length === fresh.items.length &&
+    previous.can_edit === fresh.can_edit &&
+    previous.can_bill === fresh.can_bill;
   const items = fresh.items.map((item, index) => {
     const old = before.get(item.id);
     if (old && JSON.stringify(old) === JSON.stringify(item)) {

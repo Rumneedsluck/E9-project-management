@@ -17,6 +17,7 @@ import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { DateCell, NumberCell, SelectCell, TextCell } from "./cells";
 import { errorText } from "../commercial/shared";
+import { onTabListKeyDown } from "../tab-keys";
 import { fromDisplay, sizeHeading, toDisplay } from "./sizes";
 import type { TE9SizeUnit } from "./sizes";
 import {
@@ -64,6 +65,8 @@ const GREY = "#6B7280";
 const siteIssuesFor = (scope: string) => SITE_ISSUES[scope as TE9ScopeKey] ?? SITE_ISSUES.internal_signages;
 
 type TRowContext = {
+  /** may this person change billing / hold fields (admins only) */
+  canBill: boolean;
   item: TE9ScopeItem;
   scope: TE9ProjectScope | undefined;
   disabled: boolean;
@@ -130,6 +133,18 @@ const PART_COLUMNS = new Set([
   "prodw",
   "prodqty",
   "remarks",
+]);
+
+/** Billing and hold columns: only admins change these (members run the tracker, admins run the money). */
+const BILLING_COLUMNS = new Set([
+  "certh",
+  "certw",
+  "certqty",
+  "holdstatus",
+  "holdreason",
+  "holdsince",
+  "billnow",
+  "billwhen",
 ]);
 
 /** A reversed copy (the target library has no toReversed yet). */
@@ -1151,6 +1166,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 
   const items = useMemo(() => data?.items ?? [], [data]);
   const canEdit = data?.can_edit ?? false;
+  const canBill = data?.can_bill ?? false;
   const canSetUp = project.can_edit;
   const scope = enabledScopes.find((entry) => entry.key === scopeKey);
   const sizeUnit: TE9SizeUnit = scope?.size_unit ?? "in";
@@ -1639,6 +1655,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   );
   const rowShared = useMemo<TRowShared>(
     () => ({
+      canBill,
       floorListId,
       boqListId,
       boqNos,
@@ -1648,7 +1665,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       workspaceSlug,
       projectId: project.id,
     }),
-    [floorListId, boqListId, boqNos, boqLineScope, boqLineForScope, scopeLabel, workspaceSlug, project.id]
+    [canBill, floorListId, boqListId, boqNos, boqLineScope, boqLineForScope, scopeLabel, workspaceSlug, project.id]
   );
   const layoutRef = useRef<{ sig: string; groups: TOpenGroup[] }>({ sig: "", groups: [] });
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -2201,6 +2218,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
               className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1 py-0.5"
               role="tablist"
               aria-label="Scope sheets"
+              onKeyDown={onTabListKeyDown}
             >
               {enabledScopes.map((entry) => {
                 const active = entry.key === scopeKey;
@@ -2210,6 +2228,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
                     type="button"
                     role="tab"
                     aria-selected={active}
+                    tabIndex={active ? 0 : -1}
                     onClick={() => setScopeKey(entry.key)}
                     className={cn(
                       "flex shrink-0 items-center gap-2 rounded-md px-3.5 py-1.5 text-body-xs-semibold whitespace-nowrap transition-colors duration-150",
@@ -2813,7 +2832,11 @@ function BandCells({
               column.className
             )}
           >
-            {column.render(ctx.item.is_part && !PART_COLUMNS.has(column.key) ? { ...ctx, disabled: true } : ctx)}
+            {column.render(
+              (ctx.item.is_part && !PART_COLUMNS.has(column.key)) || (BILLING_COLUMNS.has(column.key) && !ctx.canBill)
+                ? { ...ctx, disabled: true }
+                : ctx
+            )}
             {mark.handle && (
               <span
                 data-fill-handle=""
@@ -2840,6 +2863,7 @@ const NO_PHOTOS: TE9Attachment[] = [];
 type TOpenGroup = { label: string; door: boolean; columns: TColumn[] };
 type TRowShared = Pick<
   TRowContext,
+  | "canBill"
   | "floorListId"
   | "boqListId"
   | "boqNos"

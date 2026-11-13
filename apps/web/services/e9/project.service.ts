@@ -53,7 +53,10 @@ export class E9ProjectService extends APIService {
   }
 
   // ---- tracker items ----
-  async listItems(workspaceSlug: string, projectId: string): Promise<{ can_edit: boolean; items: TE9ScopeItem[] }> {
+  async listItems(
+    workspaceSlug: string,
+    projectId: string
+  ): Promise<{ can_edit: boolean; can_bill: boolean; items: TE9ScopeItem[] }> {
     return this.get(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/items/`)
       .then((response) => response?.data)
       .catch((error) => {

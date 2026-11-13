@@ -278,6 +278,9 @@ export type TE9Certifications = {
   floors: string[];
   scopes: { key: string; label: string }[];
   overall: TE9Readiness;
+  /** sq ft per floor (an item on 2 floors counts half on each) and the project total (each item once) */
+  floor_sqft?: { floor: string; sqft: string }[];
+  total_sqft?: string;
   certifications: TE9Certification[];
 };
 

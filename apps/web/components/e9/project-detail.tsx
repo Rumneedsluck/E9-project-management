@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import { onTabListKeyDown } from "./tab-keys";
 import type { ReactNode } from "react";
 import { observer } from "mobx-react";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -112,13 +113,18 @@ function SubTabs({
   onChange: (key: TSub) => void;
 }) {
   return (
-    <div role="tablist" className="flex w-fit gap-0.5 rounded-md border border-subtle bg-surface-1 p-0.5">
+    <div
+      role="tablist"
+      onKeyDown={onTabListKeyDown}
+      className="flex w-fit gap-0.5 rounded-md border border-subtle bg-surface-1 p-0.5"
+    >
       {options.map((option) => (
         <button
           key={option.key}
           type="button"
           role="tab"
           aria-selected={value === option.key}
+          tabIndex={value === option.key ? 0 : -1}
           onClick={() => onChange(option.key)}
           className={cn(
             "rounded-[3px] px-3 py-1 text-body-xs-semibold transition-colors",
@@ -207,6 +213,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
         className="-mb-1 flex gap-1 overflow-x-auto border-b border-subtle"
         role="tablist"
         aria-label="Project views"
+        onKeyDown={onTabListKeyDown}
       >
         {VIEWS.map((entry) => (
           <button
@@ -214,6 +221,7 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
             type="button"
             role="tab"
             aria-selected={view === entry.key}
+            tabIndex={view === entry.key ? 0 : -1}
             onClick={() => setView(entry.key)}
             className={cn(
               "-mb-px shrink-0 border-b-2 px-4 py-2.5 text-body-sm-medium tracking-wide whitespace-nowrap transition-colors",

@@ -26,7 +26,7 @@ import type { TE9Project } from "../types";
 import { E9ProgressBar } from "../ui";
 import { E9BillingPage } from "./billing-page";
 import { printJmcSheet } from "./jmc-sheet";
-import { E9RefFiles, FormField, SmallButton, inputClass, safeHref, showError } from "./shared";
+import { E9RefFiles, FormField, SmallButton, fmt, inputClass, safeHref, showError } from "./shared";
 import type { TE9Certification, TE9Certifications, TE9Readiness } from "./types";
 import { e9Confirm } from "../confirm";
 
@@ -117,6 +117,29 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
           text={data.billing_open ? "Open – start a bill below" : "Starts after certification is done"}
         />
       </ol>
+
+      {data.floor_sqft && data.floor_sqft.length > 0 && (
+        <section
+          aria-label="Area by floor"
+          className="flex flex-col gap-3 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100"
+        >
+          <h3 className="text-body-sm-semibold text-primary">Area by floor</h3>
+          <ul className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
+            {data.floor_sqft.map((entry) => (
+              <li key={entry.floor} className="flex items-baseline justify-between gap-2 text-body-xs-regular">
+                <span className="truncate text-secondary">{entry.floor}</span>
+                <span className="e9-mono tabular-nums">{fmt(entry.sqft)} sq ft</span>
+              </li>
+            ))}
+          </ul>
+          <p className="border-t border-subtle pt-2 text-body-xs-semibold text-primary">
+            Total {fmt(data.total_sqft ?? "0")} sq ft
+            <span className="ml-2 text-body-2xs-regular text-tertiary">
+              An item on two floors is split evenly between them, and counted once in the total.
+            </span>
+          </p>
+        </section>
+      )}
 
       {/* STEP 1 */}
       <section className="flex flex-col gap-5 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 sm:p-6">
