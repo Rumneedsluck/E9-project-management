@@ -322,7 +322,10 @@ class TestCertification:
     @pytest.mark.django_db
     def test_a_signed_floor_jmc_opens_part_billing_and_bills_need_a_jmc(self, session_client, workspace, project):
         po, line_id = setup_boq(session_client, workspace, project, qty="10")
-        make_signages(session_client, workspace, project, count=2)
+        for row in make_signages(session_client, workspace, project, count=2):
+            session_client.patch(
+                url(workspace, project, f"items/{row['id']}/"), {"floor_area": "2nd Floor"}, format="json"
+            )
         data = sign_jmc(session_client, workspace, project, floor="2nd Floor")
         assert data["billing_open"] is True and data["state"] == "part_certified"
         bills_url = url(workspace, project, "bills/")

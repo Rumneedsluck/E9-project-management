@@ -323,9 +323,21 @@ def _reprint_payload(reprint, scopes, vendors):
     }
 
 
+GUEST_MONEY_MESSAGE = "Guests can't see rates, purchase orders or bills."
+
+
+def _sees_money(user, slug, project_id):
+    """Rates, PO values and bills are for people who run the tracker (members and admins), never guests."""
+    return _can_update_items(user, slug, project_id)
+
+
 def boq_payload(project, user, slug):
     scopes = scope_map(project)
     lines, items = boq.line_rows(project)
+    money = _sees_money(user, slug, project.id)
+    if not money:
+        # quantities stay (guests follow progress); every rate is removed
+        lines = [{**line, "rate": None} for line in lines]
     pos = (
         E9PurchaseOrder.objects.filter(project=project)
         .prefetch_related("amendments__changes__boq_line", "amendments__new_lines")
@@ -337,12 +349,12 @@ def boq_payload(project, user, slug):
     return {
         "can_edit": _can_edit(user, slug, project.id),
         "can_update": _can_update_items(user, slug, project.id),
-        "pos": [_po_payload(po) for po in pos],
+        "pos": [_po_payload(po) for po in pos] if money else [],
         "lines": lines,
         "reprints": [_reprint_payload(reprint, scopes, vendors) for reprint in reprints],
         "reprint_reasons": tracker.REPRINT_REASONS,
         "unlinked": unlinked,
-        "bills": boq.bill_rows(project),
+        "bills": boq.bill_rows(project) if money else [],
         "totals": {
             "excess_lines": sum(1 for line in lines if line["status"] == "excess"),
             "pending_lines": sum(1 for line in lines if line["status"] == "pending"),
@@ -954,9 +966,15 @@ def _save_bill_lines(project, bill, rows):
         raise Invalid("lines", "Send a list of certified quantities.")
     # one bill at a time per project, so two people cannot both certify the last units of a line
     Project.objects.select_for_update().filter(pk=project.id).first()
-    lines = {row["id"]: row for row in boq.line_rows(project)[0]}
+    # a bill may only certify what ITS signed JMC covers: a floor or scope JMC limits it to those rows
+    cert = bill.certification if bill.certification_id else None
+    lines = {row["id"]: row for row in boq.line_rows(project, cert=cert)[0]}
+    earlier = E9BillLine.objects.filter(project=project, bill__deleted_at__isnull=True).exclude(bill=bill)
+    if cert is not None and not cert.is_whole:
+        # quantities certified on other JMCs belong to other floors / scopes
+        earlier = earlier.filter(bill__certification=cert)
     others = defaultdict(lambda: Decimal("0"))
-    for other in E9BillLine.objects.filter(project=project, bill__deleted_at__isnull=True).exclude(bill=bill):
+    for other in earlier:
         others[str(other.boq_line_id)] += other.certified_qty
     parsed = []
     for row in rows:
@@ -971,8 +989,9 @@ def _save_bill_lines(project, bill, rows):
         if qty > limit:
             raise Invalid(
                 "lines",
-                f"{line['line_no']}: only {limit} can be certified (approved BOQ qty + client-change reprints, "
-                "minus what other bills already certified). Unapproved extra cannot be billed – get it amended first.",
+                f"{line['line_no']}: only {limit} can be certified on this JMC (approved BOQ qty + client-change "
+                "reprints for what the JMC covers, minus what other bills already certified). "
+                "Unapproved extra cannot be billed – get it amended first.",
             )
         parsed.append((line_id, qty))
     E9BillLine.objects.filter(bill=bill).delete(soft=False)
@@ -993,6 +1012,8 @@ class E9BillListEndpoint(BaseAPIView):
         project = _project(request, slug, project_id)
         if project is None:
             return _not_found()
+        if not _sees_money(request.user, slug, project.id):
+            return _forbidden(GUEST_MONEY_MESSAGE)
         return Response(bills_payload(project, request.user, slug))
 
     @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
@@ -1083,6 +1104,8 @@ class E9SummaryEndpoint(BaseAPIView):
     @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
     def get(self, request, slug):
         projects = list(_visible_projects(request.user, slug).select_related("e9_profile").order_by("name"))
+        # a guest on any of these projects sees none of the money: only people who run the tracker see it
+        projects = [project for project in projects if _sees_money(request.user, slug, project.id)]
         states = certification.project_states(projects)
         rows = []
         for project in projects:

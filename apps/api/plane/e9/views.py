@@ -235,8 +235,34 @@ def _rows_by_id(project, ids):
     return list(E9ScopeItem.objects.filter(project=project, pk__in=list(ids)).only("id", "scope"))
 
 
+# billing and hold fields: only a project or workspace admin may change them
+ADMIN_ONLY_FIELDS = (
+    "bill_now",
+    "bill_when",
+    "certified_height_in",
+    "certified_width_in",
+    "certified_qty",
+    "hold_status",
+    "hold_reason",
+    "hold_since",
+)
+
+
+def _can_change_billing(user, slug, project_id):
+    return ProjectMember.objects.filter(
+        member=user,
+        workspace__slug=slug,
+        project_id=project_id,
+        role=ROLE.ADMIN.value,
+        is_active=True,
+    ).exists() or _is_workspace_admin(user, slug)
+
+
 def _blocked_fields(user, slug, project_id, datas):
-    """A message when this person may not change one of these fields (nothing is blocked yet)."""
+    """A message when this person may not change one of these fields (billing/hold fields: admins only)."""
+    touched = sorted({field for data in datas for field in ADMIN_ONLY_FIELDS if field in (data or {})})
+    if touched and not _can_change_billing(user, slug, project_id):
+        return "Only an admin can change billing fields (Bill now, Bill when, certified quantities, hold status)."
     return None
 
 
@@ -257,6 +283,7 @@ class E9ScopeItemListEndpoint(BaseAPIView):
         return Response(
             {
                 "can_edit": _can_update_items(request.user, slug, project.id),
+                "can_bill": _can_change_billing(request.user, slug, project.id),
                 "items": E9ScopeItemSerializer(
                     items, many=True, context={"scopes": scopes, "resent": _resent_counts(project)}
                 ).data,
@@ -284,6 +311,9 @@ class E9ScopeItemListEndpoint(BaseAPIView):
             return Response({"count": f"Add between 1 and {MAX_ROWS_PER_ADD} rows at a time."}, status=400)
 
         values = {key: value for key, value in request.data.items() if key not in ("scope", "count")}
+        blocked = _blocked_fields(request.user, slug, project.id, [values])
+        if blocked:
+            return Response({"error": blocked}, status=403)
         serializer = E9ScopeItemSerializer(data=values, context={"scope": scope})
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -616,6 +646,9 @@ class E9ScopeItemDetailEndpoint(BaseAPIView):
             return Response({"error": "Item not found."}, status=status.HTTP_404_NOT_FOUND)
         if not _can_update_items(request.user, slug, project_id):
             return Response({"error": "Guests can view the tracker but not change it."}, status=403)
+        blocked = _blocked_fields(request.user, slug, project_id, [request.data])
+        if blocked:
+            return Response({"error": blocked}, status=403)
         scopes = scope_map(item.project)
         with transaction.atomic():
             # lock the row: two people editing different cells of one row must not overwrite each other
