@@ -118,7 +118,10 @@ class E9ScopeListEndpoint(BaseAPIView):
             bill_when = row.get("bill_when") or (current[key].bill_when if key else "Signed off")
             if bill_when not in tracker.SCOPE_BILL_WHEN:
                 return Response({"scopes": f"'{label}': bill when must be Signed off or Delivered."}, status=400)
-            cleaned.append((key, label, prefix, unit_mode, bool(row.get("enabled", True)), bill_when))
+            size_unit = row.get("size_unit") or (current[key].size_unit if key else "in")
+            if size_unit not in tracker.SIZE_UNITS:
+                return Response({"scopes": f"'{label}': sizes can be typed in inches, feet or mm."}, status=400)
+            cleaned.append((key, label, prefix, unit_mode, bool(row.get("enabled", True)), bill_when, size_unit))
         sent_keys = {item[0] for item in cleaned if item[0]}
         # standard scopes are never removed (only switched off); keep any that were not sent
         kept_prefixes = [scope.prefix for key, scope in current.items() if key not in sent_keys and scope.is_standard]
@@ -134,12 +137,12 @@ class E9ScopeListEndpoint(BaseAPIView):
                 )
 
         # 2) save
-        fields = ["label", "prefix", "unit_mode", "enabled", "bill_when"]
+        fields = ["label", "prefix", "unit_mode", "enabled", "bill_when", "size_unit"]
         with transaction.atomic():
             for scope in removed:
                 record(project, request.user, "scope", "deleted", None, scope.label, old=scope.label)
                 scope.delete(soft=False)
-            for order, (key, label, prefix, unit_mode, enabled, bill_when) in enumerate(cleaned):
+            for order, (key, label, prefix, unit_mode, enabled, bill_when, size_unit) in enumerate(cleaned):
                 if key:
                     scope = current[key]
                     before = snapshot(scope, fields)
@@ -153,6 +156,7 @@ class E9ScopeListEndpoint(BaseAPIView):
                     before = None
                 scope.label, scope.prefix, scope.unit_mode, scope.enabled = label, prefix, unit_mode, enabled
                 scope.bill_when = bill_when
+                scope.size_unit = size_unit
                 scope.sort_order = (order + 1) * 1000
                 if before is None:
                     scope.save(created_by_id=request.user.id)

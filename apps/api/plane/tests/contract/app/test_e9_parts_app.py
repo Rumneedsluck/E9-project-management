@@ -309,3 +309,78 @@ class TestBigSheets:
         listed = sheet(session_client, workspace, project)
         assert len(listed) == 601 and listed[-1]["item_code"] == "W601"
         assert [row["item_number"] for row in listed] == list(range(1, 602))
+
+
+def boq_url(workspace, project, path=""):
+    return f"/api/workspaces/{workspace.slug}/e9/projects/{project.id}/boq/{path}"
+
+
+@pytest.mark.django_db
+class TestPartsAndWastageInTheBoq:
+    def _wall_with_a_part(self, session_client, workspace, project):
+        po = session_client.post(
+            boq_url(workspace, project, "pos/"), {"kind": "original", "number": "PO-1"}, format="json"
+        )
+        po_id = po.data["pos"][0]["id"]
+        session_client.post(
+            boq_url(workspace, project, "lines/"),
+            {
+                "po": po_id,
+                "line_no": "BO1",
+                "scope": "wall_graphics",
+                "description": "Walls",
+                "unit": "sqft",
+                "qty": "1000",
+                "rate": "10",
+            },
+            format="json",
+        )
+        wall, part = make_rows(session_client, workspace, project, 2)
+        common = {"description": "wall", "boq_item_no": "BO1", "qty": "1"}
+        session_client.patch(
+            item_url(workspace.slug, project.id, wall["id"]),
+            {
+                **common,
+                "height_in": "120",
+                "width_in": "120",
+                "production_height_in": "132",
+                "production_width_in": "120",
+            },
+            format="json",
+        )
+        session_client.patch(
+            item_url(workspace.slug, project.id, part["id"]),
+            {**common, "height_in": "60", "width_in": "120", "is_part": True},
+            format="json",
+        )
+        return wall, part
+
+    def test_the_boq_counts_a_wall_once_and_adds_its_parts(self, session_client, workspace, project):
+        self._wall_with_a_part(session_client, workspace, project)
+        data = session_client.get(boq_url(workspace, project)).data
+        line = next(row for row in data["lines"] if row["line_no"] == "BO1")
+        assert Decimal(line["on_tracker"]) == Decimal("160.00")  # 110 (wall production) + 50 (part, no production size)
+        assert len(line["item_ids"]) == 1  # one item, not two
+
+    def test_wastage_per_line_is_production_minus_site_and_ignores_boq_edits(self, session_client, workspace, project):
+        self._wall_with_a_part(session_client, workspace, project)
+        line = next(
+            row for row in session_client.get(boq_url(workspace, project)).data["lines"] if row["line_no"] == "BO1"
+        )
+        assert Decimal(line["wastage"]) == Decimal(
+            "10.00"
+        )  # wall made 110 vs 100 measured; the part has no production size
+        assert line["wastage_pct"] == "6.7"  # 10 of 150 sq ft measured (100 + 50)
+        session_client.patch(boq_url(workspace, project, f"lines/{line['id']}/"), {"qty": "5000"}, format="json")
+        again = next(
+            row for row in session_client.get(boq_url(workspace, project)).data["lines"] if row["line_no"] == "BO1"
+        )
+        assert again["wastage"] == line["wastage"] and again["wastage_pct"] == line["wastage_pct"]
+
+    def test_production_sent_view_shows_wastage_for_the_wall(self, session_client, workspace, project):
+        wall, _ = self._wall_with_a_part(session_client, workspace, project)
+        session_client.patch(item_url(workspace.slug, project.id, wall["id"]), {"jc_no": "JC-9"}, format="json")
+        logs = session_client.get(f"/api/workspaces/{workspace.slug}/e9/projects/{project.id}/logs/").data
+        rows = [row for card in logs["job_cards"] for row in card["items"]]
+        assert rows, logs["job_cards"]
+        assert rows[0]["wastage"] == "10.00" and rows[0]["part_count"] == 1

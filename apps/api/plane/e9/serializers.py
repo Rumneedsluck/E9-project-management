@@ -275,7 +275,17 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
 class E9ProjectScopeSerializer(serializers.ModelSerializer):
     class Meta:
         model = E9ProjectScope
-        fields = ["key", "label", "prefix", "unit_mode", "is_standard", "enabled", "sort_order", "bill_when"]
+        fields = [
+            "key",
+            "label",
+            "prefix",
+            "unit_mode",
+            "is_standard",
+            "enabled",
+            "sort_order",
+            "bill_when",
+            "size_unit",
+        ]
         read_only_fields = ["key", "is_standard"]
 
 

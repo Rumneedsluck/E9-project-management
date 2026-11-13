@@ -788,6 +788,9 @@ def logs_payload(project, user, slug):
             "unit": unit,
             "qty": _num(item.qty),
             "area": _num(area),
+            "wastage": _num(tracker.wastage(item, unit)),
+            "wastage_pct": _num(tracker.wastage_percent(item, unit)),
+            "part_count": len(tracker.parts_of(item)),
         }
         if item.jc_no.strip():
             jcs[boq.norm(item.jc_no)].append((item.jc_no.strip(), row))

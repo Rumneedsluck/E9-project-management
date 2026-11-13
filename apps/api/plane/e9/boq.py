@@ -172,6 +172,11 @@ def line_rows(project, cert=None):
         billable_rows = [item for item in covered_rows if can_bill(item, scope_rules.get(item.scope))]
         ready_to_bill = sum((billable_measure(item, unit) * share[item.id] for item in billable_rows), ZERO)
         covered_total = sum((billable_measure(item, unit) * share[item.id] for item in covered_rows), ZERO)
+        # wastage = production quantity minus the SITE-measured quantity (so a BOQ edit never moves it)
+        waste_pairs = [(tracker.wastage(item, unit), measure(item, unit)) for item in rows_for_line]
+        waste_typed = [(waste, site) for waste, site in waste_pairs if waste is not None]
+        wastage_total = sum((waste for waste, _ in waste_typed), ZERO) if waste_typed else None
+        wastage_site = sum((site for _, site in waste_typed), ZERO)
         over = on_tracker - allowed
         if over > 0 and over > pending:
             status = "excess"
@@ -208,6 +213,12 @@ def line_rows(project, cert=None):
                 "on_tracker": q2(on_tracker),
                 "produced": q2(produced),
                 "installed": q2(installed),
+                "wastage": q2(wastage_total) if wastage_total is not None else None,
+                "wastage_pct": (
+                    str((wastage_total / wastage_site * 100).quantize(Decimal("0.1")))
+                    if wastage_total is not None and wastage_site
+                    else None
+                ),
                 "extra": q2(max(over, ZERO)),
                 "unapproved_extra": q2(max(over - pending, ZERO)),
                 "status": status,

@@ -41,7 +41,7 @@ def guest_client(workspace, project):
 
 def scopes_payload(client, workspace, project):
     return [
-        {key: row[key] for key in ("key", "label", "prefix", "unit_mode", "enabled")}
+        {key: row[key] for key in ("key", "label", "prefix", "unit_mode", "enabled", "size_unit")}
         for row in client.get(url(workspace, project, "scopes/")).data
     ]
 
@@ -55,6 +55,23 @@ class TestScopes:
         assert all(row["enabled"] for row in rows)
 
     @pytest.mark.django_db
+    def test_a_sheet_can_be_typed_in_feet_or_mm_and_other_values_are_refused(self, session_client, workspace, project):
+        rows = scopes_payload(session_client, workspace, project)
+        assert all(row["size_unit"] == "in" for row in rows)  # nothing existing changes
+        for row in rows:
+            if row["key"] == "wall_graphics":
+                row["size_unit"] = "ft"
+            if row["key"] == "frames":
+                row["size_unit"] = "mm"
+        response = session_client.put(url(workspace, project, "scopes/"), {"scopes": rows}, format="json")
+        assert response.status_code == 200, response.data
+        by_key = {row["key"]: row["size_unit"] for row in response.data}
+        assert by_key["wall_graphics"] == "ft" and by_key["frames"] == "mm" and by_key["glass_film"] == "in"
+        rows[0]["size_unit"] = "yards"
+        assert (
+            session_client.put(url(workspace, project, "scopes/"), {"scopes": rows}, format="json").status_code == 400
+        )
+
     def test_switch_off_add_custom_and_change_unit(self, session_client, workspace, project):
         rows = scopes_payload(session_client, workspace, project)
         for row in rows:
