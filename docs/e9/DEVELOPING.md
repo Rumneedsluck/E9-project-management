@@ -43,6 +43,18 @@ Other laptops running `e9-auto-update.sh` pick the change up within 5 minutes.
 - Made-up data only. The repository is public, so never commit real client names, prices, files or passwords.
 - The commit check (lint) is strict on purpose. If it complains, fix what it says.
 
+## 3b. Handy commands (run in `apps/api`, developer mode)
+
+| What                                                              | Command                                                                    |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Fill one made-up project with 300 rows (speed tests)              | `python manage.py e9_demo_perf --items 300`                                |
+| Time the tracker like a person (needs the site running)           | `cd e2e && node perf/tracker-perf.mjs`                                     |
+| Import a tracker Excel file from your own computer                | `python manage.py e9_import_tracker --file "<file>.xlsx" --project "Name"` |
+| Keep one project, remove the rest (lists first, then add `--yes`) | `python manage.py e9_keep_only --keep "Name"`                              |
+| Remove the made-up demo projects                                  | `python manage.py e9_demo_clear` (then `--yes`)                            |
+
+Real client files are imported on your own computer only. They are never copied into the repository.
+
 ## 4. Making it an app for all E9 members
 
 Three levels, from easiest. Pick one; none needs an app store.

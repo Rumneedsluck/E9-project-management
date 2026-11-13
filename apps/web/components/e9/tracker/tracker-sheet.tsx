@@ -2995,10 +2995,8 @@ const TrackerRow = memo(function TrackerRow({
               role="img"
               aria-label={`Drag ${item.item_code} to move it`}
               title="Drag to move this row"
-              className="cursor-grab text-placeholder opacity-0 group-hover:opacity-100"
-            >
-              ⠿
-            </span>
+              className="cursor-grab text-placeholder opacity-0 group-hover:opacity-100 before:content-['⠿']"
+            />
           )}
           {item.is_part ? (
             <span title={`A part of ${item.part_of ?? "the item above"}`}>
