@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import { useRef } from "react";
 import useSWR, { mutate } from "swr";
 import { EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
 import { useUserPermissions } from "@/hooks/store/user";
@@ -28,13 +29,39 @@ export const useE9Project = (workspaceSlug: string | undefined, projectId: strin
 
 export const e9ItemsKey = (workspaceSlug: string, projectId: string) => `E9_ITEMS_${workspaceSlug}_${projectId}`;
 
+type TItemsData = Awaited<ReturnType<typeof e9ProjectService.listItems>>;
+
+/**
+ * After a refresh most rows are unchanged. Reusing the old row objects for those lets the sheet skip
+ * redrawing them (a fresh object for every row would redraw the whole visible sheet after every save).
+ */
+export const keepUnchangedRows = (previous: TItemsData | undefined, fresh: TItemsData): TItemsData => {
+  if (!previous) return fresh;
+  const before = new Map(previous.items.map((item) => [item.id, item]));
+  let same = previous.items.length === fresh.items.length && previous.can_edit === fresh.can_edit;
+  const items = fresh.items.map((item, index) => {
+    const old = before.get(item.id);
+    if (old && JSON.stringify(old) === JSON.stringify(item)) {
+      if (previous.items[index] !== old) same = false;
+      return old;
+    }
+    same = false;
+    return item;
+  });
+  return same ? previous : { ...fresh, items };
+};
+
 /** All tracker rows of one project. */
-export const useE9Items = (workspaceSlug: string | undefined, projectId: string | undefined) =>
-  useSWR(
+export const useE9Items = (workspaceSlug: string | undefined, projectId: string | undefined) => {
+  const latest = useRef<TItemsData | undefined>(undefined);
+  const result = useSWR(
     workspaceSlug && projectId ? e9ItemsKey(workspaceSlug, projectId) : null,
-    () => e9ProjectService.listItems(workspaceSlug!, projectId!),
+    async () => keepUnchangedRows(latest.current, await e9ProjectService.listItems(workspaceSlug!, projectId!)),
     { revalidateOnFocus: false }
   );
+  latest.current = result.data;
+  return result;
+};
 
 export const e9ScopesKey = (slug: string, projectId: string) => `E9_SCOPES_${slug}_${projectId}`;
 export const e9FloorsKey = (slug: string, projectId: string) => `E9_FLOORS_${slug}_${projectId}`;

@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { cn } from "@plane/utils";
 import { statusTone, TONE_CLASSES } from "./constants";
@@ -194,20 +194,60 @@ export function SelectCell({
   );
 }
 
+const DATE_PAUSE_MS = 600;
+/** Empty (clears the date) or YYYY-MM-DD with a believable year. */
+export const isWholeDate = (text: string): boolean => {
+  if (text === "") return true;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const year = Number(text.slice(0, 4));
+  return year >= 1900 && year <= 2200;
+};
+
 export function DateCell({
   value,
   onSave,
   disabled,
   label,
 }: TCommon & { value: string | null; onSave: (value: string | null) => void }) {
+  // typing a date fires a change for every digit ("0002-.." "0020-.." "2026-.."): keep it in a draft
+  // and save once it is a whole, sensible date and typing has paused (or on Enter / leaving the cell)
+  const [draft, setDraft] = useState(value ?? "");
+  const saved = useRef(value ?? "");
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    setDraft(value ?? "");
+    saved.current = value ?? "";
+  }, [value]);
+  useEffect(
+    () => () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    },
+    []
+  );
+  const commit = (next: string) => {
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = null;
+    if (!isWholeDate(next) || next === saved.current) return;
+    saved.current = next;
+    onSave(next || null);
+  };
   return (
     <input
       aria-label={label}
       type="date"
-      className={cn(base, "tabular-nums", !value && "text-transparent focus:text-primary")}
-      value={value ?? ""}
+      className={cn(base, "tabular-nums", !draft && "text-transparent focus:text-primary")}
+      value={draft}
       disabled={disabled}
-      onChange={(event) => onSave(event.target.value || null)}
+      onChange={(event) => {
+        const next = event.target.value;
+        setDraft(next);
+        if (timer.current) window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => commit(next), DATE_PAUSE_MS);
+      }}
+      onBlur={() => commit(draft)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit(draft);
+      }}
     />
   );
 }

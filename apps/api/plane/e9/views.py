@@ -102,7 +102,8 @@ def _serialize_projects(projects, user, slug):
     for scope in E9ProjectScope.objects.filter(project_id__in=project_ids):
         unit_modes.setdefault(scope.project_id, {})[scope.key] = scope.unit_mode
     items_by_project = {}
-    for item in E9ScopeItem.objects.filter(project_id__in=project_ids):
+    # only the few columns the progress numbers use: the Dashboard asks for every project at once
+    for item in E9ScopeItem.objects.filter(project_id__in=project_ids).only(*tracker.PROGRESS_FIELDS):
         items_by_project.setdefault(item.project_id, []).append(item)
     results = []
     for project in projects:
@@ -201,7 +202,8 @@ def _can_update_items(user, slug, project_id):
     ).exists() or _is_workspace_admin(user, slug)
 
 
-MAX_ROWS_PER_ADD = 100
+# a safety net against a runaway request, not a limit anyone should reach: sheets of 500+ rows are normal
+MAX_ROWS_PER_ADD = 5000
 
 
 def _resent_counts(project):
@@ -213,6 +215,11 @@ def _resent_counts(project):
         bucket = counts.setdefault(str(item_id), {})
         bucket[kind] = bucket.get(kind, 0) + 1
     return counts
+
+
+def _blocked_fields(user, slug, project_id, datas):
+    """A message when this person may not change one of these fields (nothing is blocked yet)."""
+    return None
 
 
 class E9ScopeItemListEndpoint(BaseAPIView):
@@ -297,6 +304,128 @@ class E9ScopeItemListEndpoint(BaseAPIView):
                 ensure_floors(project, split_floors(serializer.validated_data["floor_area"]), request.user)
         data = E9ScopeItemSerializer(created, many=True, context={"scopes": scopes}).data
         return Response(data, status=status.HTTP_201_CREATED)
+
+
+class E9ScopeItemBulkEndpoint(BaseAPIView):
+    """Many tracker changes in ONE request (paste, fill down, undo of a paste).
+
+    Body: {"scope": "wall_graphics", "add": 120, "floor_area": "4th Floor",
+           "changes": [{"id": "<item id>" or "new:0", "data": {"height_in": "96"}}, ...]}
+    "add" rows are created first (and can be named "new:0", "new:1"... in changes).
+    Everything succeeds or nothing is saved. Returns {"created": [...], "updated": [...]}.
+    """
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
+    def post(self, request, slug, project_id):
+        project = _visible_projects(request.user, slug).filter(pk=project_id).first()
+        if project is None:
+            return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_update_items(request.user, slug, project.id):
+            return Response({"error": "Guests can view the tracker but not change it."}, status=403)
+
+        scopes = scope_map(project)
+        try:
+            add = int(request.data.get("add", 0) or 0)
+        except (TypeError, ValueError):
+            add = -1
+        changes = request.data.get("changes", [])
+        if not 0 <= add <= MAX_ROWS_PER_ADD or not isinstance(changes, list) or len(changes) > MAX_ROWS_PER_ADD * 2:
+            return Response({"error": "Send a sensible number of rows and changes."}, status=400)
+        scope = request.data.get("scope")
+        if add and (scope not in scopes or not scopes[scope].enabled):
+            return Response({"scope": "Pick a scope that is switched on for this project."}, status=400)
+        blocked = _blocked_fields(request.user, slug, project.id, [change.get("data") or {} for change in changes])
+        if blocked:
+            return Response({"error": blocked}, status=403)
+
+        with transaction.atomic():
+            Project.objects.select_for_update().filter(pk=project.id).first()
+            created = []
+            if add:
+                existing = E9ScopeItem.all_objects.filter(project=project, scope=scope)
+                last_number = (
+                    existing.filter(item_number__lt=PARKED_FROM).aggregate(models.Max("item_number"))[
+                        "item_number__max"
+                    ]
+                    or 0
+                )
+                last_order = existing.aggregate(models.Max("sort_order"))["sort_order__max"] or 0
+                floor = str(request.data.get("floor_area") or "")[:255]
+                created = E9ScopeItem.objects.bulk_create(
+                    [
+                        E9ScopeItem(
+                            project=project,
+                            workspace_id=project.workspace_id,
+                            scope=scope,
+                            item_number=last_number + index,
+                            sort_order=last_order + index * 1000,
+                            floor_area=floor,
+                            created_by_id=request.user.id,
+                        )
+                        for index in range(1, add + 1)
+                    ]
+                )
+                record(
+                    project,
+                    request.user,
+                    "item",
+                    "created",
+                    None,
+                    f"{item_code(created[0], scopes)}–{item_code(created[-1], scopes)}",
+                    new=f"{add} row(s) added to {scopes[scope].label}",
+                )
+
+            by_id = {str(item.id): item for item in created}
+            wanted = [str(change.get("id")) for change in changes if not str(change.get("id")).startswith("new:")]
+            by_id.update(
+                {
+                    str(item.id): item
+                    for item in E9ScopeItem.objects.select_for_update().filter(project=project, pk__in=wanted)
+                }
+            )
+            updated, floors, errors = [], [], {}
+            for position, change in enumerate(changes):
+                key = str(change.get("id"))
+                if key.startswith("new:"):
+                    try:
+                        item = created[int(key[4:])]
+                    except (ValueError, IndexError):
+                        errors[position] = {"id": "Unknown new row."}
+                        continue
+                else:
+                    item = by_id.get(key)
+                    if item is None:
+                        errors[position] = {"id": "Item not found."}
+                        continue
+                data = change.get("data") or {}
+                before = snapshot(item, ITEM_EDITABLE_FIELDS)
+                serializer = E9ScopeItemSerializer(item, data=data, partial=True, context={"scopes": scopes})
+                if not serializer.is_valid():
+                    errors[position] = serializer.errors
+                    continue
+                serializer.save()
+                done = {field: getattr(item, field) for field in serializer.validated_data if field != "sort_order"}
+                if key.startswith("new:"):
+                    # a row created by this same request: its first values are not "changes" worth a history line each
+                    pass
+                else:
+                    record_changes(item.project, request.user, "item", item.id, item_code(item, scopes), before, done)
+                if "floor_area" in serializer.validated_data:
+                    floors.extend(split_floors(item.floor_area))
+                updated.append(item)
+            if errors:
+                transaction.set_rollback(True)
+                return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+            if floors:
+                ensure_floors(project, floors, request.user)
+        context = {"scopes": scopes}
+        return Response(
+            {
+                "created": E9ScopeItemSerializer(created, many=True, context=context).data,
+                "updated": E9ScopeItemSerializer(updated, many=True, context=context).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class E9ScopeItemDetailEndpoint(BaseAPIView):

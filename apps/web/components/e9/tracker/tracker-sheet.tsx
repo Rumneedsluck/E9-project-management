@@ -1162,11 +1162,9 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       return;
     }
     if (step.kind === "patch") {
-      await Promise.all(
-        step.changes.map((change) =>
-          e9ProjectService.updateItem(workspaceSlug, project.id, change.id, undoing ? change.before : change.after)
-        )
-      );
+      await e9ProjectService.bulkItems(workspaceSlug, project.id, {
+        changes: step.changes.map((change) => ({ id: change.id, data: undoing ? change.before : change.after })),
+      });
       return;
     }
     // add (undo = put rows aside) / delete (undo = bring them back)
@@ -1292,73 +1290,82 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
     // paste runs across the columns you can see (folded stage groups are skipped, like hidden Excel columns)
     const pasteColumns = columns.filter((column) => column.band === ALWAYS_OPEN_BAND || openBands.has(column.band));
     if (startRow < 0 || startCol < 0) return;
-    let targets = rows.slice(startRow);
-    let added = 0;
+    let targets: (TE9ScopeItem | null)[] = rows.slice(startRow);
+    const existingCount = targets.length;
+    const addCount = Math.max(0, matrix.length - existingCount);
     const steps: THistoryStep[] = [];
-    const changes: { id: string; before: Partial<TE9ScopeItem>; after: Partial<TE9ScopeItem> }[] = [];
-    try {
-      if (matrix.length > targets.length) {
-        const created = await e9ProjectService.addItems(
-          workspaceSlug,
-          project.id,
-          scopeKey,
-          matrix.length - targets.length
-        );
-        added = created.length;
-        targets = [...targets, ...created];
-        steps.push({ kind: "add", label: "pasted rows", ids: created.map((row) => row.id) });
-      }
-      let filled = 0;
-      let skipped = 0;
-      const jobs: Promise<unknown>[] = [];
-      matrix.forEach((line, r) => {
-        const item = targets[r];
-        if (!item) return;
-        const patch: Partial<Record<keyof TE9ScopeItem, string | null>> = {};
-        line.forEach((text, c) => {
-          const column = pasteColumns[startCol + c];
-          const spec = column ? PASTE[column.key] : undefined;
-          if (!spec) {
-            if (text.trim()) skipped += 1;
-            return;
-          }
-          const value = pastedValue(spec, text, item);
-          if (value === undefined) skipped += 1;
-          else if (spec.kind === "dcs") {
-            Object.assign(patch, splitDcs(value ?? ""));
-            filled += 1;
-          } else {
-            patch[spec.field] = value;
-            filled += 1;
-          }
-        });
-        if (added && r >= targets.length - added && floorFilter && floorFilter !== "all" && !patch.floor_area)
-          patch.floor_area = floorFilter;
-        if (Object.keys(patch).length) {
-          const before = Object.fromEntries(
-            Object.keys(patch).map((key) => [key, item[key as keyof TE9ScopeItem] ?? null])
-          ) as Partial<TE9ScopeItem>;
-          changes.push({ id: item.id, before, after: patch as Partial<TE9ScopeItem> });
-          jobs.push(e9ProjectService.updateItem(workspaceSlug, project.id, item.id, patch as Partial<TE9ScopeItem>));
+    // build every row's change first, then send ONE request that adds the missing rows and fills all cells
+    let filled = 0;
+    let skipped = 0;
+    const planned: { target: number; patch: Partial<TE9ScopeItem>; before: Partial<TE9ScopeItem> }[] = [];
+    matrix.forEach((line, r) => {
+      const item = r < existingCount ? targets[r] : null; // rows past the end are created by the request
+      const patch: Partial<Record<keyof TE9ScopeItem, string | null>> = {};
+      line.forEach((text, c) => {
+        const column = pasteColumns[startCol + c];
+        const spec = column ? PASTE[column.key] : undefined;
+        if (!spec) {
+          if (text.trim()) skipped += 1;
+          return;
+        }
+        const value = pastedValue(spec, text, item ?? ({} as TE9ScopeItem));
+        if (value === undefined) skipped += 1;
+        else if (spec.kind === "dcs") {
+          Object.assign(patch, splitDcs(value ?? ""));
+          filled += 1;
+        } else {
+          patch[spec.field] = value;
+          filled += 1;
         }
       });
-      await Promise.all(jobs);
+      if (r >= existingCount && floorFilter && floorFilter !== "all" && !patch.floor_area)
+        patch.floor_area = floorFilter;
+      if (Object.keys(patch).length) {
+        const before = item
+          ? (Object.fromEntries(
+              Object.keys(patch).map((key) => [key, item[key as keyof TE9ScopeItem] ?? null])
+            ) as Partial<TE9ScopeItem>)
+          : {};
+        planned.push({ target: r, patch: patch as Partial<TE9ScopeItem>, before });
+      }
+    });
+    if (matrix.length > 20)
+      setToast({ type: "info", title: `Pasting ${matrix.length} rows…`, message: "This takes a moment." });
+    try {
+      const result = await e9ProjectService.bulkItems(workspaceSlug, project.id, {
+        scope: addCount ? scopeKey : undefined,
+        add: addCount,
+        floor_area: floorFilter && floorFilter !== "all" ? floorFilter : undefined,
+        changes: planned.map((entry) => ({
+          id: entry.target >= existingCount ? `new:${entry.target - existingCount}` : String(targets[entry.target]?.id),
+          data: entry.patch,
+        })),
+      });
+      const created = result.created;
+      targets = [...targets, ...created];
+      if (created.length) steps.push({ kind: "add", label: "pasted rows", ids: created.map((row) => row.id) });
+      const changes = planned
+        .map((entry) => ({ id: targets[entry.target]?.id, before: entry.before, after: entry.patch }))
+        .filter((change): change is { id: string; before: Partial<TE9ScopeItem>; after: Partial<TE9ScopeItem> } =>
+          Boolean(change.id)
+        );
       if (changes.length) steps.push({ kind: "patch", label: "paste", changes });
       if (steps.length) pushHistory({ kind: "batch", label: "paste", steps });
       await mutate();
       setToast({
         type: skipped ? "warning" : "success",
-        title: `Pasted ${filled} cell${filled === 1 ? "" : "s"}${added ? `, added ${added} row${added === 1 ? "" : "s"}` : ""}`,
+        title: `Pasted ${filled} cell${filled === 1 ? "" : "s"}${addCount ? `, added ${addCount} row${addCount === 1 ? "" : "s"}` : ""}`,
         message: skipped
           ? `${skipped} cell(s) skipped: calculated columns, or text that is not one of the column's options / not a number.`
           : undefined,
       });
     } catch {
+      // nothing was saved (all or nothing), so there is nothing to undo either
       await mutate();
       setToast({
         type: "error",
-        title: "Couldn't paste everything",
-        message: "Some cells may not be saved. Please check.",
+        title: "Couldn't paste",
+        message: "Nothing was changed. Check the pasted values and try again.",
       });
     }
   };
@@ -1538,12 +1545,16 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
       { revalidate: false }
     );
     // remembered at once (like a normal edit), so a quick Ctrl + Z undoes exactly this
-    pushHistory({ kind: "patch", label, changes: steps });
+    const entry: THistoryStep = { kind: "patch", label, changes: steps };
+    pushHistory(entry);
     try {
-      await Promise.all(
-        steps.map((step) => e9ProjectService.updateItem(workspaceSlug, project.id, step.id, step.after))
-      );
+      // one request for the whole block, saved all or nothing
+      await e9ProjectService.bulkItems(workspaceSlug, project.id, {
+        changes: steps.map((step) => ({ id: step.id, data: step.after })),
+      });
     } catch {
+      undoStack.current = undoStack.current.filter((step) => step !== entry);
+      historyTick((value) => value + 1);
       setToast({
         type: "error",
         title: `Couldn't save the ${label}`,

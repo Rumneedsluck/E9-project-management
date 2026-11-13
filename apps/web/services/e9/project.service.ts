@@ -61,6 +61,24 @@ export class E9ProjectService extends APIService {
       });
   }
 
+  /** Many tracker changes in one request: add rows (named new:0, new:1...) and change cells. All or nothing. */
+  async bulkItems(
+    workspaceSlug: string,
+    projectId: string,
+    body: {
+      scope?: string;
+      add?: number;
+      floor_area?: string;
+      changes: { id: string; data: Partial<TE9ScopeItem> }[];
+    }
+  ): Promise<{ created: TE9ScopeItem[]; updated: TE9ScopeItem[] }> {
+    return this.post(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/items/bulk/`, body)
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
   async addItems(workspaceSlug: string, projectId: string, scope: string, count: number): Promise<TE9ScopeItem[]> {
     return this.post(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/items/`, { scope, count })
       .then((response) => response?.data)

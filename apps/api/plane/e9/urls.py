@@ -7,6 +7,7 @@ from django.urls import path
 from .views import (
     E9ProjectDetailEndpoint,
     E9ProjectListEndpoint,
+    E9ScopeItemBulkEndpoint,
     E9ScopeItemDetailEndpoint,
     E9ScopeItemRestoreEndpoint,
     E9ScopeItemListEndpoint,
@@ -66,6 +67,11 @@ urlpatterns = [
         "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/",
         E9ScopeItemListEndpoint.as_view(),
         name="e9-scope-items",
+    ),
+    path(
+        "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/bulk/",
+        E9ScopeItemBulkEndpoint.as_view(),
+        name="e9-scope-items-bulk",
     ),
     path(
         "workspaces/<str:slug>/e9/projects/<uuid:project_id>/items/<uuid:item_id>/restore/",

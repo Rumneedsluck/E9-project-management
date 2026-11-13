@@ -161,7 +161,7 @@ class TestTrackerItemsAPI:
     def test_rejects_bad_values(self, session_client, workspace, project):
         url = items_url(workspace.slug, project.id)
         assert session_client.post(url, {"scope": "bogus"}, format="json").status_code == 400
-        assert session_client.post(url, {"scope": "frames", "count": 500}, format="json").status_code == 400
+        assert session_client.post(url, {"scope": "frames", "count": 5001}, format="json").status_code == 400
         item = session_client.post(url, {"scope": "frames"}, format="json").data[0]
         detail = item_url(workspace.slug, project.id, item["id"])
         # a wall-only issue is not allowed on a frame
@@ -204,3 +204,66 @@ class TestTrackerItemsAPI:
         assert response.status_code == 200
         assert response.data["e9"]["client_contact"] == "Ms Example, 98xxxxxx"
         assert response.data["e9"]["target_site_audit"] == "2026-11-10"
+
+
+def bulk_url(slug, project_id):
+    return f"/api/workspaces/{slug}/e9/projects/{project_id}/items/bulk/"
+
+
+@pytest.mark.django_db
+class TestBulkItems:
+    def test_adds_many_rows_and_fills_them_in_one_request(self, session_client, workspace, project):
+        changes = [
+            {"id": f"new:{index}", "data": {"description": f"Wall {index}", "height_in": "96", "width_in": "120"}}
+            for index in range(250)
+        ]
+        response = session_client.post(
+            bulk_url(workspace.slug, project.id),
+            {"scope": "wall_graphics", "add": 250, "floor_area": "4th Floor", "changes": changes},
+            format="json",
+        )
+        assert response.status_code == 201, response.data
+        assert len(response.data["created"]) == 250  # no 100-row limit any more
+        rows = E9ScopeItem.objects.filter(project=project, scope="wall_graphics")
+        assert rows.count() == 250
+        assert sorted(rows.values_list("item_number", flat=True))[-1] == 250
+        assert rows.filter(floor_area="4th Floor", height_in=Decimal("96")).count() == 250
+
+    def test_changes_many_existing_rows_at_once(self, session_client, workspace, project):
+        created = session_client.post(
+            items_url(workspace.slug, project.id), {"scope": "wall_graphics", "count": 3}, format="json"
+        ).data
+        response = session_client.post(
+            bulk_url(workspace.slug, project.id),
+            {"changes": [{"id": row["id"], "data": {"remarks": f"note {index}"}} for index, row in enumerate(created)]},
+            format="json",
+        )
+        assert response.status_code == 201, response.data
+        assert sorted(E9ScopeItem.objects.filter(project=project).values_list("remarks", flat=True)) == [
+            "note 0",
+            "note 1",
+            "note 2",
+        ]
+
+    def test_one_bad_value_saves_nothing(self, session_client, workspace, project):
+        response = session_client.post(
+            bulk_url(workspace.slug, project.id),
+            {
+                "scope": "wall_graphics",
+                "add": 2,
+                "changes": [
+                    {"id": "new:0", "data": {"description": "ok"}},
+                    {"id": "new:1", "data": {"height_in": "-5"}},
+                ],
+            },
+            format="json",
+        )
+        assert response.status_code == 400
+        assert 1 in response.data["errors"]  # the second change (numbered from 0)
+        assert E9ScopeItem.objects.filter(project=project).count() == 0  # the two new rows were rolled back
+
+    def test_guests_cannot_use_it(self, workspace, project):
+        guest = make_member(workspace, project, "guest.bulk@example.com", 5, 5)
+        response = guest.post(bulk_url(workspace.slug, project.id), {"scope": "wall_graphics", "add": 1}, format="json")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert E9ScopeItem.objects.filter(project=project).count() == 0

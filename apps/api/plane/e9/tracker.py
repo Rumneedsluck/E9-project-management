@@ -320,6 +320,23 @@ def reprint_measure(unit, pieces, height, width):
     return count
 
 
+# the columns progress() reads: the Dashboard loads only these, not the whole row
+PROGRESS_FIELDS = (
+    "id",
+    "project",
+    "scope",
+    "floor_area",
+    "description",
+    "height_in",
+    "width_in",
+    "qty",
+    "unit_override",
+    "installation_status",
+    "hold_status",
+    "bill_now",
+)
+
+
 def progress(items, unit_modes):
     """Work done (installed) for a list of tracker rows.
 
