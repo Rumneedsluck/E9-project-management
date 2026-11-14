@@ -5,15 +5,13 @@
  */
 
 import { observer } from "mobx-react";
-import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { BillingsOutline, DashboardsOutline, HomeOutline, ProjectsOutline } from "@makeplane/propel/icons";
-import { ListItem, ListItemLabel } from "@makeplane/propel/components/list";
-import { ListItemLink } from "@makeplane/propel/elements/list";
 // hooks
 import { useAppTheme } from "@/hooks/store/use-app-theme";
 // local
 import { E9_BRAND, E9Text } from "./brand";
+import { E9LineNav } from "./line-nav";
 
 const LINKS = [
   { key: "home", label: "Home", path: "e9", icon: HomeOutline, exact: true },
@@ -34,31 +32,21 @@ export const E9SidebarSection = observer(function E9SidebarSection() {
     if (isExtendedSidebarOpened) toggleExtendedSidebar(false);
   };
 
+  const items = LINKS.map((link) => ({ label: link.label, href: `/${workspaceSlug.toString()}/${link.path}` }));
+  const activeIndex = LINKS.findIndex((link, index) => {
+    const href = items[index].href;
+    return link.exact
+      ? pathname === href || pathname === `${href}/`
+      : pathname === href || pathname.startsWith(`${href}/`);
+  });
+
   return (
     <div className="flex w-full flex-col gap-px">
       <span className="px-2 pt-1 pb-1.5 text-body-xs-semibold whitespace-nowrap text-tertiary">
         <E9Text>{E9_BRAND.name}</E9Text>
       </span>
-      {LINKS.map((link) => {
-        const href = `/${workspaceSlug.toString()}/${link.path}`;
-        const isActive = link.exact
-          ? pathname === href || pathname === `${href}/`
-          : pathname === href || pathname.startsWith(`${href}/`);
-        const Icon = link.icon;
-        return (
-          <ListItem key={link.key} density="comfortable">
-            <ListItemLink
-              href={href}
-              render={<Link href={href} />}
-              onClick={onNavigate}
-              aria-current={isActive ? "page" : undefined}
-            >
-              <Icon className="size-4 flex-shrink-0" />
-              <ListItemLabel>{link.label}</ListItemLabel>
-            </ListItemLink>
-          </ListItem>
-        );
-      })}
+      {/* lines and names slide toward the pointer; every row is still a normal link */}
+      <E9LineNav items={items} activeIndex={activeIndex === -1 ? null : activeIndex} onNavigate={onNavigate} />
     </div>
   );
 });

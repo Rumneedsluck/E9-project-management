@@ -10,10 +10,13 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
+import { useAppRouter } from "@/hooks/use-app-router";
 import { daysUntil, isClosed } from "./helpers";
 import type { TE9Project } from "./types";
 import { E9DeadlineText, E9CodeTile, E9Panel } from "./ui";
+import AnimatedList from "./vendor/animated-list";
 import CometDial from "./vendor/comet-dial";
 
 const KEY = "e9-lookahead-days";
@@ -21,7 +24,23 @@ const DEFAULT_DAYS = 14;
 const MAX_DAYS = 90;
 const SHOWN = 6;
 
+/** The list's colours come from the E9 theme, so it follows light and dark on its own. */
+const E9_LIST_LOOK = {
+  "--al-tile": "var(--e9-paper)",
+  "--al-tile-edge": "var(--e9-grid)",
+  "--al-tile-highlight": "transparent",
+  "--al-tile-shadow": "none",
+  "--al-well": "var(--e9-hover)",
+  "--al-ink": "var(--e9-ink)",
+  "--al-muted": "var(--e9-ink-soft)",
+  "--al-thumb": "var(--e9-grid)",
+  "--al-hover": "none",
+  "--al-press": "brightness(0.96)",
+  "--al-active": "none",
+} as CSSProperties;
+
 export function E9LookAhead({ projects, workspaceSlug }: { projects: TE9Project[]; workspaceSlug: string }) {
+  const router = useAppRouter();
   const [days, setDays] = useState(DEFAULT_DAYS);
   useEffect(() => {
     try {
@@ -78,20 +97,28 @@ export function E9LookAhead({ projects, workspaceSlug }: { projects: TE9Project[
             the dial to look further ahead.
           </p>
           {due.length > 0 && (
-            <ul className="flex flex-col divide-y divide-subtle border-y border-subtle">
-              {due.slice(0, SHOWN).map(({ project }) => (
-                <li key={project.id}>
-                  <Link
-                    href={`/${workspaceSlug}/e9/projects/${project.id}`}
-                    className="flex items-center gap-3 py-2 hover:bg-[var(--e9-hover)]"
-                  >
-                    <E9CodeTile code={project.identifier} size="sm" />
-                    <span className="min-w-0 flex-1 truncate text-body-sm-medium text-primary">{project.name}</span>
-                    <E9DeadlineText project={project} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            // rows slide in as the dial changes; arrow keys and Enter work too, a click opens the project
+            <AnimatedList
+              items={due.slice(0, SHOWN).map(({ project }) => project)}
+              frame={false}
+              width="100%"
+              maxHeight={340}
+              gap={6}
+              radius={10}
+              animation="pop"
+              stagger={0.04}
+              showGradients={false}
+              accentColor="var(--brand-default)"
+              style={E9_LIST_LOOK}
+              onItemSelect={(project) => router.push(`/${workspaceSlug}/e9/projects/${project.id}`)}
+              renderItem={(project) => (
+                <>
+                  <E9CodeTile code={project.identifier} size="sm" />
+                  <span className="min-w-0 flex-1 truncate text-body-sm-medium text-primary">{project.name}</span>
+                  <E9DeadlineText project={project} />
+                </>
+              )}
+            />
           )}
           {due.length > SHOWN && (
             <Link
