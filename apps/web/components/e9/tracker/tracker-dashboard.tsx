@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { BuildingOutline, DueDateOutline, PieOutline, WarningTriangleOutline } from "@makeplane/propel/icons";
 import { cn, renderFormattedDate } from "@plane/utils";
 import { E9BoqDashboardPanel } from "../commercial/boq-dashboard-panel";
 import { E9OpenSnagsPanel } from "../commercial/snags-page";
@@ -236,6 +237,7 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
     );
 
   const days = kpis.daysToDeadline;
+  const lateStages = stages.filter((row) => row.status === "overdue").length;
   const usedScopes = progress.filter((row) => row.items > 0);
   const totals = usedScopes.reduce(
     (sum, row) => ({
@@ -280,7 +282,13 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
 
       <E9ActivityHeatmap workspaceSlug={workspaceSlug} projectId={project.id} />
 
-      <E9Panel title="Progress by scope">
+      <E9Panel
+        tone="blue"
+        icon={PieOutline}
+        title="Progress by scope"
+        subtitle="Each type of work: how many items, and how far along"
+        meta={`${usedScopes.length} ${usedScopes.length === 1 ? "scope" : "scopes"}`}
+      >
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-left text-body-xs-regular">
             <thead>
@@ -381,11 +389,14 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
         </p>
       </E9Panel>
 
-      <E9BoqDashboardPanel workspaceSlug={workspaceSlug} projectId={project.id} onOpen={(view) => onOpenView?.(view)} />
-      <E9OpenSnagsPanel workspaceSlug={workspaceSlug} projectId={project.id} onOpen={() => onOpenView?.("snags")} />
-
       {floors.length > 0 && (
-        <E9Panel title={`Progress by floor · ${floors.length}`}>
+        <E9Panel
+          tone="teal"
+          icon={BuildingOutline}
+          title="Progress by floor"
+          subtitle="Each floor: its status, target date and how much is done"
+          meta={`${floors.length} ${floors.length === 1 ? "floor" : "floors"}`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left text-body-xs-regular">
               <thead>
@@ -470,7 +481,14 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <E9Panel title="Stage targets & overdue" className="lg:col-span-2">
+        <E9Panel
+          tone="violet"
+          icon={DueDateOutline}
+          title="Stage targets & overdue"
+          subtitle="The deadline for each stage, and what is running late"
+          meta={lateStages > 0 ? `${lateStages} late` : undefined}
+          className="lg:col-span-2"
+        >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-body-xs-regular">
               <thead>
@@ -524,7 +542,13 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
           </p>
         </E9Panel>
 
-        <E9Panel title={`Open site issues · ${issues.length}`}>
+        <E9Panel
+          tone="red"
+          icon={WarningTriangleOutline}
+          title="Open site issues"
+          subtitle="Problems reported from the site"
+          meta={`${issues.length} open`}
+        >
           {issues.length === 0 ? (
             <p className="px-5 py-8 text-center text-body-sm-regular text-tertiary">No open site issues.</p>
           ) : (
@@ -541,6 +565,10 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
           )}
         </E9Panel>
       </div>
+
+      {/* the money and sign-off cards sit last: snags, then BOQ check beside Billing */}
+      <E9OpenSnagsPanel workspaceSlug={workspaceSlug} projectId={project.id} onOpen={() => onOpenView?.("snags")} />
+      <E9BoqDashboardPanel workspaceSlug={workspaceSlug} projectId={project.id} onOpen={(view) => onOpenView?.(view)} />
     </div>
   );
 }

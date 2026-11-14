@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import { BillingsOutline, ReceiptOutline } from "@makeplane/propel/icons";
 import { useE9Boq } from "../hooks";
 import { E9Panel } from "../ui";
 import { BillStepper } from "./billing-page";
@@ -26,7 +27,11 @@ export function E9BoqDashboardPanel({
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <E9Panel
-        title={`BOQ check · ${flagged.length ? `${flagged.length} line(s) over BOQ` : "all within BOQ"}`}
+        tone="amber"
+        icon={ReceiptOutline}
+        title="BOQ check"
+        subtitle="What is on the tracker against what the BOQ allows"
+        meta={flagged.length ? `${flagged.length} over BOQ` : "All within BOQ"}
         className="lg:col-span-2"
         action={<SmallButton onClick={() => onOpen("boq")}>Open BOQ</SmallButton>}
       >
@@ -56,7 +61,14 @@ export function E9BoqDashboardPanel({
           </ul>
         )}
       </E9Panel>
-      <E9Panel title="Billing" action={<SmallButton onClick={() => onOpen("billing")}>Open billing</SmallButton>}>
+      <E9Panel
+        tone="green"
+        icon={BillingsOutline}
+        title="Billing"
+        subtitle="Where each bill has got to"
+        meta={data.bills.length ? `${data.bills.length} ${data.bills.length === 1 ? "bill" : "bills"}` : undefined}
+        action={<SmallButton onClick={() => onOpen("billing")}>Open billing</SmallButton>}
+      >
         {data.bills.length === 0 ? (
           <p className="px-5 py-6 text-center text-body-sm-regular text-tertiary">No bills yet.</p>
         ) : (

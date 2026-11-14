@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { observer } from "mobx-react";
 import { Avatar } from "@makeplane/propel/components/avatar";
 import { cn, getFileURL } from "@plane/utils";
@@ -179,33 +179,60 @@ export function E9PageHeader({ eyebrow, title, description, actions }: TPageHead
   );
 }
 
-export function E9Panel({
-  title,
-  action,
-  children,
-  className,
-}: {
+/** Colour identities for cards; each one is a hue defined in e9-theme.css (light and dark). */
+export type TE9Tone = "ink" | "blue" | "sky" | "teal" | "violet" | "red" | "amber" | "green";
+
+type TE9PanelProps = {
   title?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
-}) {
+  /** gives the card its own colour (top edge, icon well, count) so neighbouring cards are easy to tell apart */
+  tone?: TE9Tone;
+  /** icon in the coloured well beside the title (used with `tone`) */
+  icon?: ComponentType<{ className?: string }>;
+  /** one plain line under the title: what this card shows (used with `tone`) */
+  subtitle?: ReactNode;
+  /** short count or status beside the title, e.g. "3 open" (used with `tone`) */
+  meta?: ReactNode;
+};
+
+export function E9Panel({ title, action, children, className, tone, icon: Icon, subtitle, meta }: TE9PanelProps) {
   const { ref, inView } = useInView<HTMLElement>();
+  const hasHeader = !!(title || action);
   return (
     <section
       ref={ref}
+      data-tone={tone}
       className={cn(
-        "e9-reveal e9-crop flex flex-col rounded-lg border border-subtle bg-surface-1",
+        "e9-reveal flex flex-col rounded-lg border border-subtle bg-surface-1",
+        tone ? "e9-panel" : "e9-crop",
         inView && "is-in",
         className
       )}
     >
-      {(title || action) && (
-        <header className="flex items-center justify-between gap-3 border-b border-subtle px-5 py-3.5">
-          {title && <h2 className="e9-eyebrow !text-secondary">{title}</h2>}
-          {action}
-        </header>
-      )}
+      {hasHeader &&
+        (tone ? (
+          // on a phone the count and the button drop to a second line instead of squeezing the title
+          <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-subtle px-5 py-3">
+            {Icon && (
+              <span aria-hidden className="e9-panel__well">
+                <Icon className="size-[18px]" />
+              </span>
+            )}
+            <div className="min-w-[11rem] flex-1">
+              {title && <h2 className="e9-display text-[17px] leading-tight text-primary">{title}</h2>}
+              {subtitle && <p className="e9-panel__sub text-tertiary">{subtitle}</p>}
+            </div>
+            {meta && <span className="e9-panel__meta">{meta}</span>}
+            {action && <span className="ml-auto">{action}</span>}
+          </header>
+        ) : (
+          <header className="flex items-center justify-between gap-3 border-b border-subtle px-5 py-3.5">
+            {title && <h2 className="e9-eyebrow !text-secondary">{title}</h2>}
+            {action}
+          </header>
+        ))}
       {children}
     </section>
   );

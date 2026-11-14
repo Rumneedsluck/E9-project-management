@@ -659,3 +659,117 @@ html {
 :root[data-theme*="dark"] .e9-date {
   color-scheme: dark;
 }
+
+/* ---- cards with their own colour -------------------------------------------------------------
+   Every Overview card gets one hue (a coloured top edge, a tinted icon well, a count pill) so the
+   cards are easy to tell apart. The tinted well, the rim highlight and the soft tile shadow follow
+   the React Bits AnimatedList tiles. Cards without a tone keep the gold crop marks. */
+.e9-panel {
+  --tone-h: 80;
+  --tone-edge: oklch(0.6 0.15 var(--tone-h)); /* the top edge */
+  --tone-ink: oklch(0.45 0.13 var(--tone-h)); /* icon and count text */
+  --tone-well: oklch(0.6 0.15 var(--tone-h) / 0.13); /* icon well and count pill */
+  --tone-wash: oklch(0.6 0.15 var(--tone-h) / 0.08); /* faint tint fading down from the top edge */
+  border-color: color-mix(in oklab, var(--tone-edge) 22%, var(--e9-grid, var(--border-color-subtle)));
+  border-top: 3px solid var(--tone-edge);
+  background-image: linear-gradient(to bottom, var(--tone-wash), transparent 130px);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.04),
+    0 16px 28px -22px rgb(0 0 0 / 0.3);
+}
+:root[data-theme*="dark"] .e9-panel {
+  --tone-edge: oklch(0.72 0.14 var(--tone-h));
+  --tone-ink: oklch(0.85 0.1 var(--tone-h));
+  --tone-well: oklch(0.72 0.14 var(--tone-h) / 0.2);
+  --tone-wash: oklch(0.72 0.14 var(--tone-h) / 0.11);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 1px 2px rgb(0 0 0 / 0.3),
+    0 18px 30px -22px rgb(0 0 0 / 0.7);
+}
+.e9-panel[data-tone="blue"] {
+  --tone-h: 262;
+}
+.e9-panel[data-tone="sky"] {
+  --tone-h: 228;
+}
+.e9-panel[data-tone="teal"] {
+  --tone-h: 190;
+}
+.e9-panel[data-tone="violet"] {
+  --tone-h: 302;
+}
+.e9-panel[data-tone="red"] {
+  --tone-h: 27;
+}
+.e9-panel[data-tone="green"] {
+  --tone-h: 150;
+}
+.e9-panel[data-tone="amber"] {
+  --tone-h: 78;
+}
+/* the neutral card: the E9 ink itself (near-black on paper, paper-white in the dark theme) */
+:root .e9-panel[data-tone="ink"] {
+  --tone-edge: color-mix(in oklab, var(--e9-ink) 72%, transparent);
+  --tone-ink: var(--e9-ink);
+  --tone-well: color-mix(in oklab, var(--e9-ink) 10%, transparent);
+  --tone-wash: color-mix(in oklab, var(--e9-ink) 5%, transparent);
+}
+
+/* the icon well: a small rounded tile with a rim, like the lead tile of an AnimatedList row */
+.e9-panel__well {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--tone-well);
+  color: var(--tone-ink);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tone-edge) 30%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 0.22);
+}
+.e9-panel__sub {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.e9-panel__meta {
+  flex: none;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: var(--tone-well);
+  color: var(--tone-ink);
+}
+
+/* on the way in the card pops (a touch of scale) and its icon well turns up a beat later */
+.e9-panel.e9-reveal {
+  transform: translateY(18px) scale(0.985);
+}
+.e9-panel.e9-reveal.is-in {
+  transform: none;
+}
+.e9-panel .e9-panel__well {
+  transition:
+    transform 0.55s var(--e9-ease) 0.12s,
+    opacity 0.4s ease 0.12s;
+}
+.e9-panel.e9-reveal:not(.is-in) .e9-panel__well {
+  transform: scale(0.6) rotate(-10deg);
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .e9-panel.e9-reveal,
+  .e9-panel.e9-reveal:not(.is-in) .e9-panel__well {
+    transform: none;
+    opacity: 1;
+  }
+  .e9-panel .e9-panel__well {
+    transition: none;
+  }
+}

@@ -10,6 +10,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { ActivityOutline } from "@makeplane/propel/icons";
 import { renderFormattedDate } from "@plane/utils";
 import { useE9Activity, useE9History } from "./hooks";
 import { E9LoadingState } from "./states";
@@ -37,7 +38,13 @@ export function E9ActivityHeatmap({ workspaceSlug, projectId }: { workspaceSlug:
   const latest = (history ?? []).slice(0, LATEST);
 
   return (
-    <E9Panel title="Activity">
+    <E9Panel
+      tone="ink"
+      icon={ActivityOutline}
+      title="Activity"
+      subtitle="What changed on this project, day by day"
+      meta="Last 30 days"
+    >
       {!activity ? (
         <div className="px-5 py-6">
           {error ? (

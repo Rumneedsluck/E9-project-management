@@ -5,7 +5,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { AddOutline } from "@makeplane/propel/icons";
+import { AddOutline, ClipboardOutline } from "@makeplane/propel/icons";
 import { cn } from "@plane/utils";
 import { e9ProjectService } from "@/services/e9/project.service";
 import { useE9Items, useE9Snags } from "../hooks";
@@ -334,7 +334,14 @@ export function E9OpenSnagsPanel({
   if (!data || data.snags.length === 0) return null;
   const open = data.snags.filter((snag) => snag.status !== "Closed");
   return (
-    <E9Panel title={`Open snags · ${open.length}`} action={<SmallButton onClick={onOpen}>Open Snag List</SmallButton>}>
+    <E9Panel
+      tone="sky"
+      icon={ClipboardOutline}
+      title="Open snags"
+      subtitle="Defects still to be fixed"
+      meta={`${open.length} open`}
+      action={<SmallButton onClick={onOpen}>Open Snag List</SmallButton>}
+    >
       {open.length === 0 ? (
         <p className="px-5 py-6 text-center text-body-sm-regular text-success-primary">✓ All snags closed.</p>
       ) : (
