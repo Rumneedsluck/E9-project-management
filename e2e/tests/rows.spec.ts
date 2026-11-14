@@ -51,14 +51,14 @@ test("insert a row in the middle, add a part, then undo", async ({ page, request
   expect(await rowCodes(page)).toEqual(["W1", "W2", "W3", "W4"]);
   expect(await describe(page)).toEqual(["Alpha", "", "Beta", "Gamma"]);
 
-  // add a part under Beta: it shows "part of W3" and takes no W-number
+  // add a part under Beta: it shows "↳ W3" and takes no W-number
   await page
     .locator("tr[data-item]")
     .nth(2)
     .click({ button: "right", position: { x: 20, y: 10 } });
   await page.getByRole("menuitem", { name: "Add part below" }).click();
   await expect(page.locator("tr[data-item]")).toHaveCount(5);
-  await expect(page.locator("tr[data-item]").nth(3)).toContainText("part of W3");
+  await expect(page.locator("tr[data-item]").nth(3)).toContainText("↳ W3");
   expect(await rowCodes(page)).not.toContain("W5");
 
   // undo the part, then undo the insert: back to Alpha, Beta, Gamma

@@ -1102,7 +1102,7 @@ type THistoryStep =
   | { kind: "batch"; label: string; steps: THistoryStep[] };
 const HISTORY_LIMIT = 50;
 
-const CODE_WIDTH = 64;
+const CODE_WIDTH = 104;
 const ACTIONS_WIDTH = 96;
 /** width of a folded stage group */
 const DOOR_WIDTH = 34;
@@ -2987,7 +2987,7 @@ const TrackerRow = memo(function TrackerRow({
           isSelected && "bg-accent-subtle"
         )}
       >
-        <label className="flex cursor-pointer items-center gap-1.5">
+        <label className="flex cursor-pointer items-center gap-1.5 overflow-hidden whitespace-nowrap">
           {canEdit && (
             <input
               type="checkbox"
@@ -3011,11 +3011,14 @@ const TrackerRow = memo(function TrackerRow({
             />
           )}
           {item.is_part ? (
-            <span title={`A part of ${item.part_of ?? "the item above"}`}>
-              ↳ <span className="text-body-2xs-regular text-tertiary">part of {item.part_of}</span>
+            <span
+              className="text-body-2xs-medium text-tertiary"
+              title={`A part of ${item.part_of ?? "the item above"}`}
+            >
+              ↳ {item.part_of}
             </span>
           ) : (
-            item.item_code
+            <span className="tabular-nums">{item.item_code}</span>
           )}
           {item.parts_count > 0 && (
             <span className="text-body-2xs-regular text-tertiary" title={`${item.parts_count} part(s) below`}>
@@ -3028,7 +3031,7 @@ const TrackerRow = memo(function TrackerRow({
               aria-label={item.hold_status}
               title={item.hold_status}
               className={cn(
-                "size-2 shrink-0 rounded-full",
+                "ml-auto size-2 shrink-0 rounded-full",
                 item.hold_status === "On Hold" ? "bg-[#F59E0B]" : "bg-tertiary"
               )}
             />
