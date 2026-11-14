@@ -8,7 +8,15 @@ from rest_framework import serializers
 
 from .safety import clean_link
 from . import tracker
-from .models import E9Attachment, E9ChangeLog, E9Floor, E9ProjectProfile, E9ProjectScope, E9ScopeItem
+from .models import (
+    E9Attachment,
+    E9ChangeLog,
+    E9Floor,
+    E9ProjectProfile,
+    E9ProjectScope,
+    E9ScopeItem,
+    E9ScopeTemplate,
+)
 from .services import item_code
 
 PROFILE_FIELDS = [
@@ -290,8 +298,28 @@ class E9ProjectScopeSerializer(serializers.ModelSerializer):
             "sort_order",
             "bill_when",
             "size_unit",
+            "measure_note",
+            "production_note",
+            "notes",
         ]
         read_only_fields = ["key", "is_standard"]
+
+
+class E9ScopeTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = E9ScopeTemplate
+        fields = [
+            "id",
+            "label",
+            "prefix",
+            "unit_mode",
+            "size_unit",
+            "bill_when",
+            "measure_note",
+            "production_note",
+            "notes",
+        ]
+        read_only_fields = fields
 
 
 class E9FloorSerializer(serializers.ModelSerializer):

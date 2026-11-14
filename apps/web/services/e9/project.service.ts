@@ -6,7 +6,14 @@
 
 import { API_BASE_URL } from "@plane/constants";
 import type { TE9Health, TE9Hold, TE9Report } from "@/components/e9/tracker/hold-types";
-import type { TE9Attachment, TE9Change, TE9Floor, TE9ProjectScope, TE9ScopeItem } from "@/components/e9/tracker/logic";
+import type {
+  TE9Attachment,
+  TE9Change,
+  TE9Floor,
+  TE9ProjectScope,
+  TE9ScopeItem,
+  TE9ScopeTemplate,
+} from "@/components/e9/tracker/logic";
 import type {
   TE9Announcements,
   TE9Bills,
@@ -184,6 +191,15 @@ export class E9ProjectService extends APIService {
   /** Save the whole scope list (rows without a key are new scopes the team added). */
   saveScopes(workspaceSlug: string, projectId: string, scopes: Partial<TE9ProjectScope>[]): Promise<TE9ProjectScope[]> {
     return this.call(this.put(`${this.base(workspaceSlug, projectId)}/scopes/`, { scopes }));
+  }
+
+  /** The company's own scopes (every scope a team adds to a project is kept here). */
+  listScopeTemplates(workspaceSlug: string): Promise<TE9ScopeTemplate[]> {
+    return this.call(this.get(`/api/workspaces/${workspaceSlug}/e9/scope-templates/`));
+  }
+
+  deleteScopeTemplate(workspaceSlug: string, templateId: string): Promise<void> {
+    return this.call(this.delete(`/api/workspaces/${workspaceSlug}/e9/scope-templates/${templateId}/`));
   }
 
   // ---- floors ----

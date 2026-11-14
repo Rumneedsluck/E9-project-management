@@ -22,7 +22,24 @@ export type TE9ProjectScope = {
   bill_when: "Signed off" | "Delivered";
   /** the unit sizes are typed in on this sheet (always stored in inches) */
   size_unit: "in" | "ft" | "mm";
+  /** how it is measured on site, how it is produced / supplied, and anything else (shown on its sheet) */
+  measure_note?: string;
+  production_note?: string;
+  notes?: string;
   item_count?: number;
+};
+
+/** A scope on the company list: set up once, added to any project with its settings filled in. */
+export type TE9ScopeTemplate = {
+  id: string;
+  label: string;
+  prefix: string;
+  unit_mode: TE9UnitMode;
+  size_unit: "in" | "ft" | "mm";
+  bill_when: "Signed off" | "Delivered";
+  measure_note: string;
+  production_note: string;
+  notes: string;
 };
 
 export type TE9FloorStatus = "Not Started" | "In Progress" | "Handed Over";

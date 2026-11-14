@@ -6,15 +6,15 @@
 
 import { SIZE_UNIT_LABEL } from "./sizes";
 import type { TE9SizeUnit } from "./sizes";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { AddOutline, CloseOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/components/button";
 import { setToast } from "@plane/blocks/toast";
 import { cn } from "@plane/utils";
 import { e9ProjectService } from "@/services/e9/project.service";
-import { refreshE9Projects, refreshE9Tracker, useE9Floors, useE9Scopes } from "../hooks";
+import { refreshE9Projects, refreshE9Tracker, useE9Floors, useE9Scopes, useE9ScopeTemplates } from "../hooks";
 import type { TE9Project } from "../types";
-import type { TE9Floor, TE9FloorStatus, TE9ProjectScope, TE9UnitMode } from "./logic";
+import type { TE9Floor, TE9FloorStatus, TE9ProjectScope, TE9ScopeTemplate, TE9UnitMode } from "./logic";
 import { SCOPE_BILL_WHEN } from "./constants";
 import { E9Modal } from "./modal";
 
@@ -47,10 +47,45 @@ type TScopeDraft = Partial<TE9ProjectScope> & {
   enabled: boolean;
 };
 
+const NOTE_FIELDS: { field: "measure_note" | "production_note" | "notes"; label: string; placeholder: string }[] = [
+  { field: "measure_note", label: "How it's measured", placeholder: "e.g. Glass panel H × W, add 2 in on each side" },
+  {
+    field: "production_note",
+    label: "How it's produced",
+    placeholder: "e.g. Supplied as a roll and cut on site; vendor X",
+  },
+  { field: "notes", label: "Notes for the team", placeholder: "e.g. Printing only when the client asks" },
+];
+
+const hasNotes = (row: TScopeDraft) => Boolean(row.measure_note || row.production_note || row.notes);
+
 export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps) {
   const { data: scopes } = useE9Scopes(workspaceSlug, project.id);
+  const { data: templates } = useE9ScopeTemplates(workspaceSlug, open);
   const [rows, setRows] = useState<TScopeDraft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [notesOpen, setNotesOpen] = useState<number | null>(null);
+  // company scopes this project doesn't have yet (matched by name, any capitals)
+  const available = (templates ?? []).filter(
+    (template) => !rows.some((row) => row.label.trim().toLowerCase() === template.label.trim().toLowerCase())
+  );
+  const addFromCompany = (template: TE9ScopeTemplate) => {
+    setRows((prev) => [
+      ...prev,
+      {
+        label: template.label,
+        prefix: template.prefix,
+        unit_mode: template.unit_mode,
+        enabled: true,
+        bill_when: template.bill_when,
+        size_unit: template.size_unit,
+        measure_note: template.measure_note,
+        production_note: template.production_note,
+        notes: template.notes,
+        item_count: 0,
+      },
+    ]);
+  };
 
   useEffect(() => {
     if (open && scopes) setRows(scopes.map((scope) => ({ ...scope })));
@@ -65,15 +100,20 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
       await e9ProjectService.saveScopes(
         workspaceSlug,
         project.id,
-        rows.map(({ key, label, prefix, unit_mode, enabled, bill_when, size_unit }) => ({
-          key,
-          label,
-          prefix,
-          unit_mode,
-          enabled,
-          bill_when,
-          size_unit,
-        }))
+        rows.map(
+          ({ key, label, prefix, unit_mode, enabled, bill_when, size_unit, measure_note, production_note, notes }) => ({
+            key,
+            label,
+            prefix,
+            unit_mode,
+            enabled,
+            bill_when,
+            size_unit,
+            measure_note,
+            production_note,
+            notes,
+          })
+        )
       );
       await refreshE9Tracker(workspaceSlug, project.id);
       setToast({ type: "success", title: "Scopes saved", message: "The tracker and dashboard now follow them." });
@@ -114,6 +154,7 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
                 Sizes typed in
               </th>
               <th className="w-20 pb-2 text-right">Items</th>
+              <th className="w-20 pb-2">How</th>
               <th className="w-10 pb-2" />
             </tr>
           </thead>
@@ -122,99 +163,143 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
               const hasItems = (row.item_count ?? 0) > 0;
               return (
                 // oxlint-disable-next-line react/no-array-index-key -- a new row has no key yet
-                <tr key={row.key ?? `new-${index}`} className={cn(!row.enabled && "opacity-60")}>
-                  <td className="py-1.5">
-                    <input
-                      type="checkbox"
-                      aria-label={`${row.label} on this project`}
-                      checked={row.enabled}
-                      onChange={(event) => update(index, { enabled: event.target.checked })}
-                      className="size-4 cursor-pointer accent-[var(--brand-default)]"
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      className={inputClass}
-                      value={row.label}
-                      aria-label="Scope name"
-                      onChange={(event) => update(index, { label: event.target.value })}
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <input
-                      className={cn(inputClass, "uppercase")}
-                      value={row.prefix}
-                      aria-label="Code prefix"
-                      maxLength={6}
-                      disabled={hasItems}
-                      title={
-                        hasItems ? "Codes cannot change once a scope has items" : "Item codes start with this, e.g. AL1"
-                      }
-                      onChange={(event) =>
-                        update(index, { prefix: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })
-                      }
-                    />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <select
-                      className={inputClass}
-                      value={row.unit_mode}
-                      aria-label="Measured as"
-                      onChange={(event) => update(index, { unit_mode: event.target.value as TE9UnitMode })}
-                    >
-                      {UNIT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <select
-                      className={inputClass}
-                      value={row.bill_when ?? "Signed off"}
-                      aria-label={`${row.label} bills when`}
-                      onChange={(event) =>
-                        update(index, { bill_when: event.target.value as "Signed off" | "Delivered" })
-                      }
-                    >
-                      {SCOPE_BILL_WHEN.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <select
-                      className={inputClass}
-                      value={row.size_unit ?? "in"}
-                      aria-label={`${row.label} sizes typed in`}
-                      onChange={(event) => update(index, { size_unit: event.target.value as TE9SizeUnit })}
-                    >
-                      {(Object.keys(SIZE_UNIT_LABEL) as TE9SizeUnit[]).map((unit) => (
-                        <option key={unit} value={unit}>
-                          {SIZE_UNIT_LABEL[unit]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="py-1.5 text-right text-body-xs-medium text-tertiary tabular-nums">
-                    {row.item_count ?? 0}
-                  </td>
-                  <td className="py-1.5 text-right">
-                    {!row.is_standard && !hasItems && (
+                <Fragment key={row.key ?? `new-${index}`}>
+                  <tr className={cn(!row.enabled && "opacity-60")}>
+                    <td className="py-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label={`${row.label} on this project`}
+                        checked={row.enabled}
+                        onChange={(event) => update(index, { enabled: event.target.checked })}
+                        className="size-4 cursor-pointer accent-[var(--brand-default)]"
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <input
+                        className={inputClass}
+                        value={row.label}
+                        aria-label="Scope name"
+                        onChange={(event) => update(index, { label: event.target.value })}
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <input
+                        className={cn(inputClass, "uppercase")}
+                        value={row.prefix}
+                        aria-label="Code prefix"
+                        maxLength={6}
+                        disabled={hasItems}
+                        title={
+                          hasItems
+                            ? "Codes cannot change once a scope has items"
+                            : "Item codes start with this, e.g. AL1"
+                        }
+                        onChange={(event) =>
+                          update(index, { prefix: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") })
+                        }
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <select
+                        className={inputClass}
+                        value={row.unit_mode}
+                        aria-label="Measured as"
+                        onChange={(event) => update(index, { unit_mode: event.target.value as TE9UnitMode })}
+                      >
+                        {UNIT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <select
+                        className={inputClass}
+                        value={row.bill_when ?? "Signed off"}
+                        aria-label={`${row.label} bills when`}
+                        onChange={(event) =>
+                          update(index, { bill_when: event.target.value as "Signed off" | "Delivered" })
+                        }
+                      >
+                        {SCOPE_BILL_WHEN.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <select
+                        className={inputClass}
+                        value={row.size_unit ?? "in"}
+                        aria-label={`${row.label} sizes typed in`}
+                        onChange={(event) => update(index, { size_unit: event.target.value as TE9SizeUnit })}
+                      >
+                        {(Object.keys(SIZE_UNIT_LABEL) as TE9SizeUnit[]).map((unit) => (
+                          <option key={unit} value={unit}>
+                            {SIZE_UNIT_LABEL[unit]}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-1.5 text-right text-body-xs-medium text-tertiary tabular-nums">
+                      {row.item_count ?? 0}
+                    </td>
+                    <td className="py-1.5 pl-2">
                       <button
                         type="button"
-                        aria-label={`Remove ${row.label}`}
-                        onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
-                        className="grid size-7 place-items-center rounded-md text-tertiary hover:bg-danger-subtle hover:text-danger-primary"
+                        aria-expanded={notesOpen === index}
+                        aria-label={`How ${row.label || "this scope"} is measured and made`}
+                        onClick={() => setNotesOpen((current) => (current === index ? null : index))}
+                        className={cn(
+                          "rounded-md px-2 py-1 text-body-2xs-semibold hover:bg-layer-1-hover",
+                          hasNotes(row) ? "text-accent-primary" : "text-tertiary"
+                        )}
                       >
-                        <CloseOutline className="size-3.5" />
+                        {hasNotes(row) ? "Notes ✓" : "+ Notes"}
                       </button>
-                    )}
-                  </td>
-                </tr>
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {!row.is_standard && !hasItems && (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${row.label}`}
+                          onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
+                          className="grid size-7 place-items-center rounded-md text-tertiary hover:bg-danger-subtle hover:text-danger-primary"
+                        >
+                          <CloseOutline className="size-3.5" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {notesOpen === index && (
+                    <tr>
+                      <td />
+                      <td colSpan={8} className="pb-3">
+                        <div className="grid gap-2 rounded-lg border border-subtle bg-layer-1 p-3 md:grid-cols-3">
+                          {NOTE_FIELDS.map(({ field, label, placeholder }) => (
+                            <label key={field} className="flex flex-col gap-1 text-body-2xs-semibold text-secondary">
+                              {label}
+                              <textarea
+                                rows={3}
+                                maxLength={2000}
+                                className={cn(inputClass, "h-auto py-2 leading-snug")}
+                                value={row[field] ?? ""}
+                                placeholder={placeholder}
+                                onChange={(event) => update(index, { [field]: event.target.value })}
+                              />
+                            </label>
+                          ))}
+                          <p className="text-body-2xs-regular text-placeholder md:col-span-3">
+                            Shown at the top of this scope&apos;s sheet. Your own scopes are kept on the company list,
+                            so the next project gets them ready-filled.
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -240,6 +325,24 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
           <AddOutline className="size-3.5" />
           Add your own scope
         </button>
+        {available.length > 0 && (
+          <select
+            className={cn(inputClass, "mt-3 ml-2 inline-block w-auto")}
+            aria-label="Add a scope from the company list"
+            value=""
+            onChange={(event) => {
+              const template = available.find((entry) => entry.id === event.target.value);
+              if (template) addFromCompany(template);
+            }}
+          >
+            <option value="">+ From company list ({available.length})</option>
+            {available.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.label} ({template.prefix})
+              </option>
+            ))}
+          </select>
+        )}
         <p className="mt-3 text-body-2xs-regular text-placeholder">
           Size scopes add up sq ft; Numbers-only scopes add up quantity (Nos). Scopes that already have items can be
           switched off but not removed.

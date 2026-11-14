@@ -4,7 +4,6 @@
 
 import os
 import uuid
-from decimal import Decimal
 
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
@@ -231,6 +230,10 @@ class E9ProjectScope(BaseModel):
         default="Signed off",
         help_text="When items of this scope can be billed: Signed off or Delivered",
     )
+    # how the team works this scope, shown at the top of its sheet
+    measure_note = models.TextField(blank=True, default="", help_text="How it is measured on site")
+    production_note = models.TextField(blank=True, default="", help_text="How it is produced / supplied")
+    notes = models.TextField(blank=True, default="", help_text="Anything else the team should know")
 
     class Meta:
         verbose_name = "E9 Project Scope"
@@ -710,6 +713,29 @@ class E9Certification(BaseModel):
                 or self.scope
             )
         return " · ".join(part for part in [self.floor, scope] if part) or "Whole project"
+
+
+class E9ScopeTemplate(BaseModel):
+    """The company's own scopes (Writing Film, Dinoc ...): set up once, ticked on in any project."""
+
+    workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_scope_templates")
+    label = models.CharField(max_length=80)
+    prefix = models.CharField(max_length=6)
+    unit_mode = models.CharField(max_length=8, choices=E9UnitMode.choices, default=E9UnitMode.SQFT)
+    size_unit = models.CharField(max_length=4, choices=tracker.SIZE_UNIT_CHOICES, default="in")
+    bill_when = models.CharField(max_length=12, choices=_choices(tracker.SCOPE_BILL_WHEN), default="Signed off")
+    measure_note = models.TextField(blank=True, default="")
+    production_note = models.TextField(blank=True, default="")
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        verbose_name = "E9 Scope Template"
+        verbose_name_plural = "E9 Scope Templates"
+        db_table = "e9_scope_templates"
+        ordering = ("label",)
+
+    def __str__(self):
+        return self.label
 
 
 class E9Announcement(BaseModel):

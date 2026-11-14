@@ -21,25 +21,38 @@ from plane.app.permissions import ROLE, allow_permission
 from plane.app.views.base import BaseAPIView
 
 from . import importer, tracker
-from .models import E9Attachment, E9AttachmentKind, E9ChangeLog, E9Floor, E9ProjectScope, E9ScopeItem, E9UnitMode
+from .models import (
+    E9Attachment,
+    E9AttachmentKind,
+    E9ChangeLog,
+    E9Floor,
+    E9ProjectScope,
+    E9ScopeItem,
+    E9ScopeTemplate,
+    E9UnitMode,
+)
 from .serializers import (
     E9AttachmentSerializer,
     E9ChangeLogSerializer,
     E9FloorSerializer,
     E9ProjectScopeSerializer,
+    E9ScopeTemplateSerializer,
 )
 from .safety import SAFE_UPLOADS, upload_type, uuid_or_none
 from .services import (
+    NOTE_FIELDS,
+    NOTE_LIMIT,
     PREFIX_PATTERN,
     ensure_scopes,
     item_code,
     new_scope_key,
     record,
     record_changes,
+    save_scope_template,
     scope_map,
     snapshot,
 )
-from .views import _can_edit, _can_update_items, _visible_projects
+from .views import _can_edit, _can_update_items, _is_workspace_admin, _visible_projects
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 WORKSPACE_ROLES = [ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST]
@@ -121,7 +134,8 @@ class E9ScopeListEndpoint(BaseAPIView):
             size_unit = row.get("size_unit") or (current[key].size_unit if key else "in")
             if size_unit not in tracker.SIZE_UNITS:
                 return Response({"scopes": f"'{label}': sizes can be typed in inches, feet or mm."}, status=400)
-            cleaned.append((key, label, prefix, unit_mode, bool(row.get("enabled", True)), bill_when, size_unit))
+            notes = {field: str(row.get(field) or "").strip()[:NOTE_LIMIT] for field in NOTE_FIELDS}
+            cleaned.append((key, label, prefix, unit_mode, bool(row.get("enabled", True)), bill_when, size_unit, notes))
         sent_keys = {item[0] for item in cleaned if item[0]}
         # standard scopes are never removed (only switched off); keep any that were not sent
         kept_prefixes = [scope.prefix for key, scope in current.items() if key not in sent_keys and scope.is_standard]
@@ -137,12 +151,12 @@ class E9ScopeListEndpoint(BaseAPIView):
                 )
 
         # 2) save
-        fields = ["label", "prefix", "unit_mode", "enabled", "bill_when", "size_unit"]
+        fields = ["label", "prefix", "unit_mode", "enabled", "bill_when", "size_unit", *NOTE_FIELDS]
         with transaction.atomic():
             for scope in removed:
                 record(project, request.user, "scope", "deleted", None, scope.label, old=scope.label)
                 scope.delete(soft=False)
-            for order, (key, label, prefix, unit_mode, enabled, bill_when, size_unit) in enumerate(cleaned):
+            for order, (key, label, prefix, unit_mode, enabled, bill_when, size_unit, notes) in enumerate(cleaned):
                 if key:
                     scope = current[key]
                     before = snapshot(scope, fields)
@@ -157,6 +171,8 @@ class E9ScopeListEndpoint(BaseAPIView):
                 scope.label, scope.prefix, scope.unit_mode, scope.enabled = label, prefix, unit_mode, enabled
                 scope.bill_when = bill_when
                 scope.size_unit = size_unit
+                for field, value in notes.items():
+                    setattr(scope, field, value)
                 scope.sort_order = (order + 1) * 1000
                 if before is None:
                     scope.save(created_by_id=request.user.id)
@@ -164,7 +180,30 @@ class E9ScopeListEndpoint(BaseAPIView):
                 else:
                     scope.save()
                     record_changes(project, request.user, "scope", None, label, before, snapshot(scope, fields))
+                if not scope.is_standard:
+                    save_scope_template(project.workspace_id, scope, request.user)
         return Response(_scopes_payload(project))
+
+
+class E9ScopeTemplateListEndpoint(BaseAPIView):
+    """The company's own scopes. Every scope a team adds to a project lands here, ready for the next project."""
+
+    @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
+    def get(self, request, slug):
+        templates = E9ScopeTemplate.objects.filter(workspace__slug=slug)
+        return Response(E9ScopeTemplateSerializer(templates, many=True).data)
+
+
+class E9ScopeTemplateDetailEndpoint(BaseAPIView):
+    @allow_permission(WORKSPACE_ROLES, level="WORKSPACE")
+    def delete(self, request, slug, template_id):
+        if not _is_workspace_admin(request.user, slug):
+            return _forbidden("Only workspace admins can take a scope off the company list.")
+        template = E9ScopeTemplate.objects.filter(workspace__slug=slug, pk=template_id).first()
+        if template is None:
+            return Response({"error": "That scope is not on the company list."}, status=status.HTTP_404_NOT_FOUND)
+        template.delete()  # projects that use it keep their own copy
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------

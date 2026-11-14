@@ -82,6 +82,10 @@ const opts = { revalidateOnFocus: false };
 export const useE9Scopes = (slug: string, projectId: string) =>
   useSWR(e9ScopesKey(slug, projectId), () => e9ProjectService.listScopes(slug, projectId), opts);
 
+/** The company's own scopes (Writing Film, Dinoc ...), shared by every project. */
+export const useE9ScopeTemplates = (slug: string, enabled = true) =>
+  useSWR(enabled ? ["e9-scope-templates", slug] : null, () => e9ProjectService.listScopeTemplates(slug), opts);
+
 export const useE9Floors = (slug: string, projectId: string) =>
   useSWR(e9FloorsKey(slug, projectId), () => e9ProjectService.listFloors(slug, projectId), opts);
 

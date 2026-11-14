@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.utils.text import slugify
 
 from . import tracker
-from .models import E9ChangeLog, E9Floor, E9ProjectScope, E9ScopeItem
+from .models import E9ChangeLog, E9Floor, E9ProjectScope, E9ScopeItem, E9ScopeTemplate
 
 # ---------------------------------------------------------------------------
 # Scopes
@@ -67,6 +67,29 @@ def new_scope_key(project, label):
 
 
 PREFIX_PATTERN = re.compile(r"^[A-Z0-9]{1,6}$")
+
+# how the team works a scope (shown on its sheet, carried in the company scope list)
+NOTE_FIELDS = ("measure_note", "production_note", "notes")
+NOTE_LIMIT = 2000
+
+
+def save_scope_template(workspace_id, scope, user=None):
+    """Keep the company list in step with a scope the team added: same name = same entry (any capitals)."""
+    template = E9ScopeTemplate.objects.filter(workspace_id=workspace_id, label__iexact=scope.label).first()
+    if template is None:
+        template = E9ScopeTemplate(workspace_id=workspace_id, label=scope.label)
+    template.label = scope.label
+    template.prefix = scope.prefix
+    template.unit_mode = scope.unit_mode
+    template.size_unit = scope.size_unit
+    template.bill_when = scope.bill_when
+    for field in NOTE_FIELDS:
+        setattr(template, field, getattr(scope, field))
+    if template._state.adding:
+        template.save(created_by_id=getattr(user, "id", None))
+    else:
+        template.save()
+    return template
 
 
 # ---------------------------------------------------------------------------

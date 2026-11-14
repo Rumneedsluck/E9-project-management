@@ -2365,6 +2365,26 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
             </div>
           </div>
 
+          {/* how the team works this scope (set in Scopes › Notes) */}
+          {scope && (scope.measure_note || scope.production_note || scope.notes) && (
+            <dl className="grid gap-x-6 gap-y-1 rounded-lg border border-subtle bg-layer-1 px-4 py-2.5 text-body-xs-regular sm:grid-cols-3">
+              {(
+                [
+                  ["How it's measured", scope.measure_note],
+                  ["How it's produced", scope.production_note],
+                  ["Notes", scope.notes],
+                ] as const
+              )
+                .filter(([, text]) => text)
+                .map(([title, text]) => (
+                  <div key={title} className="min-w-0">
+                    <dt className="text-body-2xs-semibold tracking-wide text-tertiary uppercase">{title}</dt>
+                    <dd className="whitespace-pre-line text-secondary">{text}</dd>
+                  </div>
+                ))}
+            </dl>
+          )}
+
           {rowMenu && (
             <RowMenu
               menu={rowMenu}

@@ -26,6 +26,8 @@ from .views_setup import (
     E9HistoryEndpoint,
     E9ImportEndpoint,
     E9ScopeListEndpoint,
+    E9ScopeTemplateDetailEndpoint,
+    E9ScopeTemplateListEndpoint,
 )
 
 from .views_boq import (
@@ -150,6 +152,12 @@ urlpatterns = [
     path(f"{P}/bills/<uuid:bill_id>/", E9BillDetailEndpoint.as_view(), name="e9-bill-detail"),
     # Company summary
     path("workspaces/<str:slug>/e9/summary/", E9SummaryEndpoint.as_view(), name="e9-summary"),
+    path("workspaces/<str:slug>/e9/scope-templates/", E9ScopeTemplateListEndpoint.as_view(), name="e9-scope-templates"),
+    path(
+        "workspaces/<str:slug>/e9/scope-templates/<uuid:template_id>/",
+        E9ScopeTemplateDetailEndpoint.as_view(),
+        name="e9-scope-template-detail",
+    ),
     path("workspaces/<str:slug>/e9/announcements/", E9AnnouncementListEndpoint.as_view(), name="e9-announcements"),
     path(
         "workspaces/<str:slug>/e9/announcements/<uuid:announcement_id>/",

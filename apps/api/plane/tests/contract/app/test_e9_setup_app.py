@@ -103,6 +103,54 @@ class TestScopes:
         assert wall.data[0]["unit"] == "nos"
 
     @pytest.mark.django_db
+    def test_a_scope_keeps_how_it_is_measured_and_made_and_lands_on_the_company_list(
+        self, session_client, workspace, project
+    ):
+        rows = scopes_payload(session_client, workspace, project)
+        rows.append(
+            {
+                "label": "Writing Film",
+                "prefix": "WF",
+                "unit_mode": "sqft",
+                "enabled": True,
+                "measure_note": "Glass panel H x W, add 2in each side",
+                "production_note": "Supplied as roll, cut on site",
+                "notes": "No printing unless the client asks",
+            }
+        )
+        response = session_client.put(url(workspace, project, "scopes/"), {"scopes": rows}, format="json")
+        assert response.status_code == 200, response.data
+        film = next(row for row in response.data if row["label"] == "Writing Film")
+        assert film["measure_note"].startswith("Glass panel") and film["production_note"].startswith("Supplied")
+        # it is now on the company list, ready for the next project
+        listed = session_client.get(f"/api/workspaces/{workspace.slug}/e9/scope-templates/").data
+        assert [(row["label"], row["prefix"], row["notes"]) for row in listed] == [
+            ("Writing Film", "WF", "No printing unless the client asks")
+        ]
+        # editing it on the project updates the same company entry (no duplicates, any capitals)
+        rows = [{**row, "label": "writing film"} if row["label"] == "Writing Film" else row for row in response.data]
+        film_row = next(row for row in rows if row["label"] == "writing film")
+        film_row["notes"] = "Printing possible"
+        session_client.put(url(workspace, project, "scopes/"), {"scopes": rows}, format="json")
+        listed = session_client.get(f"/api/workspaces/{workspace.slug}/e9/scope-templates/").data
+        assert len(listed) == 1 and listed[0]["notes"] == "Printing possible"
+        # standard scopes never go on the company list, even with notes
+        assert all(row["label"] != "Wall Graphics" for row in listed)
+
+    @pytest.mark.django_db
+    def test_only_workspace_admins_take_a_scope_off_the_company_list(self, session_client, workspace, project):
+        rows = scopes_payload(session_client, workspace, project)
+        rows.append({"label": "Dinoc", "prefix": "DN", "unit_mode": "sqft", "enabled": True})
+        session_client.put(url(workspace, project, "scopes/"), {"scopes": rows}, format="json")
+        template = session_client.get(f"/api/workspaces/{workspace.slug}/e9/scope-templates/").data[0]
+        detail = f"/api/workspaces/{workspace.slug}/e9/scope-templates/{template['id']}/"
+        assert guest_client(workspace, project).delete(detail).status_code == 403
+        assert session_client.delete(detail).status_code == 204
+        assert session_client.get(f"/api/workspaces/{workspace.slug}/e9/scope-templates/").data == []
+        # the project keeps its own copy of the scope
+        assert any(row["label"] == "Dinoc" for row in session_client.get(url(workspace, project, "scopes/")).data)
+
+    @pytest.mark.django_db
     def test_scope_with_items_cannot_be_removed_or_recoded(self, session_client, workspace, project):
         rows = scopes_payload(session_client, workspace, project)
         rows.append({"label": "Vinyl Stickers", "prefix": "VS", "unit_mode": "either", "enabled": True})
