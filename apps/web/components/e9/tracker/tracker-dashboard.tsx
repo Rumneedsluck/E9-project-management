@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn, renderFormattedDate } from "@plane/utils";
 import { E9BoqDashboardPanel } from "../commercial/boq-dashboard-panel";
 import { E9OpenSnagsPanel } from "../commercial/snags-page";
@@ -87,31 +87,85 @@ type Props = {
   onOpenView?: (view: "boq" | "billing" | "snags") => void;
 };
 
-/** Big work-done pie and the 5 stage pies, like the Excel dashboard and scope sheets. */
+const STAGES_OPEN_KEY = "e9-overview-stages-open";
+
+/** The five stage pies stay tucked away until asked for; the choice is remembered on this computer. */
+function useStagesOpen() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    try {
+      setOpen(window.localStorage.getItem(STAGES_OPEN_KEY) === "1");
+    } catch {
+      // storage blocked: the pies simply start folded
+    }
+  }, []);
+  const toggle = () =>
+    setOpen((value) => {
+      try {
+        window.localStorage.setItem(STAGES_OPEN_KEY, value ? "0" : "1");
+      } catch {
+        // not remembered, still works
+      }
+      return !value;
+    });
+  return [open, toggle] as const;
+}
+
+/** The big work-done pie, and the 5 stage pies behind an arrow (like the Excel dashboard and scope sheets). */
 function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
   const done = workDone(items);
   const rows = counted(items).filter(isFilled);
+  const [stagesOpen, toggleStages] = useStagesOpen();
   return (
     <section className="flex flex-col gap-4">
       {/* the whole project's outcome: one big pie */}
       <div className="e9-crop relative flex flex-col items-center gap-3 border border-subtle bg-surface-1 px-6 py-8">
         <span className="e9-eyebrow">Work done · whole project</span>
         <E9DonePie percent={done.percent} size={280} label="installed" />
+        <button
+          type="button"
+          onClick={toggleStages}
+          aria-expanded={stagesOpen}
+          aria-controls="e9-stage-pies"
+          className="mt-1 flex items-center gap-2 rounded-md border border-subtle px-3 py-1.5 text-body-xs-semibold text-secondary transition-colors duration-150 hover:bg-[var(--e9-hover)] hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          Stage breakdown
+          <span className="text-tertiary">{STAGE_PIES.length} stages</span>
+          <svg
+            viewBox="0 0 12 12"
+            aria-hidden="true"
+            className={cn(
+              "size-3 transition-transform duration-200 motion-reduce:transition-none",
+              stagesOpen && "rotate-180"
+            )}
+          >
+            <path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
-      {/* the 5 stages, smaller, in one row */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {STAGE_PIES.map((pie) => (
-          <E9StagePie
-            key={pie.title}
-            title={pie.title}
-            segments={pie.statuses.map((status) => ({
-              key: status.value || "blank",
-              label: status.label,
-              value: rows.filter((item) => String(item[pie.field] ?? "") === status.value).length,
-              color: status.problem ? "#EF4444" : undefined,
-            }))}
-          />
-        ))}
+      {/* the 5 stages, smaller, in one row: folded away until the arrow is pressed */}
+      <div
+        id="e9-stage-pies"
+        inert={!stagesOpen}
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
+          stagesOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        )}
+      >
+        <div className="grid min-h-0 grid-cols-2 gap-3 overflow-hidden sm:grid-cols-3 lg:grid-cols-5">
+          {STAGE_PIES.map((pie) => (
+            <E9StagePie
+              key={pie.title}
+              title={pie.title}
+              segments={pie.statuses.map((status) => ({
+                key: status.value || "blank",
+                label: status.label,
+                value: rows.filter((item) => String(item[pie.field] ?? "") === status.value).length,
+                color: status.problem ? "#EF4444" : undefined,
+              }))}
+            />
+          ))}
+        </div>
       </div>
     </section>
   );
