@@ -246,6 +246,11 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         scope = self.instance.scope if self.instance else self.context.get("scope")
+        is_part = attrs.get("is_part", self.instance.is_part if self.instance else False)
+        if is_part:
+            # the site measurement is taken once, on the main row: a part has only a production size
+            for field in ("height_in", "width_in", "qty"):
+                attrs.pop(field, None)
         issue = attrs.get("site_issue")
         if scope and issue and issue not in tracker.site_issues_for(scope):
             raise serializers.ValidationError({"site_issue": f"'{issue}' is not a site issue for this scope."})

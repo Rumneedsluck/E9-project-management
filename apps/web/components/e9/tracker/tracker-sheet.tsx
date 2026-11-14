@@ -121,19 +121,8 @@ const BAND_COLORS: Record<string, string> = {
 };
 
 /** A part (a glass panel inside a wall…) has its own sizes; status, DCs and billing are set once on the wall. */
-const PART_COLUMNS = new Set([
-  "floor",
-  "plan",
-  "desc",
-  "h",
-  "w",
-  "qty",
-  "area",
-  "prodh",
-  "prodw",
-  "prodqty",
-  "remarks",
-]);
+/** What a part row can hold: the site is measured once on the main row, so a part has only a production size. */
+const PART_COLUMNS = new Set(["floor", "plan", "desc", "prodh", "prodw", "prodqty", "remarks"]);
 
 /** Billing and hold columns: only admins change these (members run the tracker, admins run the money). */
 const BILLING_COLUMNS = new Set([

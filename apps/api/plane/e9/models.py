@@ -195,13 +195,10 @@ class E9ScopeItem(BaseModel):
 
     @property
     def area_sqft(self):
-        own = tracker.item_area_sqft(self.height_in, self.width_in, self.qty)
-        areas = [
-            own,
-            *(tracker.item_area_sqft(part.height_in, part.width_in, part.qty) for part in tracker.parts_of(self)),
-        ]
-        typed = [area for area in areas if area is not None]
-        return sum(typed, Decimal(0)) if typed else None
+        """Site area of the row. Parts have no site size: the wall is measured once, on its main row."""
+        if self.is_part:
+            return None
+        return tracker.item_area_sqft(self.height_in, self.width_in, self.qty)
 
     @property
     def current_stage(self):

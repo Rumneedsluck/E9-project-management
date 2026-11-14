@@ -185,12 +185,13 @@ export const isCancelled = (item: TE9ScopeItem): boolean => item.hold_status ===
 export const isHeld = (item: TE9ScopeItem): boolean => item.hold_status === "On Hold";
 
 /**
- * Rows as the totals see them: a held item stays in the total but shows no progress until it is released,
+ * Rows as the totals see them (parts left out: they belong to their wall): a held item stays in the total but shows no progress until it is released,
  * a cancelled item leaves every number (same rule as the Excel template).
  */
 export const counted = (items: TE9ScopeItem[]): TE9ScopeItem[] =>
   items
-    .filter((item) => !isCancelled(item))
+    // a part row is a piece of the wall above it, not an item of its own
+    .filter((item) => !item.is_part && !isCancelled(item))
     // oxlint-disable-next-line oxc/no-map-spread -- each row is copied on purpose
     .map((item) =>
       isHeld(item)

@@ -287,19 +287,29 @@ def _own_measured(item, unit):
 
 
 def measured(item, unit):
-    """Site-measured quantity: sq ft for sq-ft items, Nos otherwise. A wall counts its parts too."""
-    return _own_measured(item, unit) + sum((_own_measured(part, unit) for part in parts_of(item)), Decimal(0))
+    """Site-measured quantity: sq ft for sq-ft items, Nos otherwise.
+
+    The site measurement is taken once, on the main row: parts have only a production size."""
+    return _own_measured(item, unit)
 
 
 def _own_production_area(item):
     """One row's production area in sq ft, or None when no production size is typed."""
     # a production size without its own quantity means the same number of pieces as measured
     production_qty = item.production_qty if item.production_qty is not None else item.qty
+    if getattr(item, "is_part", False) and item.production_qty is None:
+        production_qty = 1  # a part has no site qty: one piece unless its production qty says otherwise
     return item_area_sqft(item.production_height_in, item.production_width_in, production_qty)
 
 
 def _own_production(item, unit):
-    """What one row sends for production. Uses the production size when typed, else the measured size."""
+    """What one row sends for production. Uses the production size when typed, else the measured size.
+
+    A part sends only what its production size / quantity says (nothing until that is typed)."""
+    if getattr(item, "is_part", False):
+        if unit == "sqft":
+            return _own_production_area(item) or Decimal(0)
+        return Decimal(item.production_qty) if item.production_qty is not None else Decimal(0)
     if unit == "sqft":
         area = _own_production_area(item)
         return area if area is not None else _own_measured(item, unit)
@@ -352,7 +362,13 @@ def dc_breakdown(item, unit):
 
 
 def dispatched(item, unit):
-    return sum((qty for _, qty in dc_breakdown(item, unit) if qty is not None), Decimal(0))
+    """What has gone to site. Quantities count only against a DC number. An item marked Dispatched or
+    Delivered at Site with no DC typed counts as fully sent; with DCs typed, their quantities are used,
+    so a short delivery still shows a balance."""
+    rows = dc_breakdown(item, unit)
+    if not rows and item.dispatch_status in DISPATCHED_DONE:
+        return production_measure(item, unit)
+    return sum((qty for _, qty in rows if qty is not None), Decimal(0))
 
 
 def balance_to_send(item, unit):

@@ -40,7 +40,42 @@ class TestPartsMaths:
         real = tracker.fold_parts([other, part, wall])  # any order in, sheet order out
         assert real == [wall, other]
         assert tracker.parts_of(wall) == [part] and part._parent is wall
-        assert tracker.measured(wall, "sqft") == Decimal("144.00") + Decimal("72.00")  # 144x144/144 + 72x144/144
+        # the site is measured once, on the main row: a part's site size never counts
+        assert tracker.measured(wall, "sqft") == Decimal("144.00")
+
+    def test_a_wall_made_of_pieces_like_the_excel(self):
+        """Wall 05 = one site measurement, produced as 4 pieces of 37in plus 1 piece of 34in (all 91in high)."""
+        wall = base(
+            height_in=Decimal(91),
+            width_in=Decimal(180),
+            qty=Decimal(1),
+            production_height_in=Decimal(91),
+            production_width_in=Decimal(37),
+            production_qty=Decimal(4),
+        )
+        piece = base(
+            sort_order=2000,
+            item_number=2,
+            is_part=True,
+            production_height_in=Decimal(91),
+            production_width_in=Decimal(34),
+        )
+        tracker.fold_parts([wall, piece])
+        site = tracker.measured(wall, "sqft")
+        made = tracker.production_measure(wall, "sqft")
+        assert site == Decimal("113.75")  # 91 x 180 / 144, measured once
+        assert made == Decimal("93.53") + Decimal("21.49")  # 4 x 91x37/144 + 1 x 91x34/144
+        assert tracker.wastage(wall, "sqft") == made - site
+
+    def test_a_part_without_a_production_size_sends_nothing(self):
+        wall = base(height_in=Decimal(120), width_in=Decimal(120), qty=Decimal(1))
+        piece = base(sort_order=2000, item_number=2, is_part=True)
+        tracker.fold_parts([wall, piece])
+        assert tracker.production_measure(wall, "sqft") == Decimal("100.00")
+        nos_wall = base(scope="frames", qty=Decimal(3))
+        nos_piece = base(scope="frames", sort_order=2000, item_number=2, is_part=True)
+        tracker.fold_parts([nos_wall, nos_piece])
+        assert tracker.production_measure(nos_wall, "nos") == Decimal(3)
 
     def test_a_part_at_the_top_of_a_sheet_is_just_an_item(self):
         first = base(item_number=1, sort_order=1000, is_part=True, height_in=Decimal(12), width_in=Decimal(12))
@@ -139,6 +174,41 @@ def sheet(session_client, workspace, project, scope="wall_graphics"):
     return sorted((row for row in data if row["scope"] == scope), key=lambda row: row["sort_order"])
 
 
+@pytest.mark.unit
+class TestDispatchedRule:
+    def _item(self, **values):
+        item = base(
+            **{
+                "height_in": Decimal(120),
+                "width_in": Decimal(120),
+                "qty": Decimal(1),
+                "dc_nos": "",
+                "dc_qty": "",
+                **values,
+            }
+        )
+        tracker.fold_parts([item])
+        return item
+
+    def test_marked_dispatched_with_no_dc_counts_as_fully_sent(self):
+        for status in ("Dispatched", "Delivered at Site"):
+            item = self._item(dispatch_status=status)
+            assert tracker.dispatched(item, "sqft") == Decimal("100.00")
+            assert tracker.balance_to_send(item, "sqft") == Decimal(0)
+
+    def test_with_dcs_typed_their_quantities_are_used_so_a_short_delivery_shows(self):
+        item = self._item(dispatch_status="Delivered at Site", dc_nos="DC1, DC2", dc_qty="60, 30")
+        assert tracker.dispatched(item, "sqft") == Decimal(90)
+        assert tracker.balance_to_send(item, "sqft") == Decimal(10)
+
+    def test_a_dc_quantity_counts_only_against_a_dc_number(self):
+        item = self._item(dispatch_status="Partially Dispatched", dc_nos="", dc_qty="40")
+        assert tracker.dispatched(item, "sqft") == Decimal(0)
+
+    def test_not_dispatched_and_no_dc_is_nothing_sent(self):
+        assert tracker.dispatched(self._item(dispatch_status="Not Dispatched"), "sqft") == Decimal(0)
+
+
 @pytest.mark.django_db
 class TestPartsOnTheSheet:
     def test_a_part_takes_no_w_number_and_shows_what_it_belongs_to(self, session_client, workspace, project):
@@ -155,9 +225,7 @@ class TestPartsOnTheSheet:
         assert listed[0]["parts_count"] == 1 and listed[1]["is_part"] is True
         assert listed[2]["description"] == "next"  # same row, same data, new number
 
-    def test_the_wall_total_includes_its_parts_and_the_dashboard_counts_it_once(
-        self, session_client, workspace, project
-    ):
+    def test_a_part_has_no_site_area_and_the_dashboard_counts_the_wall_once(self, session_client, workspace, project):
         rows = make_rows(session_client, workspace, project, 2)
         wall, part = rows
         for row, (height, width) in ((wall, (144, 144)), (part, (72, 144))):
@@ -168,11 +236,12 @@ class TestPartsOnTheSheet:
             )
         session_client.patch(item_url(workspace.slug, project.id, part["id"]), {"is_part": True}, format="json")
         listed = sheet(session_client, workspace, project)
-        assert Decimal(listed[0]["area_sqft"]) == Decimal("216.00")  # 144 + 72
+        assert Decimal(listed[0]["area_sqft"]) == Decimal("144.00")  # the wall's own site area; parts have none
+        assert listed[1]["area_sqft"] is None
         projects = session_client.get(f"/api/workspaces/{workspace.slug}/e9/projects/").data
         summary = next(entry for entry in projects if entry["id"] == str(project.id))["tracker"]
         assert summary["rows"] == 1  # one wall, not two rows
-        assert Decimal(summary["sqft_total"]) == Decimal("216.00")
+        assert Decimal(summary["sqft_total"]) == Decimal("144.00")
 
     def test_deleting_a_wall_takes_its_parts_and_undo_brings_them_all_back(self, session_client, workspace, project):
         rows = make_rows(session_client, workspace, project, 3)
@@ -355,11 +424,11 @@ class TestPartsAndWastageInTheBoq:
         )
         return wall, part
 
-    def test_the_boq_counts_a_wall_once_and_adds_its_parts(self, session_client, workspace, project):
+    def test_the_boq_counts_a_wall_once_and_adds_its_parts_production(self, session_client, workspace, project):
         self._wall_with_a_part(session_client, workspace, project)
         data = session_client.get(boq_url(workspace, project)).data
         line = next(row for row in data["lines"] if row["line_no"] == "BO1")
-        assert Decimal(line["on_tracker"]) == Decimal("160.00")  # 110 (wall production) + 50 (part, no production size)
+        assert Decimal(line["on_tracker"]) == Decimal("110.00")  # wall production; the part has no production size yet
         assert len(line["item_ids"]) == 1  # one item, not two
 
     def test_wastage_per_line_is_production_minus_site_and_ignores_boq_edits(self, session_client, workspace, project):
@@ -367,10 +436,8 @@ class TestPartsAndWastageInTheBoq:
         line = next(
             row for row in session_client.get(boq_url(workspace, project)).data["lines"] if row["line_no"] == "BO1"
         )
-        assert Decimal(line["wastage"]) == Decimal(
-            "10.00"
-        )  # wall made 110 vs 100 measured; the part has no production size
-        assert line["wastage_pct"] == "6.7"  # 10 of 150 sq ft measured (100 + 50)
+        assert Decimal(line["wastage"]) == Decimal("10.00")  # wall made 110 vs 100 measured on site
+        assert line["wastage_pct"] == "10.0"  # 10 of the 100 sq ft measured on the main row
         session_client.patch(boq_url(workspace, project, f"lines/{line['id']}/"), {"qty": "5000"}, format="json")
         again = next(
             row for row in session_client.get(boq_url(workspace, project)).data["lines"] if row["line_no"] == "BO1"

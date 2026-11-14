@@ -289,6 +289,16 @@ describe("whole-project work done", () => {
   it("is 0 for an empty project", () => {
     expect(workDone([]).percent).toBe(0);
   });
+  it("does not count part rows: a wall made of pieces is one item", () => {
+    const wall = item({ id: "w", scope: "wall_graphics", unit: "sqft", description: "Wall 05", area_sqft: "113.75" });
+    const piece = item({ id: "p", scope: "wall_graphics", unit: "sqft", description: "Wall 05 piece", is_part: true });
+    const done = workDone([wall, piece]);
+    expect(done.rows).toBe(1);
+    expect(counted([wall, piece]).map((row) => row.id)).toEqual(["w"]);
+    expect(
+      scopeProgress([wall, piece], [{ key: "wall_graphics", label: "Wall Graphics", unit_mode: "sqft" }])[0].items
+    ).toBe(1);
+  });
 });
 
 describe("floors that differ only by capitals", () => {
