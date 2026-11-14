@@ -37,6 +37,22 @@ export const E9_SCOPES: { key: TE9ScopeKey; label: string; prefix: string; unit:
 
 export const getScope = (key: TE9ScopeKey) => E9_SCOPES.find((scope) => scope.key === key) ?? E9_SCOPES[0];
 
+/** One colour per scope, used by the scope ring on a project's Overview (custom scopes fall back to a palette). */
+export const SCOPE_COLORS: Record<string, string> = {
+  wall_graphics: "#DA1E26",
+  glass_film: "#3E7BFA",
+  internal_signages: "#E8A317",
+  external_signages: "#F06A25",
+  "3d_items": "#7C5CFC",
+  frames: "#14A3A3",
+  hand_paintings: "#2EA36B",
+  non_tender: "#C2569A",
+  others: "#8B8D98",
+};
+const SCOPE_FALLBACK = ["#5B8DEF", "#D97757", "#4FB286", "#B58AF0", "#E0B341", "#4AA8C9"];
+export const scopeColor = (key: string, index: number) =>
+  SCOPE_COLORS[key] ?? SCOPE_FALLBACK[index % SCOPE_FALLBACK.length];
+
 const COMMON_ISSUES_TAIL = ["Size differs from drawing", "Access / permission needed", "Other"];
 const SIGNAGE_ISSUES = [
   "No issues",

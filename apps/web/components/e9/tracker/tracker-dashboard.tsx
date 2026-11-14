@@ -18,8 +18,9 @@ import { setToast } from "@plane/blocks/toast";
 import { e9ProjectService } from "@/services/e9/project.service";
 import { errorText } from "../commercial/shared";
 import { E9ActivityHeatmap } from "../activity-heatmap";
-import { E9DonePie, E9StagePie } from "../charts";
-import type { TE9ScopeItem, TStageTargetRow } from "./logic";
+import { E9StagePie } from "../charts";
+import { E9ScopeTickPie } from "../scope-pie";
+import type { TE9ScopeItem, TScopeProgress, TStageTargetRow } from "./logic";
 import {
   STAGE_PIES,
   counted,
@@ -32,7 +33,7 @@ import {
   trackerKpis,
   workDone,
 } from "./logic";
-import { E9_TRACKER_STAGES } from "./constants";
+import { E9_TRACKER_STAGES, scopeColor } from "./constants";
 import { floorStatusClass } from "./setup-panels";
 import { E9TargetDate } from "./target-date";
 
@@ -119,8 +120,18 @@ function useStagesOpen() {
 }
 
 /** The big work-done pie, and the 5 stage pies behind an arrow (like the Excel dashboard and scope sheets). */
-function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
+function WorkDonePies({ items, progress }: { items: TE9ScopeItem[]; progress: TScopeProgress[] }) {
   const done = workDone(items);
+  // one sector per scope in use, sized by its pieces (Nos) and sq-ft rows, as in "Items / Qty"
+  const slices = progress
+    .filter((row) => row.items > 0)
+    .map((row, index) => ({
+      key: row.scope,
+      label: row.label,
+      color: scopeColor(row.scope, index),
+      value: row.items,
+      percent: row.percentItems,
+    }));
   const rows = counted(items).filter(isFilled);
   const [stagesOpen, toggleStages] = useStagesOpen();
   const reduceMotion = useReducedMotion();
@@ -129,7 +140,7 @@ function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
       {/* the whole project's outcome: one big pie */}
       <div className="e9-crop relative flex flex-col items-center gap-3 border border-subtle bg-surface-1 px-6 py-8">
         <span className="e9-eyebrow">Work done · whole project</span>
-        <E9DonePie percent={done.percent} size={280} label="installed" />
+        <E9ScopeTickPie slices={slices} percent={done.percent} size={300} label="work done" />
         {/* a slim pull-handle: click it, or drag it up, and the five stages slide up; drag it down to put them away */}
         <motion.button
           type="button"
@@ -255,7 +266,7 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
 
   return (
     <div className="flex flex-col gap-4">
-      <WorkDonePies items={items} />
+      <WorkDonePies items={items} progress={progress} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile
           label="Total items / qty"
