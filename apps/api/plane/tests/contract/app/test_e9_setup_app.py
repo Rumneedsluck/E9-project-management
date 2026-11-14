@@ -737,3 +737,31 @@ class TestInstalledPhotosAndHiddenColumns:
         migration.hide_unused_columns(apps, None)  # running twice changes nothing more
         hidden = E9ProjectProfile.objects.get(project=project).hidden_columns
         assert hidden == ["remarks", "current_stage", "qc_done_by", "installed_by"]
+
+
+@pytest.mark.contract
+class TestAttachFilesCommand:
+    @pytest.mark.django_db
+    def test_attaches_a_pdf_and_refuses_other_files(self, workspace, project, tmp_path, settings):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        from plane.e9.models import E9Attachment
+
+        settings.E9_UPLOAD_ROOT = str(tmp_path / "uploads")
+        pdf = tmp_path / "audit.pdf"
+        pdf.write_bytes(b"%PDF-1.4\n%made-up\n")
+        sheet = tmp_path / "numbers.xlsx"
+        sheet.write_bytes(b"PK\x03\x04")
+        call_command(
+            "e9_attach_files",
+            str(pdf),
+            project=project.name,
+            workspace=workspace.slug,
+            kind="site_audit",
+            draft="Final",
+        )
+        saved = E9Attachment.objects.get(project=project)
+        assert saved.kind == "site_audit" and saved.version == "Final" and saved.content_type == "application/pdf"
+        with pytest.raises(CommandError):
+            call_command("e9_attach_files", str(sheet), project=project.name, workspace=workspace.slug)

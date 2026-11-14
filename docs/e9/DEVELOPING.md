@@ -45,13 +45,14 @@ Other laptops running `e9-auto-update.sh` pick the change up within 5 minutes.
 
 ## 3b. Handy commands (run in `apps/api`, developer mode)
 
-| What                                                              | Command                                                                    |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Fill one made-up project with 300 rows (speed tests)              | `python manage.py e9_demo_perf --items 300`                                |
-| Time the tracker like a person (needs the site running)           | `cd e2e && node perf/tracker-perf.mjs`                                     |
-| Import a tracker Excel file from your own computer                | `python manage.py e9_import_tracker --file "<file>.xlsx" --project "Name"` |
-| Keep one project, remove the rest (lists first, then add `--yes`) | `python manage.py e9_keep_only --keep "Name"`                              |
-| Remove the made-up demo projects                                  | `python manage.py e9_demo_clear` (then `--yes`)                            |
+| What                                                              | Command                                                                                    |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Fill one made-up project with 300 rows (speed tests)              | `python manage.py e9_demo_perf --items 300`                                                |
+| Time the tracker like a person (needs the site running)           | `cd e2e && node perf/tracker-perf.mjs`                                                     |
+| Import a tracker Excel file from your own computer                | `python manage.py e9_import_tracker --file "<file>.xlsx" --project "Name"`                 |
+| Attach PDFs / photos (site audit report, drawing) to a project    | `python manage.py e9_attach_files --project "Name" --kind site_audit --status Final a.pdf` |
+| Keep one project, remove the rest (lists first, then add `--yes`) | `python manage.py e9_keep_only --keep "Name"`                                              |
+| Remove the made-up demo projects                                  | `python manage.py e9_demo_clear` (then `--yes`)                                            |
 
 Real client files are imported on your own computer only. They are never copied into the repository.
 
