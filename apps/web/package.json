@@ -8,11 +8,12 @@
     "dev": "react-router dev --port 3000",
     "build": "react-router build",
     "preview": "react-router build && serve -s build/client -l 3000",
-    "start": "serve -s build/client -l 3000",
+    "start": "node e9-serve.mjs",
     "clean": "rm -rf .turbo && rm -rf .next && rm -rf .react-router && rm -rf node_modules && rm -rf dist && rm -rf build",
     "check:lint": "oxlint --max-warnings=11957 .",
     "check:types": "react-router typegen && tsc --noEmit",
     "check:format": "oxfmt --check .",
+    "test": "vitest run",
     "fix:lint": "oxlint --fix .",
     "fix:format": "oxfmt ."
   },
@@ -26,6 +27,7 @@
     "@fontsource/ibm-plex-mono": "catalog:",
     "@fontsource/material-symbols-rounded": "catalog:",
     "@makeplane/propel": "catalog:",
+    "@number-flow/react": "catalog:",
     "@plane/blocks": "workspace:*",
     "@plane/constants": "workspace:*",
     "@plane/editor": "workspace:*",
@@ -50,6 +52,7 @@
     "mobx": "catalog:",
     "mobx-react": "catalog:",
     "mobx-utils": "catalog:",
+    "motion": "catalog:",
     "next-themes": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -81,6 +84,7 @@
     "dotenv": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-tsconfig-paths": "catalog:"
+    "vite-tsconfig-paths": "catalog:",
+    "vitest": "catalog:"
   }
 }

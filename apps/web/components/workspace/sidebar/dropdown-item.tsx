@@ -12,7 +12,8 @@ import Link from "next/link";
 import { Menu } from "@base-ui/react/menu";
 import { SettingsOutline, TickOutline, UserPlusOutline } from "@makeplane/propel/icons";
 import { Button } from "@makeplane/propel/elements/button";
-import { WorkspaceAvatar } from "@makeplane/propel/components/workspace-avatar";
+import { E9Text } from "@/components/e9/brand";
+import { WorkspaceAvatar } from "@/components/e9/workspace-avatar";
 // plane imports
 import { EUserPermissions } from "@plane/constants";
 import { useTranslation } from "@plane/i18n";
@@ -55,7 +56,9 @@ const SidebarDropdownItem = observer(function SidebarDropdownItem(props: TProps)
           <div className="relative flex min-w-0 flex-1 items-center justify-start gap-2">
             <WorkspaceAvatar size="lg" src={getFileURL(workspace.logo_url ?? "")} alt={workspace.name} aria-hidden />
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="truncate text-left text-body-xs-regular leading-5 text-primary">{workspace.name}</div>
+              <div className="truncate text-left text-body-xs-regular leading-5 text-primary">
+                <E9Text>{workspace.name}</E9Text>
+              </div>
               <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-caption-md-regular leading-3.5 text-tertiary capitalize">
                 <span className="min-w-0 truncate">{getUserRole(workspace.role)?.toLowerCase() || "guest"}</span>
                 <span aria-hidden className="size-1 shrink-0 rounded-full bg-(--text-color-placeholder)" />

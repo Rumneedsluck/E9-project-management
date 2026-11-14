@@ -12,7 +12,7 @@ import { FieldLabel } from "@makeplane/propel/elements/field";
 import { Icon } from "@makeplane/propel/components/icon";
 import { InputField } from "@makeplane/propel/components/input-field";
 import { TextButton } from "@makeplane/propel/components/text-button";
-import { WorkspaceAvatar } from "@makeplane/propel/components/workspace-avatar";
+import { WorkspaceAvatar } from "@/components/e9/workspace-avatar";
 import { ORGANIZATION_SIZE, EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
 import { useTranslation } from "@plane/i18n";
 import { Button } from "@makeplane/propel/components/button";

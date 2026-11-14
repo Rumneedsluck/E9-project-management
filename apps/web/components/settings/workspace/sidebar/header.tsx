@@ -11,7 +11,7 @@ import { ROLE_DETAILS } from "@plane/constants";
 import { useTranslation } from "@plane/i18n";
 import { IconButton } from "@makeplane/propel/components/icon-button";
 import { Icon } from "@makeplane/propel/components/icon";
-import { WorkspaceAvatar } from "@makeplane/propel/components/workspace-avatar";
+import { WorkspaceAvatar } from "@/components/e9/workspace-avatar";
 import { getFileURL } from "@plane/utils";
 // hooks
 import { useUserPermissions } from "@/hooks/store/user";
