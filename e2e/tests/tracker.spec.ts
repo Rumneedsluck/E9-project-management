@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 import { makeProject, projectUrl } from "../helpers";
 
 const rowCodes = (page: import("@playwright/test").Page) =>
-  page.evaluate(() => [...document.querySelectorAll("tr[data-item]")].map((row) => row.querySelector("td")?.textContent?.trim()));
+  page.evaluate(() =>
+    [...document.querySelectorAll("tr[data-item]")].map((row) => row.querySelector("td")?.textContent?.trim())
+  );
 
 test("add a row, type in it, undo, delete it and bring it back", async ({ page, request }) => {
   const project = await makeProject(request, "tracker");
@@ -10,7 +12,10 @@ test("add a row, type in it, undo, delete it and bring it back", async ({ page, 
   await expect(page.getByText(/No wall graphics yet/i)).toBeVisible({ timeout: 30_000 });
 
   // add a row
-  await page.getByRole("button", { name: /Add row/ }).first().click();
+  await page
+    .getByRole("button", { name: /Add row/ })
+    .first()
+    .click();
   await expect(page.locator("tr[data-item]")).toHaveCount(1);
   expect(await rowCodes(page)).toEqual(["W1"]);
 
@@ -35,7 +40,17 @@ test("add a row, type in it, undo, delete it and bring it back", async ({ page, 
 
   // delete the row (the in-page box asks first), then Ctrl+Z brings it back
   await page.getByRole("button", { name: "Delete W1" }).click();
-  await page.getByRole("button", { name: /^Delete$|^Yes/ }).last().click();
+  const holdToDelete = page.getByRole("button", { name: /Hold to delete/ });
+  // a quick click is not enough: nothing is deleted
+  await holdToDelete.click();
+  await page.waitForTimeout(300);
+  await expect(page.locator("tr[data-item]")).toHaveCount(1);
+  // press and hold until the red fill completes
+  const box = (await holdToDelete.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(1500);
+  await page.mouse.up();
   await expect(page.locator("tr[data-item]")).toHaveCount(0);
   await page.keyboard.press("Control+z");
   await expect(page.locator("tr[data-item]")).toHaveCount(1);

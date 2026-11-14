@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@makeplane/propel/components/button";
+import { E9HoldToConfirm, HOLD_DONE_PAUSE_MS } from "./hold-to-confirm";
 import { E9Modal } from "./tracker/modal";
 
 type TRequest = {
@@ -63,13 +64,22 @@ export function E9ConfirmHost() {
       footer={
         <>
           <Button variant="secondary" size="md" stretch="auto" label="Cancel" onClick={() => answer(false)} />
-          <Button
-            variant={request.danger ? "danger" : "primary"}
-            size="md"
-            stretch="auto"
-            label={request.confirmLabel}
-            onClick={() => answer(true)}
-          />
+          {request.danger ? (
+            // anything that deletes needs a deliberate press-and-hold
+            <E9HoldToConfirm
+              label={`Hold to ${request.confirmLabel.toLowerCase()}`}
+              doneLabel="Done"
+              onConfirm={() => window.setTimeout(() => answer(true), HOLD_DONE_PAUSE_MS)}
+            />
+          ) : (
+            <Button
+              variant="primary"
+              size="md"
+              stretch="auto"
+              label={request.confirmLabel}
+              onClick={() => answer(true)}
+            />
+          )}
         </>
       }
     >

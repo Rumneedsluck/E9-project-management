@@ -10,6 +10,7 @@ import { setToast } from "@plane/blocks/toast";
 import { useProject } from "@/hooks/store/use-project";
 import { useAppRouter } from "@/hooks/use-app-router";
 import { ProjectService } from "@/services/project";
+import { E9HoldToConfirm } from "./hold-to-confirm";
 import { refreshE9Projects } from "./hooks";
 import { E9Modal } from "./tracker/modal";
 
@@ -60,14 +61,13 @@ export function E9DeleteProjectButton({
         footer={
           <>
             <Button variant="secondary" size="md" stretch="auto" label="Cancel" onClick={() => setOpen(false)} />
-            <Button
-              variant="danger"
-              size="md"
-              stretch="auto"
-              label="Delete for good"
-              loading={busy}
-              disabled={!matches}
-              onClick={remove}
+            {/* type the name, then hold the button: two deliberate steps for something that cannot be undone */}
+            <E9HoldToConfirm
+              label={busy ? "Deleting…" : "Hold to delete for good"}
+              doneLabel="Deleted"
+              holdTime={1500}
+              disabled={!matches || busy}
+              onConfirm={() => void remove()}
             />
           </>
         }
@@ -77,6 +77,7 @@ export function E9DeleteProjectButton({
             To confirm, type the project name: <span className="font-semibold text-primary">{projectName}</span>
           </span>
           <input
+            // oxlint-disable-next-line jsx-a11y/no-autofocus -- the box was just opened to type this name
             autoFocus
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
