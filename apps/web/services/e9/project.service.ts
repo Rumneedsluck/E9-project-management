@@ -30,6 +30,19 @@ export type TE9BoqKind = "pos" | "lines" | "amendments" | "reprints";
 const boqPath = (kind: TE9BoqKind) => (kind === "reprints" ? "reprints" : `boq/${kind}`);
 
 /** Talks to the E9 endpoints added by the backend `plane.e9` app. */
+/** What an extra sheet of an imported Excel (Writing Film, Dinoc ...) becomes. */
+export type TE9ImportChoice =
+  | { action: "new"; label: string; unit_mode?: "sqft" | "nos" | "either"; from_company_list?: boolean }
+  | { action: "scope"; key: string; label?: string }
+  | { action: "skip" };
+
+/** Sent back (409) when the file has extra sheets: nothing is saved until each one has a choice. */
+export type TE9ImportQuestions = {
+  needs_choices: true;
+  extra_sheets: { sheet: string; items: number; suggestion: TE9ImportChoice }[];
+  scopes: { key: string; label: string }[];
+};
+
 export class E9ProjectService extends APIService {
   constructor() {
     super(API_BASE_URL);
@@ -270,10 +283,12 @@ export class E9ProjectService extends APIService {
   }
 
   // ---- Excel import ----
+  /** Import an Excel tracker. Sheets that are not standard scopes need a choice each (see TE9ImportChoice). */
   importTracker(
     workspaceSlug: string,
     projectId: string,
-    file: File
+    file: File,
+    choices?: Record<string, TE9ImportChoice>
   ): Promise<{
     items: Record<string, number>;
     floors: string[];
@@ -287,11 +302,13 @@ export class E9ProjectService extends APIService {
     snags?: number;
     job_cards?: number;
     challans?: number;
+    parts?: number;
     coordinator: string;
     warnings: string[];
   }> {
     const form = new FormData();
     form.append("file", file);
+    if (choices) form.append("choices", JSON.stringify(choices));
     return this.call(
       this.post(`${this.base(workspaceSlug, projectId)}/import/`, form, {
         headers: { "Content-Type": "multipart/form-data" },

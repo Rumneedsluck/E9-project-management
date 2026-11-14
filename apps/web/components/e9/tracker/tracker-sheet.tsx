@@ -1253,7 +1253,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 
   const filledByScope = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const item of items) if (isFilled(item)) counts[item.scope] = (counts[item.scope] ?? 0) + 1;
+    // a part row is a piece of the wall above, not an item
+    for (const item of items) if (isFilled(item) && !item.is_part) counts[item.scope] = (counts[item.scope] ?? 0) + 1;
     return counts;
   }, [items]);
 
@@ -2042,8 +2043,10 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
 
   const filledRows = rows.filter(isFilled);
   const blankRows = rows.filter((row) => !isFilled(row));
-  const totalNos = filledRows.filter((item) => item.unit === "nos").reduce((t, item) => t + itemMeasure(item), 0);
-  const totalArea = filledRows.reduce((t, item) => t + itemArea(item), 0);
+  // footer totals count items only: parts are pieces of the wall above (measured once, on the wall)
+  const itemRows = filledRows.filter((item) => !item.is_part);
+  const totalNos = itemRows.filter((item) => item.unit === "nos").reduce((t, item) => t + itemMeasure(item), 0);
+  const totalArea = itemRows.reduce((t, item) => t + itemArea(item), 0);
   const bandOpenness = (band: string) =>
     band === ALWAYS_OPEN_BAND ? 1 : (tween.current.get(band) ?? (openBands.has(band) ? 1 : 0));
   const shownColumns = columns.filter((column) => bandOpenness(column.band) > 0);
@@ -2547,7 +2550,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-body-2xs-regular text-tertiary">
-              {filledRows.length} item{filledRows.length === 1 ? "" : "s"}
+              {itemRows.length} item{itemRows.length === 1 ? "" : "s"}
               {totalArea > 0 ? ` · ${formatMeasure(Math.round(totalArea * 100) / 100, "sqft")}` : ""}
               {totalNos > 0 ? ` · ${formatMeasure(totalNos, "nos")}` : ""}
               {canEdit ? " · saves by itself · Enter = next row · paste from Excel" : " · view only"}

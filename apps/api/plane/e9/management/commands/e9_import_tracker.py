@@ -26,6 +26,12 @@ class Command(BaseCommand):
         parser.add_argument("--project", required=True, help="Project name (created if it does not exist)")
         parser.add_argument("--workspace", default="e9-creative", help="Workspace slug")
         parser.add_argument("--identifier", default="", help="Short project code for a new project, e.g. BTD")
+        parser.add_argument(
+            "--extra-sheets",
+            choices=["new", "skip"],
+            default="new",
+            help="Sheets that are not a standard scope (Writing Film, Dinoc ...): own scope each, or skip",
+        )
 
     def handle(self, *args, **options):
         workspace = Workspace.objects.filter(slug=options["workspace"]).first()
@@ -52,7 +58,17 @@ class Command(BaseCommand):
                 self.stdout.write(f"Created project {project.name!r}.")
             with open(options["file"], "rb") as handle:
                 try:
-                    report = importer.import_tracker(project, handle, user)
+                    preview = importer.import_tracker(project, handle, user, preview_only=True)
+                    choices = {}
+                    for extra in preview["extra_sheets"]:
+                        suggestion = extra["suggestion"]
+                        if options["extra_sheets"] == "skip":
+                            choices[extra["sheet"]] = {"action": "skip"}
+                        else:
+                            choices[extra["sheet"]] = suggestion  # its own scope, or the project's scope of that name
+                        self.stdout.write(f"Extra sheet {extra['sheet']!r}: {choices[extra['sheet']]['action']}")
+                    handle.seek(0)
+                    report = importer.import_tracker(project, handle, user, choices=choices)
                 except importer.ImportProblem as problem:
                     raise CommandError(str(problem)) from problem
         self.stdout.write(self.style.SUCCESS("Imported."))

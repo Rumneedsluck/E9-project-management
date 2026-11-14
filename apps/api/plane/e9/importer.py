@@ -19,23 +19,36 @@ from django.core.files.base import ContentFile
 from django.db import models, transaction
 
 from . import tracker
-from .models import E9Attachment, E9ProjectProfile, E9ScopeItem
+from .models import E9Attachment, E9ProjectProfile, E9ProjectScope, E9ScopeItem, E9ScopeTemplate, E9UnitMode
 from .excel_images import sheet_images
 from .safety import check_workbook_archive
-from .services import PARKED_FROM, ensure_floors, ensure_scopes, record, split_floors
+from .services import (
+    PARKED_FROM,
+    PART_FROM,
+    ensure_floors,
+    ensure_scopes,
+    new_scope_key,
+    record,
+    save_scope_template,
+    split_floors,
+)
 
 
 class ImportProblem(Exception):
     """The file cannot be imported; the message is shown to the person."""
 
 
+class NeedsChoices(Exception):
+    """The file has sheets that are not one of the standard scopes: the person picks what each one becomes."""
+
+    def __init__(self, preview):
+        super().__init__("Choose what each extra sheet becomes.")
+        self.preview = preview
+
+
 SHEET_TO_SCOPE = {label.lower(): key for key, (label, _prefix, _unit) in tracker.SCOPES.items()}
 # other names the same work goes by on real trackers
 SHEET_ALIASES = {
-    "writing film": "glass_film",
-    "writing films": "glass_film",
-    "window film": "glass_film",
-    "window films": "glass_film",
     "glass films": "glass_film",
     "wall graphic": "wall_graphics",
     "frame": "frames",
@@ -78,6 +91,9 @@ DATE_FIELDS = {
 # scope-sheet column header (lower case, spaces squeezed, "(auto)" removed) -> item field
 COLUMNS = {
     "#": "number",
+    "item code": "_code",
+    "current stage": "_stage",
+    "sub-part?": "_subpart",
     "boq item no.": "boq_item_no",
     "floor / area": "floor_area",
     "floor plan (link / ref)": "floor_plan_ref",
@@ -276,8 +292,11 @@ REPORT_SHEETS = {
 }
 
 
-def _scope_for_sheet(sheet, warnings):
-    """Which scope a sheet belongs to. Unknown names are never dropped silently."""
+EXTRA = "?"  # an item sheet that is not one of the standard scopes (Writing Film, Dinoc ...)
+
+
+def _scope_for_sheet(sheet, warnings=None):
+    """Which standard scope a sheet belongs to; EXTRA for any other item sheet; None for the rest."""
     name = sheet.title.strip().lower()
     if name in REPORT_SHEETS:
         return None
@@ -286,13 +305,107 @@ def _scope_for_sheet(sheet, warnings):
         return scope_key
     if not _has_item_code_header(sheet):
         return None  # not an item sheet (BOQ, info, logs ...)
-    if "film" in name or "glass" in name:
-        scope_key = "glass_film"
+    return EXTRA
+
+
+def _is_part_row(values):
+    """The template marks a piece of the wall above as '↳ part of W4' (Current Stage) or with the Sub-part? column."""
+    stage = str(values.get("_stage") or "").strip().lower()
+    return stage.startswith("↳") or stage.startswith("part of") or bool(str(values.get("_subpart") or "").strip())
+
+
+def _guess_unit(rows):
+    """Sq ft if the sheet has sizes, Nos if it only has quantities."""
+    if any(row.get("height_in") or row.get("width_in") for row in rows):
+        return E9UnitMode.SQFT
+    if any(row.get("qty") for row in rows):
+        return E9UnitMode.NOS
+    return E9UnitMode.SQFT
+
+
+def _code_number(code, prefix=""):
+    """'W12' -> 12 (the number the Excel shows), None when there is no code."""
+    match = re.search(r"(\d+)\s*$", str(code or ""))
+    return int(match.group(1)) if match else None
+
+
+def _read_item_sheets(workbook, warnings):
+    """[(sheet title, standard scope key or EXTRA, rows)] for every item sheet, in workbook order."""
+    found = []
+    for sheet in workbook.worksheets:
+        scope_key = _scope_for_sheet(sheet)
+        if scope_key:
+            found.append((sheet.title, scope_key, _read_scope_sheet(sheet, scope_key, warnings)))
+    return found
+
+
+def _extra_suggestion(project, title, rows):
+    """What an extra sheet most likely is: a scope this project already has, a company scope, or a new one."""
+    name = title.strip().lower()
+    existing = next(
+        (scope for scope in E9ProjectScope.objects.filter(project=project) if scope.label.lower() == name), None
+    )
+    if existing:
+        return {"action": "scope", "key": existing.key, "label": existing.label}
+    template = E9ScopeTemplate.objects.filter(workspace_id=project.workspace_id, label__iexact=title.strip()).first()
+    if template:
+        return {"action": "new", "label": template.label, "unit_mode": template.unit_mode, "from_company_list": True}
+    return {"action": "new", "label": title.strip()[:80], "unit_mode": _guess_unit(rows), "from_company_list": False}
+
+
+def preview_sheets(project, found):
+    """The extra sheets and what each could become (shown to the person before anything is saved)."""
+    scopes = ensure_scopes(project)
+    return {
+        "extra_sheets": [
+            {
+                "sheet": title,
+                "items": sum(1 for row in rows if not _is_part_row(row)),
+                "suggestion": _extra_suggestion(project, title, rows),
+            }
+            for title, key, rows in found
+            if key == EXTRA
+        ],
+        "scopes": [{"key": scope.key, "label": scope.label} for scope in scopes],
+    }
+
+
+def _unique_prefix(label, taken):
+    words = re.findall(r"[A-Za-z0-9]+", label) or ["X"]
+    base = "".join(word[0] for word in words).upper()[:4] if len(words) > 1 else words[0][:3].upper()
+    prefix, counter = base, 2
+    while prefix in taken:
+        prefix = f"{base[:4]}{counter}"
+        counter += 1
+    return prefix
+
+
+def _add_scope_for_sheet(project, choice, rows, user):
+    """A new scope for an extra sheet: from the company list when it is there, else from the sheet itself."""
+    label = (str(choice.get("label") or "").strip() or "New scope")[:80]
+    template = E9ScopeTemplate.objects.filter(workspace_id=project.workspace_id, label__iexact=label).first()
+    taken = set(E9ProjectScope.objects.filter(project=project).values_list("prefix", flat=True))
+    scope = E9ProjectScope(
+        project=project,
+        workspace_id=project.workspace_id,
+        key=new_scope_key(project, label),
+        label=template.label if template else label,
+        is_standard=False,
+        enabled=True,
+        sort_order=(E9ProjectScope.objects.filter(project=project).count() + 1) * 1000,
+    )
+    if template:
+        scope.prefix = template.prefix if template.prefix not in taken else _unique_prefix(label, taken)
+        for field in ("unit_mode", "size_unit", "bill_when", "measure_note", "production_note", "notes"):
+            setattr(scope, field, getattr(template, field))
     else:
-        scope_key = "others"
-    label = tracker.SCOPES[scope_key][0]
-    warnings.append(f"Sheet '{sheet.title}' is not a known scope name, so its items were added under {label}.")
-    return scope_key
+        scope.prefix = _unique_prefix(label, taken)
+        unit = choice.get("unit_mode")
+        scope.unit_mode = unit if unit in E9UnitMode.values else _guess_unit(rows)
+    scope.save(created_by_id=user.id)
+    save_scope_template(project.workspace_id, scope, user)
+    record(project, user, "scope", "created", None, scope.label, new=f"{scope.label} ({scope.prefix}) from Excel")
+    return scope
 
 
 def _read_scope_sheet(sheet, scope_key, warnings):
@@ -337,7 +450,7 @@ def _clean_item(values, scope_key, sheet_title, warnings):
     item = {}
     label = values.get("description") or values.get("floor_area") or ""
     for field, value in values.items():
-        if field in ("number", "unit", "_row", "_sheet"):
+        if field in ("number", "unit") or field.startswith("_"):
             continue
         if field in CHOICES:
             if value not in CHOICES[field]:
@@ -665,7 +778,7 @@ def _save_logs(project, workbook, items_by_code, user, warnings, report):
         report[key] = saved
 
 
-def import_tracker(project, upload, user):
+def import_tracker(project, upload, user, choices=None, preview_only=False):
     if not check_workbook_archive(upload):
         raise ImportProblem("This file could not be read as an Excel tracker (.xlsx).")
     try:
@@ -676,18 +789,15 @@ def import_tracker(project, upload, user):
     warnings = []
     info, visits, coordinator = _read_project_info(workbook, warnings)
     boq_lines = _read_boq_sheet(workbook, warnings)
-    sheets = {}
-    for sheet in workbook.worksheets:
-        scope_key = _scope_for_sheet(sheet, warnings)
-        if scope_key:
-            rows = _read_scope_sheet(sheet, scope_key, warnings)
-            if scope_key in sheets:  # two sheets for one scope: keep both
-                first_title, first_rows = sheets[scope_key]
-                sheets[scope_key] = (first_title, first_rows + rows)
-            else:
-                sheets[scope_key] = (sheet.title, rows)
-    if not sheets:
+    found = _read_item_sheets(workbook, warnings)
+    if not found:
         raise ImportProblem("No scope sheets (Wall Graphics, Glass Film, ...) were found in this file.")
+    if preview_only:
+        return preview_sheets(project, found)
+    choices = choices or {}
+    if any(key == EXTRA and title not in choices for title, key, _rows in found):
+        # sheets like Writing Film or Dinoc: the person decides what each becomes before anything is saved
+        raise NeedsChoices(preview_sheets(project, found))
 
     report = {
         "items": {},
@@ -703,6 +813,28 @@ def import_tracker(project, upload, user):
     bill_defaults = _read_bill_when_defaults(workbook)
     with transaction.atomic():
         scopes = {scope.key: scope for scope in ensure_scopes(project, enabled_keys=set(), user=user)}
+        sheets = {}
+        for title, scope_key, rows in found:
+            if scope_key == EXTRA:
+                choice = choices.get(title) or {}
+                action = choice.get("action")
+                if action == "skip":
+                    warnings.append(f"Sheet '{title}' was left out, as chosen.")
+                    continue
+                if action == "scope":
+                    scope_key = choice.get("key")
+                    if scope_key not in scopes:
+                        raise ImportProblem(f"'{title}': pick one of this project's scopes.")
+                else:
+                    scope = _add_scope_for_sheet(project, choice, rows, user)
+                    scopes[scope.key] = scope
+                    scope_key = scope.key
+            if scope_key in sheets:  # two sheets for one scope: keep both
+                first_title, first_rows = sheets[scope_key]
+                sheets[scope_key] = (first_title, first_rows + rows)
+            else:
+                sheets[scope_key] = (title, rows)
+        report["parts"] = 0
         for scope in scopes.values():
             wanted = bill_defaults.get(scope.label.strip().lower())
             if wanted and scope.bill_when != wanted:
@@ -735,20 +867,43 @@ def import_tracker(project, upload, user):
                 or 0
             ) + 1
             order = existing.aggregate(models.Max("sort_order"))["sort_order__max"] or 0
+            part_number = (
+                existing.filter(item_number__gte=PART_FROM, item_number__lt=PARKED_FROM).aggregate(
+                    models.Max("item_number")
+                )["item_number__max"]
+                or PART_FROM
+            )
+            has_item_above = existing.filter(item_number__lt=PART_FROM).exists()
             created = []
             rows_of_created = []
             for position, values in enumerate(rows, start=1):
-                number = values.get("number")
-                try:
-                    number = int(number)
-                except (TypeError, ValueError):
-                    number = position
-                if number < 1 or number in taken:
-                    number = max(next_number, max(taken, default=0) + 1)
-                taken.add(number)
-                next_number = max(next_number, number + 1)
-                order += 1000
                 fields = _clean_item(values, scope_key, title, warnings)
+                is_part = _is_part_row(values)
+                if is_part and not has_item_above:
+                    warnings.append(f"{title}: a 'part of' row has no item above it, so it came in as an item.")
+                    is_part = False
+                if is_part:
+                    # a piece of the wall above: no item code, no site size, only its production size
+                    part_number += 1
+                    number = part_number
+                    for field in ("height_in", "width_in", "qty"):
+                        fields.pop(field, None)
+                    fields["is_part"] = True
+                    report["parts"] += 1
+                else:
+                    # keep the Excel's item code (W12 stays W12), else its row number
+                    number = _code_number(values.get("_code"))
+                    if number is None:
+                        try:
+                            number = int(values.get("number"))
+                        except (TypeError, ValueError):
+                            number = position
+                    if number < 1 or number >= PART_FROM or number in taken:
+                        number = max(next_number, max(taken, default=0) + 1)
+                    taken.add(number)
+                    next_number = max(next_number, number + 1)
+                    has_item_above = True
+                order += 1000
                 created.append(
                     E9ScopeItem(
                         project=project,
@@ -764,7 +919,7 @@ def import_tracker(project, upload, user):
                 if fields.get("floor_area"):
                     floors.extend(split_floors(fields["floor_area"]))
             E9ScopeItem.objects.bulk_create(created)
-            report["items"][scope.label] = len(created)
+            report["items"][scope.label] = sum(1 for row in created if not row.is_part)
             report["on_hold"] += sum(1 for row in created if row.hold_status == "On Hold")
             report["cancelled"] += sum(1 for row in created if row.hold_status == "Cancelled")
             # photos pasted on a row of this sheet -> that item's photos

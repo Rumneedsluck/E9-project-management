@@ -3,6 +3,7 @@
 # See the LICENSE file for details.
 
 import io
+import json
 from datetime import date
 
 import openpyxl
@@ -510,22 +511,89 @@ class TestExcelImport:
 
     @pytest.mark.django_db
     @pytest.mark.django_db
-    def test_a_writing_film_sheet_is_imported_and_odd_sheets_are_reported(self, session_client, workspace, project):
+    def _with_extra_sheets(self, *titles):
         workbook = openpyxl.load_workbook(io.BytesIO(build_tracker_workbook()))
         source = workbook["Wall Graphics"]
-        for title in ("Writing Film", "Frosted Window Stuff"):
+        for title in titles:
             sheet = workbook.create_sheet(title)
             for row in source.iter_rows(min_row=6, max_row=7):
                 for cell in row:
                     sheet.cell(cell.row - 5, cell.column, cell.value)
         buffer = io.BytesIO()
         workbook.save(buffer)
-        upload = SimpleUploadedFile("film.xlsx", buffer.getvalue())
+        return buffer.getvalue()
+
+    def test_extra_sheets_are_asked_about_before_anything_is_saved(self, session_client, workspace, project):
+        data = self._with_extra_sheets("Writing Film", "Dinoc")
+        upload = SimpleUploadedFile("extra.xlsx", data)
+        response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
+        assert response.status_code == 409, response.data
+        sheets = {row["sheet"]: row for row in response.data["extra_sheets"]}
+        assert set(sheets) == {"Writing Film", "Dinoc"}  # Writing Film is no longer folded into Glass Film
+        assert sheets["Dinoc"]["suggestion"] == {
+            "action": "new",
+            "label": "Dinoc",
+            "unit_mode": "sqft",  # the sheet has sizes
+            "from_company_list": False,
+        }
+        assert not E9ScopeItem.objects.filter(project=project).exists()  # nothing saved yet
+
+        choices = {
+            "Writing Film": {"action": "new", "label": "Writing Film", "unit_mode": "sqft"},
+            "Dinoc": {"action": "scope", "key": "glass_film"},
+        }
+        upload = SimpleUploadedFile("extra.xlsx", data)
+        response = session_client.post(
+            url(workspace, project, "import/"), {"file": upload, "choices": json.dumps(choices)}, format="multipart"
+        )
+        assert response.status_code == 201, response.data
+        assert response.data["items"]["Writing Film"] == 1
+        assert response.data["items"]["Glass Film"] == 1  # Dinoc went where it was told
+        film = next(
+            row for row in session_client.get(url(workspace, project, "scopes/")).data if row["label"] == "Writing Film"
+        )
+        assert film["prefix"] == "WF" and film["enabled"] and not film["is_standard"]
+        # and Writing Film is now on the company list for the next project
+        listed = session_client.get(f"/api/workspaces/{workspace.slug}/e9/scope-templates/").data
+        assert [row["label"] for row in listed] == ["Writing Film"]
+
+    def test_an_extra_sheet_can_be_skipped(self, session_client, workspace, project):
+        upload = SimpleUploadedFile("extra.xlsx", self._with_extra_sheets("Dinoc"))
+        response = session_client.post(
+            url(workspace, project, "import/"),
+            {"file": upload, "choices": json.dumps({"Dinoc": {"action": "skip"}})},
+            format="multipart",
+        )
+        assert response.status_code == 201, response.data
+        assert "Dinoc" not in response.data["items"]
+        assert any("Dinoc" in warning for warning in response.data["warnings"])
+
+    def test_part_rows_come_in_as_parts_of_the_wall_above(self, session_client, workspace, project):
+        workbook = openpyxl.load_workbook(io.BytesIO(build_tracker_workbook()))
+        walls = workbook["Wall Graphics"]
+        walls.cell(7, 2, "W1")
+        walls.cell(8, 2, "W2")
+        # a piece of W1, typed like the template: blank code, "part of" in Current Stage, a site size by mistake
+        walls.insert_rows(8)
+        for column, value in enumerate(
+            [2, None, None, "\u21b3 part of W1", None, None, "Wall 01 - part 2", "Not Started", 99, 99, 1], start=1
+        ):
+            walls.cell(8, column, value)
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        upload = SimpleUploadedFile("parts.xlsx", buffer.getvalue())
         response = session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart")
         assert response.status_code == 201, response.data
-        assert response.data["items"]["Glass Film"] == 1  # Writing Film is Glass Film
-        assert response.data["items"]["Others"] == 1  # unknown name: kept, and reported
-        assert any("Frosted Window Stuff" in warning for warning in response.data["warnings"])
+        assert response.data["items"]["Wall Graphics"] == 2 and response.data["parts"] == 1
+        listed = session_client.get(url(workspace, project, "items/")).data["items"]
+        walls_listed = [row for row in listed if row["scope"] == "wall_graphics"]
+        assert [(row["item_code"], row["is_part"], row["part_of"]) for row in walls_listed] == [
+            ("W1", False, None),
+            ("W1.1", True, "W1"),
+            ("W2", False, None),
+        ]
+        part = walls_listed[1]
+        assert part["height_in"] is None and part["area_sqft"] is None  # the site is measured on the main row only
 
     @pytest.mark.django_db
     def test_the_templates_own_report_sheets_are_not_imported_as_items(self, session_client, workspace, project):

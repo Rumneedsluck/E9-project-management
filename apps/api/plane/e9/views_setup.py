@@ -5,6 +5,7 @@
 """Project set-up endpoints: scopes, floors, photos & PDFs, history and Excel import."""
 
 import datetime
+import json
 import uuid
 
 from django.db import models, transaction
@@ -78,7 +79,7 @@ def _forbidden(message="Guests can view this project but not change it."):
 def _scopes_payload(project):
     scopes = ensure_scopes(project)
     counts = dict(
-        E9ScopeItem.objects.filter(project=project)
+        E9ScopeItem.objects.filter(project=project, is_part=False)  # a part is a piece of the wall above
         .values("scope")
         .annotate(total=models.Count("id"))
         .values_list("scope", "total")
@@ -541,8 +542,21 @@ class E9ImportEndpoint(BaseAPIView):
             return Response({"file": "Choose the tracker's .xlsx file."}, status=400)
         if upload.size > MAX_UPLOAD_BYTES:
             return Response({"file": "The file is larger than 25 MB."}, status=400)
+        # extra sheets (Writing Film, Dinoc ...): {"<sheet>": {"action": "new"|"scope"|"skip", "label"|"key": ...}}
         try:
-            report = importer.import_tracker(project, upload, request.user)
+            choices = json.loads(request.data.get("choices") or "{}")
+        except (TypeError, ValueError):
+            return Response({"choices": "Could not read the choices for the extra sheets."}, status=400)
+        if not isinstance(choices, dict) or not all(isinstance(value, dict) for value in choices.values()):
+            return Response({"choices": "Could not read the choices for the extra sheets."}, status=400)
+        preview_only = str(request.data.get("preview") or "") in ("1", "true")
+        try:
+            report = importer.import_tracker(project, upload, request.user, choices=choices, preview_only=preview_only)
+        except importer.NeedsChoices as asking:
+            # nothing saved yet: the page asks what each extra sheet becomes, then sends the file again
+            return Response({"needs_choices": True, **asking.preview}, status=status.HTTP_409_CONFLICT)
         except importer.ImportProblem as problem:
             return Response({"file": str(problem)}, status=400)
+        if preview_only:
+            return Response(report)
         return Response(report, status=status.HTTP_201_CREATED)

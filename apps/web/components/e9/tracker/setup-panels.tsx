@@ -12,6 +12,7 @@ import { Button } from "@makeplane/propel/components/button";
 import { setToast } from "@plane/blocks/toast";
 import { cn } from "@plane/utils";
 import { e9ProjectService } from "@/services/e9/project.service";
+import type { TE9ImportChoice, TE9ImportQuestions } from "@/services/e9/project.service";
 import { refreshE9Projects, refreshE9Tracker, useE9Floors, useE9Scopes, useE9ScopeTemplates } from "../hooks";
 import type { TE9Project } from "../types";
 import type { TE9Floor, TE9FloorStatus, TE9ProjectScope, TE9ScopeTemplate, TE9UnitMode } from "./logic";
@@ -140,11 +141,11 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
       }
     >
       <div className="overflow-x-auto px-5 py-4">
-        <table className="w-full min-w-[720px] text-left">
+        <table className="w-full min-w-[920px] text-left">
           <thead>
             <tr className="text-body-2xs-semibold text-tertiary">
               <th className="w-12 pb-2">On</th>
-              <th className="pb-2">Scope name</th>
+              <th className="min-w-[170px] pb-2">Scope name</th>
               <th className="w-24 pb-2">Code</th>
               <th className="w-72 pb-2">Measured as</th>
               <th className="w-40 pb-2" title="When items of this scope can be billed">
@@ -154,7 +155,7 @@ export function E9ScopesModal({ open, onClose, workspaceSlug, project }: TProps)
                 Sizes typed in
               </th>
               <th className="w-20 pb-2 text-right">Items</th>
-              <th className="w-20 pb-2">How</th>
+              <th className="w-24 pb-2 pl-2">How</th>
               <th className="w-10 pb-2" />
             </tr>
           </thead>
@@ -651,11 +652,16 @@ export function E9ImportModal({ open, onClose, workspaceSlug, project }: TProps)
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<TImportReport | null>(null);
+  // sheets that are not standard scopes (Writing Film, Dinoc ...): asked about before anything is saved
+  const [questions, setQuestions] = useState<TE9ImportQuestions | null>(null);
+  const [choices, setChoices] = useState<Record<string, TE9ImportChoice>>({});
 
   useEffect(() => {
     if (open) {
       setFile(null);
       setReport(null);
+      setQuestions(null);
+      setChoices({});
     }
   }, [open]);
 
@@ -663,16 +669,30 @@ export function E9ImportModal({ open, onClose, workspaceSlug, project }: TProps)
     if (!file) return;
     setBusy(true);
     try {
-      const result = await e9ProjectService.importTracker(workspaceSlug, project.id, file);
+      const result = await e9ProjectService.importTracker(
+        workspaceSlug,
+        project.id,
+        file,
+        questions ? choices : undefined
+      );
       setReport(result);
       await refreshE9Tracker(workspaceSlug, project.id);
       await refreshE9Projects(workspaceSlug, project.id);
     } catch (error) {
-      setToast({ type: "error", title: "Couldn't import the file", message: errorText(error) });
+      const asked = error as Partial<TE9ImportQuestions> | undefined;
+      if (asked?.needs_choices && asked.extra_sheets) {
+        setQuestions(asked as TE9ImportQuestions);
+        setChoices(Object.fromEntries(asked.extra_sheets.map((extra) => [extra.sheet, extra.suggestion])));
+      } else {
+        setToast({ type: "error", title: "Couldn't import the file", message: errorText(error) });
+      }
     } finally {
       setBusy(false);
     }
   };
+
+  const choose = (sheet: string, choice: TE9ImportChoice) => setChoices((prev) => ({ ...prev, [sheet]: choice }));
+  const unnamed = Object.values(choices).some((choice) => choice.action === "new" && !choice.label.trim());
 
   const total = report ? Object.values(report.items).reduce((sum, count) => sum + count, 0) : 0;
 
@@ -692,9 +712,9 @@ export function E9ImportModal({ open, onClose, workspaceSlug, project }: TProps)
               variant="primary"
               size="md"
               stretch="auto"
-              label="Import"
+              label={questions ? "Import with these choices" : "Import"}
               loading={busy}
-              disabled={!file}
+              disabled={!file || unnamed}
               onClick={run}
             />
           </>
@@ -702,7 +722,87 @@ export function E9ImportModal({ open, onClose, workspaceSlug, project }: TProps)
       }
     >
       <div className="flex flex-col gap-4 px-5 py-4">
-        {!report ? (
+        {!report && questions ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-body-sm-regular text-primary">
+              <b>{file?.name}</b> has {questions.extra_sheets.length === 1 ? "a sheet" : "sheets"} that{" "}
+              {questions.extra_sheets.length === 1 ? "isn't" : "aren't"} one of the standard scopes. What should{" "}
+              {questions.extra_sheets.length === 1 ? "it" : "each"} become? Nothing is saved until you import.
+            </p>
+            {questions.extra_sheets.map((extra) => {
+              const choice = choices[extra.sheet] ?? extra.suggestion;
+              const value = choice.action === "scope" ? `scope:${choice.key}` : choice.action;
+              return (
+                <div key={extra.sheet} className="flex flex-col gap-2 rounded-xl border border-subtle bg-layer-1 p-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-body-sm-semibold text-primary">Sheet “{extra.sheet}”</span>
+                    <span className="text-body-xs-regular text-tertiary">{extra.items} item(s)</span>
+                  </div>
+                  <select
+                    className={inputClass}
+                    aria-label={`What the sheet ${extra.sheet} becomes`}
+                    value={value}
+                    onChange={(event) => {
+                      const picked = event.target.value;
+                      if (picked === "skip") choose(extra.sheet, { action: "skip" });
+                      else if (picked === "new")
+                        choose(extra.sheet, {
+                          action: "new",
+                          label: extra.sheet,
+                          unit_mode: extra.suggestion.action === "new" ? extra.suggestion.unit_mode : "sqft",
+                        });
+                      else choose(extra.sheet, { action: "scope", key: picked.slice("scope:".length) });
+                    }}
+                  >
+                    <option value="new">Its own new scope (added to the company list)</option>
+                    <optgroup label="Put its items under an existing scope">
+                      {questions.scopes.map((scope) => (
+                        <option key={scope.key} value={`scope:${scope.key}`}>
+                          {scope.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <option value="skip">Leave this sheet out</option>
+                  </select>
+                  {choice.action === "new" && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <label className="flex flex-col gap-1 text-body-2xs-semibold text-secondary">
+                        Scope name
+                        <input
+                          className={inputClass}
+                          value={choice.label}
+                          maxLength={80}
+                          onChange={(event) => choose(extra.sheet, { ...choice, label: event.target.value })}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1 text-body-2xs-semibold text-secondary">
+                        Measured as
+                        <select
+                          className={inputClass}
+                          value={choice.unit_mode ?? "sqft"}
+                          onChange={(event) =>
+                            choose(extra.sheet, { ...choice, unit_mode: event.target.value as TE9UnitMode })
+                          }
+                        >
+                          {UNIT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {choice.from_company_list && (
+                        <p className="text-body-2xs-regular text-tertiary sm:col-span-2">
+                          Already on the company list: its code, unit and notes are used.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : !report ? (
           <>
             <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-strong bg-layer-1 px-4 py-8 text-center hover:bg-layer-1-hover">
               <span className="text-body-sm-semibold text-primary">
@@ -735,6 +835,7 @@ export function E9ImportModal({ open, onClose, workspaceSlug, project }: TProps)
               {report.floors.length > 0 && <li>New floors: {report.floors.join(", ")}</li>}
               {report.site_visits > 0 && <li>Site visits / audit reports: {report.site_visits}</li>}
               {!!report.photos && <li>Photos from the Excel: {report.photos}</li>}
+              {!!report.parts && <li>Parts of walls (pieces): {report.parts}</li>}
               {!!report.on_hold && <li>Items on hold: {report.on_hold}</li>}
               {!!report.cancelled && <li>Cancelled items: {report.cancelled}</li>}
               {!!report.boq_lines && <li>BOQ lines: {report.boq_lines}</li>}
