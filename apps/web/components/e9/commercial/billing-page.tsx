@@ -94,7 +94,7 @@ export function E9BillingPage({ workspaceSlug, project }: Props) {
           signed &amp; submitted → WCC. Only approved quantity (BOQ, amended BOQ, confirmed amendments) and
           client-change reprints can be billed.
         </p>
-        {data.can_edit && data.pos.length > 0 && data.billing_open && (
+        {data.can_edit && data.pos.length > 0 && (
           <Button
             variant="primary"
             size="md"
@@ -111,7 +111,7 @@ export function E9BillingPage({ workspaceSlug, project }: Props) {
           Add the BOQ / PO on the BOQ tab first. Bills are made against a PO.
         </p>
       )}
-      {data.pos.length > 0 && data.bills.length === 0 && data.billing_open && (
+      {data.pos.length > 0 && data.bills.length === 0 && (
         <p className="rounded-xl border border-dashed border-strong px-6 py-10 text-center text-body-sm-regular text-tertiary">
           No bills yet. {data.can_edit ? "Click “Start a bill” to raise the first one." : ""}
         </p>

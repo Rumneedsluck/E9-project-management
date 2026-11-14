@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { cn, renderFormattedDate } from "@plane/utils";
 import { E9BoqDashboardPanel } from "../commercial/boq-dashboard-panel";
 import { E9OpenSnagsPanel } from "../commercial/snags-page";
@@ -121,43 +122,48 @@ function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
   const done = workDone(items);
   const rows = counted(items).filter(isFilled);
   const [stagesOpen, toggleStages] = useStagesOpen();
+  const reduceMotion = useReducedMotion();
   return (
     <section className="flex flex-col gap-4">
       {/* the whole project's outcome: one big pie */}
       <div className="e9-crop relative flex flex-col items-center gap-3 border border-subtle bg-surface-1 px-6 py-8">
         <span className="e9-eyebrow">Work done · whole project</span>
         <E9DonePie percent={done.percent} size={280} label="installed" />
-        <button
+        {/* a slim pull-handle: click it, or drag it up, and the five stages slide up; drag it down to put them away */}
+        <motion.button
           type="button"
-          onClick={toggleStages}
           aria-expanded={stagesOpen}
           aria-controls="e9-stage-pies"
-          className="mt-1 flex items-center gap-2 rounded-md border border-subtle px-3 py-1.5 text-body-xs-semibold text-secondary transition-colors duration-150 hover:bg-[var(--e9-hover)] hover:text-primary focus-visible:outline-2 focus-visible:outline-offset-2"
+          aria-label={stagesOpen ? "Put the five stages away" : "Pull up the five stages"}
+          title={stagesOpen ? "Drag down or click to close" : "Drag up or click to see the five stages"}
+          drag="y"
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={0.5}
+          onDragEnd={(_, info) => {
+            if (info.offset.y < -28 && !stagesOpen) toggleStages();
+            else if (info.offset.y > 28 && stagesOpen) toggleStages();
+          }}
+          onTap={toggleStages}
+          className="group mt-2 flex h-8 w-24 cursor-grab touch-none items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-default)] active:cursor-grabbing"
         >
-          Stage breakdown
-          <span className="text-tertiary">{STAGE_PIES.length} stages</span>
-          <svg
-            viewBox="0 0 12 12"
-            aria-hidden="true"
-            className={cn(
-              "size-3 transition-transform duration-200 motion-reduce:transition-none",
-              stagesOpen && "rotate-180"
-            )}
-          >
-            <path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
-        </button>
+          <span className="h-1 w-12 rounded-full bg-[var(--e9-grid)] transition-colors group-hover:bg-[var(--e9-brass)]" />
+        </motion.button>
       </div>
-      {/* the 5 stages, smaller, in one row: folded away until the arrow is pressed */}
-      <div
+      {/* the five stages slide up from below when the handle is pulled */}
+      <motion.div
         id="e9-stage-pies"
         inert={!stagesOpen}
-        className={cn(
-          "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
-          stagesOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        )}
+        initial={false}
+        animate={{ height: stagesOpen ? "auto" : 0, opacity: stagesOpen ? 1 : 0 }}
+        transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 190, damping: 26 }}
+        className="overflow-hidden"
       >
-        <div className="grid min-h-0 grid-cols-2 gap-3 overflow-hidden sm:grid-cols-3 lg:grid-cols-5">
+        <motion.div
+          initial={false}
+          animate={{ y: stagesOpen ? 0 : 56 }}
+          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 190, damping: 22 }}
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+        >
           {STAGE_PIES.map((pie) => (
             <E9StagePie
               key={pie.title}
@@ -170,8 +176,8 @@ function WorkDonePies({ items }: { items: TE9ScopeItem[] }) {
               }))}
             />
           ))}
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </section>
   );
 }

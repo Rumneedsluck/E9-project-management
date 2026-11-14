@@ -113,8 +113,10 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
         <StepHeader
           number={2}
           title="Billing"
-          state={data.billing_open ? "current" : "locked"}
-          text={data.billing_open ? "Open – start a bill below" : "Starts after certification is done"}
+          state="current"
+          text={
+            data.billing_open ? "Open – start a bill below" : "Look around now; bills start after the JMC is signed"
+          }
         />
       </ol>
 
@@ -353,21 +355,20 @@ export function E9CertificationPage({ workspaceSlug, project }: Props) {
       <section
         className={cn(
           "flex flex-col gap-4 rounded-xl border p-5 sm:p-6",
-          data.billing_open ? "border-subtle bg-surface-1 shadow-raised-100" : "border-dashed border-strong"
+          "border-subtle bg-surface-1 shadow-raised-100"
         )}
       >
         <div className="flex flex-col gap-1">
           <span className="text-body-xs-semibold tracking-[0.14em] text-tertiary uppercase">Step 2</span>
-          <h2 className={cn("text-h5-semibold", data.billing_open ? "text-primary" : "text-placeholder")}>Billing</h2>
+          <h2 className="text-h5-semibold text-primary">Billing</h2>
         </div>
-        {data.billing_open ? (
-          <E9BillingPage workspaceSlug={workspaceSlug} project={project} />
-        ) : (
-          <p className="flex items-center gap-2 text-body-sm-regular text-tertiary">
-            <span aria-hidden>🔒</span>
-            Billing starts after certification is done. Finish Step 1 first.
+        {/* the billing screens are always open to look at; a new bill can only start after the JMC is signed */}
+        {!data.billing_open && (
+          <p className="rounded-lg border border-subtle bg-layer-1 px-4 py-2.5 text-body-sm-regular text-secondary">
+            You can look around here. A new bill can only be started after a JMC is signed (Step 1).
           </p>
         )}
+        <E9BillingPage workspaceSlug={workspaceSlug} project={project} />
       </section>
 
       {(adding || editing) && (

@@ -245,22 +245,40 @@ export function E9PhotosModal({
 
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 
-function describe(change: TE9Change) {
-  const value = (text: string) => <span className="font-semibold text-primary">{text || "blank"}</span>;
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const Value = ({ text }: { text: string }) => (
+  <span className="font-semibold text-primary">
+    {text ? (ISO_DAY.test(text) ? (renderFormattedDate(text, "dd MMM yyyy") ?? text) : text) : "blank"}
+  </span>
+);
+
+export function describeChange(change: TE9Change) {
   switch (change.action) {
     case "updated":
       return (
         <>
-          changed <span className="font-medium text-primary">{change.field_label}</span> from {value(change.old_value)}{" "}
-          to {value(change.new_value)}
+          changed <span className="font-medium text-primary">{change.field_label}</span> from{" "}
+          <Value text={change.old_value} /> to <Value text={change.new_value} />
         </>
       );
     case "created":
-      return <>added {value(change.new_value || change.entity_label)}</>;
+      return (
+        <>
+          added <Value text={change.new_value || change.entity_label} />
+        </>
+      );
     case "deleted":
-      return <>deleted {value(change.old_value || change.entity_label)}</>;
+      return (
+        <>
+          deleted <Value text={change.old_value || change.entity_label} />
+        </>
+      );
     case "uploaded":
-      return <>uploaded {value(change.new_value)}</>;
+      return (
+        <>
+          uploaded <Value text={change.new_value} />
+        </>
+      );
     case "imported":
       return <>imported an Excel tracker: {change.new_value}</>;
     default:
@@ -296,7 +314,7 @@ export function E9HistoryList({ changes }: { changes: TE9Change[] }) {
                 </span>
                 <span className="min-w-0 flex-1 leading-relaxed">
                   <span className="font-semibold text-primary">{change.actor?.name ?? "Someone"}</span>{" "}
-                  {describe(change)}
+                  {describeChange(change)}
                   {change.entity_label && change.action === "updated" && (
                     <span className="ml-1 rounded bg-layer-2 px-1.5 py-0.5 text-body-2xs-semibold text-secondary">
                       {change.entity_label}

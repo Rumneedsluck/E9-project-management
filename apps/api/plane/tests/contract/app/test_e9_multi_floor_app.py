@@ -58,3 +58,18 @@ class TestFloorsIgnoreCapitals:
             "7th Floor",
             "8th Floor",
         ]
+
+    @pytest.mark.django_db
+    def test_area_by_floor_adds_up_floors_that_differ_only_by_capitals(self, session_client, workspace, project):
+        base = f"/api/workspaces/{workspace.slug}/e9/projects/{project.id}/"
+        rows = session_client.post(base + "items/", {"scope": "wall_graphics", "count": 2}, format="json").data
+        for row, floor in zip(rows, ["7th Floor", "7th floor"], strict=True):
+            session_client.patch(
+                base + f"items/{row['id']}/",
+                {"floor_area": floor, "height_in": "144", "width_in": "144", "qty": "1", "description": "Wall"},
+                format="json",
+            )
+        data = session_client.get(base + "certifications/").data
+        assert len(data["floor_sqft"]) == 1
+        assert data["floor_sqft"][0]["floor"] == "7th Floor" and data["floor_sqft"][0]["sqft"] == "288.00"
+        assert data["total_sqft"] == "288.00"

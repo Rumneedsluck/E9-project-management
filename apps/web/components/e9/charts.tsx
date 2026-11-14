@@ -12,8 +12,8 @@
  * row to see it in the middle.
  */
 
-import { useState } from "react";
-import type { CSSProperties } from "react";
+import { useEffect, useState } from "react";
+import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { cn } from "@plane/utils";
 
 export type TRingSegment = { key: string; label: string; value: number; color?: string };
@@ -164,9 +164,28 @@ export function E9DonePie({
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const value = Math.max(0, Math.min(100, percent));
-  const done = (value / 100) * circumference;
+  const reduceMotion = useReducedMotion();
+  // opening a project: the pie pops up, the red ring sweeps round and the number counts up to the real figure
+  const progress = useMotionValue(reduceMotion ? 1 : 0);
+  useEffect(() => {
+    if (reduceMotion) {
+      progress.set(1);
+      return;
+    }
+    progress.set(0);
+    const controls = animate(progress, 1, { duration: 1.4, ease: [0.16, 1, 0.3, 1], delay: 0.25 });
+    return () => controls.stop();
+  }, [value, reduceMotion, progress]);
+  const dash = useTransform(progress, (p) => `${(value / 100) * circumference * p} ${circumference}`);
+  const shown = useTransform(progress, (p) => `${Math.round(value * p)}%`);
   return (
-    <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
+    <motion.div
+      className={cn("relative shrink-0", className)}
+      style={{ width: size, height: size }}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.82 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ type: "spring", stiffness: 160, damping: 14, mass: 0.9 }}
+    >
       <svg
         viewBox={`0 0 ${size} ${size}`}
         className="-rotate-90 text-primary"
@@ -183,7 +202,7 @@ export function E9DonePie({
           strokeWidth={stroke}
         />
         {value > 0 && (
-          <circle
+          <motion.circle
             cx={size / 2}
             cy={size / 2}
             r={radius}
@@ -191,19 +210,17 @@ export function E9DonePie({
             stroke="var(--brand-default)"
             strokeWidth={stroke}
             strokeLinecap="butt"
-            strokeDasharray={`${done} ${circumference}`}
-            className="e9-pie-fill"
-            style={{ "--e9-pie-len": `${done}` } as CSSProperties}
+            style={{ strokeDasharray: dash }}
           />
         )}
       </svg>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        <span className="e9-display leading-none text-primary tabular-nums" style={{ fontSize: size * 0.26 }}>
-          {value}%
-        </span>
+        <motion.span className="e9-display leading-none text-primary tabular-nums" style={{ fontSize: size * 0.26 }}>
+          {shown}
+        </motion.span>
         <span className="mt-1 text-body-xs-medium text-tertiary">{label}</span>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
