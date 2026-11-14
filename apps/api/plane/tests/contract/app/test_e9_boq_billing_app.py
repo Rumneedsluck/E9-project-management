@@ -393,7 +393,7 @@ class TestCertification:
 @pytest.mark.contract
 class TestProgress:
     @pytest.mark.django_db
-    def test_project_list_reports_installed_share_by_sq_ft(self, session_client, workspace, project):
+    def test_project_list_reports_installed_items_and_the_sq_ft_detail(self, session_client, workspace, project):
         walls = session_client.post(
             url(workspace, project, "items/"), {"scope": "wall_graphics", "count": 2}, format="json"
         ).data
@@ -409,7 +409,8 @@ class TestProgress:
         assert progress["rows"] == 3
         assert progress["sqft_total"] == "288.00" and progress["sqft_done"] == "144.00"
         assert progress["nos_total"] == "4.00" and progress["nos_done"] == "0.00"
-        assert progress["percent"] == 50
+        # the headline counts ITEMS (1 of 3 installed), not square feet (which would say 50)
+        assert progress["percent"] == 33
 
 
 @pytest.mark.contract

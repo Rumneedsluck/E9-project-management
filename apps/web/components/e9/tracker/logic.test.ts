@@ -18,6 +18,7 @@ import {
   splitFloors,
   stageTargetRows,
   trackerKpis,
+  workDone,
 } from "./logic";
 import type { TE9Floor } from "./logic";
 
@@ -267,5 +268,25 @@ describe("DCs typed in one cell", () => {
     expect(joinDcs("3500, 3501", "190, 60")).toBe("3500=190, 3501=60");
     expect(joinDcs("3500, 3501", "190, -")).toBe("3500=190, 3501");
     expect(joinDcs("3500", "")).toBe("3500");
+  });
+});
+
+describe("whole-project work done", () => {
+  it("counts installed ITEMS, not square feet", () => {
+    const small = item({
+      id: "s",
+      scope: "wall_graphics",
+      unit: "sqft",
+      area_sqft: "10",
+      description: "Small wall",
+      installation_status: "Installation Done",
+    });
+    const big = item({ id: "b", scope: "wall_graphics", unit: "sqft", area_sqft: "990", description: "Big wall" });
+    const done = workDone([small, big]);
+    expect(done.percent).toBe(50); // 1 of 2 items, although the installed wall is only 1% of the area
+    expect(done.sqftDone).toBe(10);
+  });
+  it("is 0 for an empty project", () => {
+    expect(workDone([]).percent).toBe(0);
   });
 });

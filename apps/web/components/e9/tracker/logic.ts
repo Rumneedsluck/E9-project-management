@@ -413,15 +413,17 @@ export const stageTargetRows = (
 export const formatMeasure = (value: number, unit: "sqft" | "nos" | "mixed") =>
   `${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}${unit === "sqft" ? " sq ft" : unit === "nos" ? " Nos" : ""}`;
 
-/** Work done (installed) the way the Excel dashboard counts it: sq ft for sq-ft rows, Nos for the rest. */
+/** Work done (installed). The sq ft / Nos totals are for the detail tables; the headline percent counts ITEMS. */
 export const workDone = (items: TE9ScopeItem[]) => {
   const rows = counted(items).filter(isFilled);
   let sqftTotal = 0;
   let sqftDone = 0;
   let nosTotal = 0;
   let nosDone = 0;
+  let itemsDone = 0;
   for (const item of rows) {
     const done = item.installation_status === "Installation Done";
+    if (done) itemsDone += 1;
     if (item.unit === "sqft") {
       const area = toNumber(item.area_sqft);
       sqftTotal += area;
@@ -432,7 +434,7 @@ export const workDone = (items: TE9ScopeItem[]) => {
       if (done) nosDone += qty;
     }
   }
-  const overall = sqftTotal > 0 ? (sqftDone / sqftTotal) * 100 : nosTotal > 0 ? (nosDone / nosTotal) * 100 : 0;
+  const overall = rows.length > 0 ? (itemsDone / rows.length) * 100 : 0;
   return { rows: rows.length, sqftTotal, sqftDone, nosTotal, nosDone, percent: Math.round(overall) };
 };
 

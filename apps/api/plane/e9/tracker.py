@@ -405,12 +405,13 @@ PROGRESS_FIELDS = (
 def progress(items, unit_modes):
     """Work done (installed) for a list of tracker rows.
 
-    Sq-ft scopes count area, Nos scopes count quantity, like the Excel dashboard.
-    percent: by sq ft when the project has sq-ft rows, otherwise by Nos.
+    The sq ft and Nos totals are kept for the detail tables. The headline percent counts ITEMS: installed
+    items out of all items (a wall with its parts is one item), never weighted by area.
     unit_modes: {scope key: "sqft" | "nos" | "either"}
     """
     totals = {
         "rows": 0,
+        "rows_done": 0,
         "sqft_total": Decimal(0),
         "sqft_done": Decimal(0),
         "nos_total": Decimal(0),
@@ -428,13 +429,9 @@ def progress(items, unit_modes):
         totals["rows"] += 1
         totals[f"{unit}_total"] += amount
         if done:
+            totals["rows_done"] += 1
             totals[f"{unit}_done"] += amount
-    if totals["sqft_total"] > 0:
-        percent = totals["sqft_done"] / totals["sqft_total"] * 100
-    elif totals["nos_total"] > 0:
-        percent = totals["nos_done"] / totals["nos_total"] * 100
-    else:
-        percent = Decimal(0)
+    percent = Decimal(totals["rows_done"]) / totals["rows"] * 100 if totals["rows"] else Decimal(0)
     return {
         "rows": totals["rows"],
         "sqft_total": str(totals["sqft_total"].quantize(Decimal("0.01"))),
