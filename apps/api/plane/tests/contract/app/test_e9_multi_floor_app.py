@@ -43,3 +43,18 @@ class TestItemsOnSeveralFloors:
         readiness = cert["certifications"][0]["readiness"]
         assert readiness["rows"] == 1  # the item sits on the 8th floor too
         assert "7th Floor" in cert["floors"] and "8th Floor" in cert["floors"]
+
+
+@pytest.mark.contract
+class TestFloorsIgnoreCapitals:
+    @pytest.mark.django_db
+    def test_seventh_floor_and_seventh_Floor_are_one_floor(self, session_client, workspace, project):
+        from plane.e9.models import E9Floor
+        from plane.e9.services import ensure_floors
+
+        ensure_floors(project, ["7th Floor", "7th floor", "8th Floor"])
+        ensure_floors(project, ["7TH FLOOR"])
+        assert sorted(E9Floor.objects.filter(project=project).values_list("name", flat=True)) == [
+            "7th Floor",
+            "8th Floor",
+        ]

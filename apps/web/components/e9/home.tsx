@@ -5,7 +5,7 @@
  */
 
 /*
- * Home: a calm cover page. E9 Creative, the date, four doors (Projects, Dashboard,
+ * Home: a calm cover page: E9 Operations, the date, four doors (Projects, Dashboard,
  * Billing, New project) and the team announcements. Numbers and charts live on the Dashboard,
  * sites live on Projects – nothing is repeated here.
  */
@@ -23,7 +23,7 @@ import {
 } from "@makeplane/propel/icons";
 import { renderFormattedDate } from "@plane/utils";
 import { E9Announcements } from "./announcements";
-import { E9_BRAND, E9LogoMark, E9Text } from "./brand";
+import { E9_BRAND, E9Text } from "./brand";
 import { useCanCreateE9Project } from "./hooks";
 import { Reveal } from "./motion";
 import { E9PageBody } from "./ui";
@@ -99,34 +99,23 @@ export const E9Home = observer(function E9Home({ workspaceSlug }: { workspaceSlu
 
   return (
     <E9PageBody>
-      <section className="flex flex-col gap-6 py-4">
-        <div className="flex items-start justify-between gap-6">
-          <span className="e9-eyebrow">
+      <section className="flex flex-col gap-3 py-4">
+        <Reveal>
+          <h1 className="e9-display [font-size:clamp(2.6rem,6vw,4.5rem)] leading-none text-primary">
             <E9Text>{E9_BRAND.productName}</E9Text>
-          </span>
-          <Reveal>
-            <E9LogoMark className="size-14 rounded-lg sm:size-16" />
-          </Reveal>
-        </div>
-        <div className="flex flex-col gap-5">
-          <Reveal delay={0.15}>
-            <p className="e9-mono flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm-regular text-tertiary">
-              <span className="e9-eyebrow !text-tertiary">
-                <E9Text>{E9_BRAND.name}</E9Text>
-              </span>
-              <span aria-hidden className="h-3 w-px bg-[var(--e9-grid)]" />
-              <span>
-                {now
-                  ? `${renderFormattedDate(now, "EEEE, dd MMMM")} · ${now.toLocaleTimeString("en-IN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      timeZone: "Asia/Kolkata",
-                    })} IST`
-                  : ""}
-              </span>
-            </p>
-          </Reveal>
-        </div>
+          </h1>
+        </Reveal>
+        <Reveal delay={0.1}>
+          <p className="e9-mono text-body-sm-regular text-tertiary">
+            {now
+              ? `${renderFormattedDate(now, "EEEE, dd MMMM")} · ${now.toLocaleTimeString("en-IN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: "Asia/Kolkata",
+                })} IST`
+              : ""}
+          </p>
+        </Reveal>
       </section>
 
       <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">

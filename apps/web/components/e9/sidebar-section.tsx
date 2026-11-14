@@ -10,7 +10,6 @@ import { BillingsOutline, DashboardsOutline, HomeOutline, ProjectsOutline } from
 // hooks
 import { useAppTheme } from "@/hooks/store/use-app-theme";
 // local
-import { E9_BRAND, E9Text } from "./brand";
 import { E9LineNav } from "./line-nav";
 
 const LINKS = [
@@ -42,9 +41,6 @@ export const E9SidebarSection = observer(function E9SidebarSection() {
 
   return (
     <div className="flex w-full flex-col gap-px">
-      <span className="px-2 pt-1 pb-1.5 text-body-xs-semibold whitespace-nowrap text-tertiary">
-        <E9Text>{E9_BRAND.name}</E9Text>
-      </span>
       {/* lines and names slide toward the pointer; every row is still a normal link */}
       <E9LineNav items={items} activeIndex={activeIndex === -1 ? null : activeIndex} onNavigate={onNavigate} />
     </div>

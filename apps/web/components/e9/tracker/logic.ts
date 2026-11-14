@@ -298,18 +298,23 @@ export type TFloorProgress = ReturnType<typeof groupTotals> & {
 };
 
 /** Floor-wise totals. Floors from the floor list come first (in their order), then any other floor names typed on items. */
+const sameFloor = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 export const floorProgress = (items: TE9ScopeItem[], floors: TE9Floor[]): TFloorProgress[] => {
   const rows = counted(items).filter(isFilled);
-  const names = [...floors.map((floor) => floor.name), ...rows.flatMap(floorsOf)];
+  // "7th Floor" and "7th floor" are one floor: the first spelling seen is the one shown
+  const names: string[] = [];
+  for (const name of [...floors.map((floor) => floor.name), ...rows.flatMap(floorsOf)])
+    if (!names.some((known) => sameFloor(known, name))) names.push(name);
   return (
-    [...new Set(names)]
+    names
       // oxlint-disable-next-line oxc/no-map-spread -- each row is copied on purpose
       .map((name) => {
         // an item on two floors counts on each of them
-        const floorRows = rows.filter((item) => floorsOf(item).includes(name));
+        const floorRows = rows.filter((item) => floorsOf(item).some((entry) => sameFloor(entry, name)));
         return {
           name,
-          floor: floors.find((floor) => floor.name === name) ?? null,
+          floor: floors.find((floor) => sameFloor(floor.name, name)) ?? null,
           rows: floorRows.length,
           ...groupTotals(floorRows),
         };

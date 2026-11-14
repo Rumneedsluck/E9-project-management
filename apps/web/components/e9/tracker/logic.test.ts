@@ -290,3 +290,14 @@ describe("whole-project work done", () => {
     expect(workDone([]).percent).toBe(0);
   });
 });
+
+describe("floors that differ only by capitals", () => {
+  it("count as one floor", () => {
+    const a = item({ id: "a", scope: "wall_graphics", floor_area: "7th Floor", description: "Wall A" });
+    const b = item({ id: "b", scope: "wall_graphics", floor_area: "7th floor", description: "Wall B" });
+    const rows = floorProgress([a, b], []);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe("7th Floor");
+    expect(rows[0].rows).toBe(2);
+  });
+});

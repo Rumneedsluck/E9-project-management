@@ -17,7 +17,6 @@ import { CustomizeNavigationDialog } from "@/components/navigation/customize-nav
 import { useAppTheme } from "@/hooks/store/use-app-theme";
 import useSize from "@/hooks/use-window-size";
 // plane web components
-import { E9_BRAND, E9Text } from "@/components/e9/brand";
 import { AppSidebarToggleButton } from "./sidebar-toggle-button";
 import { IconButton } from "@makeplane/propel/components/icon-button";
 import { Icon } from "@makeplane/propel/components/icon";
@@ -81,18 +80,6 @@ export const SidebarWrapper = observer(function SidebarWrapper(props: TSidebarWr
           <ScrollArea orientation="vertical" visibility="auto" size="sm">
             <div className="flex min-h-full w-full flex-col gap-3 overflow-x-hidden px-3 pt-3 pb-3">{children}</div>
           </ScrollArea>
-        </div>
-        {/* Help Section */}
-        <div className="flex h-12 items-center justify-between border-t border-subtle bg-surface-1 p-3">
-          {/* E9 Creative: replaces Plane's "Community" edition / upgrade badge */}
-          <span className="px-1 text-body-xs-medium text-tertiary">
-            <E9Text>{E9_BRAND.name}</E9Text> · {E9_BRAND.tagline}
-          </span>
-          {/* TODO: To be checked if we need this */}
-          {/* <div className="flex items-center gap-2">
-          {!shouldRenderAppRail && <HelpMenu />}
-          {!isAppRailEnabled && <AppSidebarToggleButton />}
-        </div> */}
         </div>
       </div>
     </>

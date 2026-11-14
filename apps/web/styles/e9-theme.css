@@ -651,3 +651,11 @@ html {
     animation: none;
   }
 }
+
+/* date boxes: the browser's calendar follows the site's light / dark theme */
+.e9-date {
+  color-scheme: light;
+}
+:root[data-theme*="dark"] .e9-date {
+  color-scheme: dark;
+}

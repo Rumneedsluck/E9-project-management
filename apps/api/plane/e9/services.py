@@ -84,13 +84,17 @@ def ensure_floors(project, names, user=None):
     names = [name.strip() for name in names if name and name.strip()]
     if not names:
         return []
-    existing = {floor.name for floor in E9Floor.objects.filter(project=project)}
+    # "7th Floor" and "7th floor" are the same floor
+    existing = {floor.name.strip().lower() for floor in E9Floor.objects.filter(project=project)}
     last = E9Floor.objects.filter(project=project).order_by("-sort_order").values_list("sort_order", flat=True).first()
     order = (last or 0) + 1000
     created = []
-    for name in dict.fromkeys(names):
-        if name in existing:
+    seen = set()
+    for name in names:
+        key = name.lower()
+        if key in existing or key in seen:
             continue
+        seen.add(key)
         created.append(
             E9Floor(
                 project=project,

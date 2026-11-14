@@ -8,10 +8,13 @@ import { useEffect, useMemo, useState } from "react";
 import { cn, renderFormattedDate } from "@plane/utils";
 import { E9BoqDashboardPanel } from "../commercial/boq-dashboard-panel";
 import { E9OpenSnagsPanel } from "../commercial/snags-page";
-import { useE9Floors, useE9Items, useE9Scopes } from "../hooks";
+import { refreshE9Projects, useE9Floors, useE9Items, useE9Scopes } from "../hooks";
 import { E9ErrorState, E9LoadingState } from "../states";
 import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
+import { setToast } from "@plane/blocks/toast";
+import { e9ProjectService } from "@/services/e9/project.service";
+import { errorText } from "../commercial/shared";
 import { E9ActivityHeatmap } from "../activity-heatmap";
 import { E9DonePie, E9StagePie } from "../charts";
 import type { TE9ScopeItem, TStageTargetRow } from "./logic";
@@ -27,7 +30,9 @@ import {
   trackerKpis,
   workDone,
 } from "./logic";
+import { E9_TRACKER_STAGES } from "./constants";
 import { floorStatusClass } from "./setup-panels";
+import { E9TargetDate } from "./target-date";
 
 function Tile({
   label,
@@ -175,7 +180,7 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
   const { data, error, isLoading, mutate } = useE9Items(workspaceSlug, project.id);
   const items = useMemo(() => data?.items ?? [], [data]);
   const { data: scopeList } = useE9Scopes(workspaceSlug, project.id);
-  const { data: floorList } = useE9Floors(workspaceSlug, project.id);
+  const { data: floorList, mutate: mutateFloors } = useE9Floors(workspaceSlug, project.id);
   const scopes = useMemo(() => (scopeList ?? []).filter((scope) => scope.enabled), [scopeList]);
   const scopeLabel = (key: string) => scopeList?.find((scope) => scope.key === key)?.label ?? key;
   const progress = useMemo(() => scopeProgress(items, scopes), [items, scopes]);
@@ -184,6 +189,25 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
   const kpis = useMemo(() => trackerKpis(items, project.e9.deadline), [items, project.e9.deadline]);
   const stages = useMemo(() => stageTargetRows(items, project.e9), [items, project.e9]);
   const issues = useMemo(() => items.filter(isOpenSiteIssue), [items]);
+
+  // target dates are written right in the tables (they move, so nothing is locked)
+  const saveStageTarget = async (field: string, value: string | null) => {
+    try {
+      await e9ProjectService.updateProfile(workspaceSlug, project.id, { [field]: value });
+      await refreshE9Projects(workspaceSlug, project.id);
+    } catch (failure) {
+      setToast({ type: "error", title: "Couldn't save the date", message: errorText(failure) });
+    }
+  };
+  const saveFloorTarget = async (floorId: string, value: string | null) => {
+    try {
+      await e9ProjectService.updateFloor(workspaceSlug, project.id, floorId, { target_date: value });
+      await mutateFloors();
+    } catch (failure) {
+      setToast({ type: "error", title: "Couldn't save the date", message: errorText(failure) });
+    }
+  };
+  const canEditFloors = !!data?.can_edit;
 
   if (isLoading && !data) return <E9LoadingState />;
   if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
@@ -405,9 +429,14 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
                           <span className="text-placeholder">Not in floor list</span>
                         )}
                       </td>
-                      <td className={cn("px-4 py-2.5 tabular-nums", late && "font-semibold text-danger-primary")}>
-                        {target ? renderFormattedDate(target) : "—"}
-                        {late && " · late"}
+                      <td className="px-4 py-2.5 tabular-nums">
+                        <E9TargetDate
+                          value={target}
+                          label={`Target date for ${row.name}`}
+                          editable={canEditFloors && !!row.floor}
+                          late={late}
+                          onSave={(value) => saveFloorTarget(row.floor!.id, value)}
+                        />
                       </td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{row.rows}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{row.items}</td>
@@ -428,8 +457,8 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
             </table>
           </div>
           <p className="px-4 py-2.5 text-body-2xs-regular text-placeholder">
-            Set each floor&apos;s status, target date and notes on the Tracker sheet › Floors. A floor turns red when
-            its target date has passed and it isn&apos;t handed over.
+            Click a floor&apos;s target date to pick or type it (status and notes are on the Tracker sheet › Floors). A
+            floor turns red when its target date has passed and it isn&apos;t handed over.
           </p>
         </E9Panel>
       )}
@@ -453,7 +482,16 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
                 {stages.map((row) => (
                   <tr key={row.key} className={cn(row.status === "overdue" && "bg-danger-subtle/50")}>
                     <td className="px-4 py-2.5 font-medium">{row.label}</td>
-                    <td className="px-4 py-2.5 tabular-nums">{row.target ? renderFormattedDate(row.target) : "—"}</td>
+                    <td className="px-4 py-2.5 tabular-nums">
+                      <E9TargetDate
+                        value={row.target}
+                        label={`Target date for ${row.label}`}
+                        editable={project.can_edit}
+                        onSave={(value) =>
+                          saveStageTarget(E9_TRACKER_STAGES.find((stage) => stage.key === row.key)!.targetField, value)
+                        }
+                      />
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{row.done}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{row.pending}</td>
                     <td
@@ -474,8 +512,9 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
             </table>
           </div>
           <p className="px-4 py-2.5 text-body-2xs-regular text-placeholder">
-            Set the target dates on the project (Edit project › Stage target dates). Late items turn red on the Tracker
-            sheet.
+            {project.can_edit
+              ? "Click a target date to pick it from the calendar or type it; clear it with ×. Late items turn red on the Tracker sheet."
+              : "Only the project's admins change target dates. Late items turn red on the Tracker sheet."}
           </p>
         </E9Panel>
 

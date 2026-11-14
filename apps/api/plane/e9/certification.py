@@ -91,7 +91,7 @@ def floor_totals(items):
     The floors add up to the total, so nothing is counted twice.
     """
 
-    per_floor, total = {}, Decimal(0)
+    per_floor, total, shown = {}, Decimal(0), {}
     for item in items:
         if not is_filled(item) or item.hold_status == "Cancelled":
             continue
@@ -99,7 +99,8 @@ def floor_totals(items):
         names = split_floors(item.floor_area)
         total += area
         for name in names or [""]:
-            key = name or "No floor"
+            # capitals do not make a different floor: the first spelling seen is the one shown
+            key = shown.setdefault((name or "No floor").lower(), name or "No floor")
             per_floor[key] = per_floor.get(key, Decimal(0)) + area / Decimal(len(names) or 1)
     return (
         [{"floor": name, "sqft": str(value.quantize(Decimal("0.01")))} for name, value in per_floor.items()],
