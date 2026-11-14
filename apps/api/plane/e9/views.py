@@ -69,7 +69,10 @@ def _can_edit(user, slug, project_id):
     ).exists() or _is_workspace_admin(user, slug)
 
 
-def _serialize_projects(projects, user, slug):
+UNLOCK_SESSION_KEY = "e9_unlocked_projects"  # same key as access.SESSION_KEY
+
+
+def _serialize_projects(projects, user, slug, session=None):
     projects = list(projects.select_related("e9_profile"))
     project_ids = [project.id for project in projects]
 
@@ -100,6 +103,7 @@ def _serialize_projects(projects, user, slug):
         )
 
     cert_states = certification.project_states(projects)
+    unlocked = set(session.get(UNLOCK_SESSION_KEY) or []) if session is not None else set()
     # tracker progress (installed vs total) for the pies, in two queries
     unit_modes = {}
     for scope in E9ProjectScope.objects.filter(project_id__in=project_ids):
@@ -125,6 +129,11 @@ def _serialize_projects(projects, user, slug):
                 "member_ids": members.get(project.id, []),
                 "created_at": project.created_at,
                 "can_edit": project.id in editable_ids,
+                # a code is set, and this person still has to type it (the project opens for admins without it)
+                "has_access_code": bool(profile and profile.access_code_hash),
+                "access_locked": bool(profile and profile.access_code_hash)
+                and project.id not in editable_ids
+                and str(project.id) not in unlocked,
                 "work_items": {
                     "total": counts.get("total", 0),
                     "completed": counts.get("completed", 0),
@@ -144,7 +153,7 @@ class E9ProjectListEndpoint(BaseAPIView):
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
     def get(self, request, slug):
         projects = _visible_projects(request.user, slug)
-        return Response(_serialize_projects(projects, request.user, slug), status=status.HTTP_200_OK)
+        return Response(_serialize_projects(projects, request.user, slug, request.session), status=status.HTTP_200_OK)
 
 
 class E9ProjectDetailEndpoint(BaseAPIView):
@@ -153,7 +162,7 @@ class E9ProjectDetailEndpoint(BaseAPIView):
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER, ROLE.GUEST], level="WORKSPACE")
     def get(self, request, slug, project_id):
         projects = _visible_projects(request.user, slug).filter(pk=project_id)
-        data = _serialize_projects(projects, request.user, slug)
+        data = _serialize_projects(projects, request.user, slug, request.session)
         if not data:
             return Response({"error": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
         return Response(data[0], status=status.HTTP_200_OK)
@@ -185,7 +194,7 @@ class E9ProjectDetailEndpoint(BaseAPIView):
                 changed = {field: getattr(profile, field) for field in serializer.validated_data}
                 record_changes(project, request.user, "project", project.id, project.name, before, changed)
 
-        data = _serialize_projects(Project.objects.filter(pk=project.id), request.user, slug)
+        data = _serialize_projects(Project.objects.filter(pk=project.id), request.user, slug, request.session)
         return Response(data[0], status=status.HTTP_200_OK)
 
 

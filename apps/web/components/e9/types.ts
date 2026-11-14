@@ -54,6 +54,10 @@ export type TE9Project = {
   member_ids: string[];
   created_at: string;
   can_edit: boolean;
+  /** an admin gave this project a 6-digit code */
+  has_access_code: boolean;
+  /** a code is set and this person has not typed it yet (admins never need it) */
+  access_locked: boolean;
   work_items: { total: number; completed: number };
   e9: TE9ProjectProfile;
   /** JMC / certification state, worked out by the backend */

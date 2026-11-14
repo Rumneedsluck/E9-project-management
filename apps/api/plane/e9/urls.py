@@ -14,6 +14,8 @@ from .views import (
     E9ScopeItemRestoreEndpoint,
     E9ScopeItemListEndpoint,
 )
+from .access import guard_urlpatterns
+from .views_access import E9AccessCodeEndpoint, E9UnlockEndpoint
 from .views_setup import (
     E9AttachmentDetailEndpoint,
     E9AttachmentFileEndpoint,
@@ -95,6 +97,8 @@ urlpatterns = [
         E9ScopeItemDetailEndpoint.as_view(),
         name="e9-scope-item-detail",
     ),
+    path(f"{P}/unlock/", E9UnlockEndpoint.as_view(), name="e9-project-unlock"),
+    path(f"{P}/access-code/", E9AccessCodeEndpoint.as_view(), name="e9-access-code"),
     path(f"{P}/scopes/", E9ScopeListEndpoint.as_view(), name="e9-scopes"),
     path(f"{P}/floors/", E9FloorListEndpoint.as_view(), name="e9-floors"),
     path(f"{P}/floors/<uuid:floor_id>/", E9FloorDetailEndpoint.as_view(), name="e9-floor-detail"),
@@ -153,3 +157,6 @@ urlpatterns = [
         name="e9-announcement-detail",
     ),
 ]
+
+# a project with an access code answers 423 until its code was typed (admins never need it)
+urlpatterns = guard_urlpatterns(urlpatterns)

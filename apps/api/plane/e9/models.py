@@ -58,6 +58,8 @@ class E9ProjectProfile(BaseModel):
 
     project = models.OneToOneField("db.Project", on_delete=models.CASCADE, related_name="e9_profile")
     workspace = models.ForeignKey("db.Workspace", on_delete=models.CASCADE, related_name="e9_project_profiles")
+    # a 6-digit code members and guests type to open the project ("" = no code). Stored only as a hash.
+    access_code_hash = models.CharField(max_length=128, blank=True, default="")
     client_name = models.CharField(max_length=255, blank=True, default="")
     site_address = models.TextField(blank=True, default="")
     city = models.CharField(max_length=120, blank=True, default="")

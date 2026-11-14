@@ -35,6 +35,8 @@ const makeProject = (overrides: Partial<TE9Project> = {}, e9: Partial<TE9Project
   member_ids: [],
   created_at: "2026-10-01T10:00:00Z",
   can_edit: true,
+  has_access_code: false,
+  access_locked: false,
   work_items: { total: 0, completed: 0 },
   cert_state: "in_progress",
   billing_open: false,

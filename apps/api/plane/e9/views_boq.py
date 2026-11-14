@@ -37,6 +37,7 @@ from .models import (
 from .safety import clean_link, uuid_or_none
 from .services import item_code, record, record_changes, scope_map, snapshot
 from .tracker import item_unit
+from .access import is_locked_for
 from .views import _can_edit, _can_update_items, _visible_projects
 from .views_setup import WORKSPACE_ROLES, _forbidden, _not_found, _project
 
@@ -1106,6 +1107,10 @@ class E9SummaryEndpoint(BaseAPIView):
         projects = list(_visible_projects(request.user, slug).select_related("e9_profile").order_by("name"))
         # a guest on any of these projects sees none of the money: only people who run the tracker see it
         projects = [project for project in projects if _sees_money(request.user, slug, project.id)]
+        # a project whose code has not been typed stays out of the company-wide billing list too
+        projects = [
+            project for project in projects if not is_locked_for(request.user, request.session, slug, project.id)
+        ]
         states = certification.project_states(projects)
         rows = []
         for project in projects:

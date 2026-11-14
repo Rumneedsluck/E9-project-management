@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import { E9AccessCodePanel, E9CodeGate } from "./access-code";
 import { onTabListKeyDown } from "./tab-keys";
 import type { ReactNode } from "react";
 import { observer } from "mobx-react";
@@ -163,6 +164,18 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
         <E9ErrorState message="This project doesn't exist, or you are not part of its team." onRetry={() => mutate()} />
       </E9PageBody>
     );
+  // a code is set and this person has not typed it yet: only the code box shows
+  if (project.access_locked)
+    return (
+      <E9PageBody>
+        <E9CodeGate
+          workspaceSlug={workspaceSlug}
+          projectId={project.id}
+          projectName={project.name}
+          onUnlocked={() => void mutate()}
+        />
+      </E9PageBody>
+    );
 
   const { e9 } = project;
   const progress = getProgressPercent(project);
@@ -264,6 +277,14 @@ export const E9ProjectDetail = observer(function E9ProjectDetail({ workspaceSlug
       )}
       {view === "info" && sub === "details" && (
         <>
+          {project.can_edit && (
+            <E9AccessCodePanel
+              workspaceSlug={workspaceSlug}
+              projectId={project.id}
+              hasCode={project.has_access_code}
+              onChanged={() => void mutate()}
+            />
+          )}
           {/* Status strip */}
           <section className="flex flex-col gap-5 rounded-xl border border-subtle bg-surface-1 p-5 shadow-raised-100 sm:p-6">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">

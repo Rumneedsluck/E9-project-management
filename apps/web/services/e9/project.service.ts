@@ -44,6 +44,24 @@ export class E9ProjectService extends APIService {
       });
   }
 
+  /** Type the project's code to open it. Throws { error, tries_left } when the code is wrong. */
+  async unlockProject(workspaceSlug: string, projectId: string, code: string): Promise<void> {
+    return this.post(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/unlock/`, { code })
+      .then(() => undefined)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  /** Admins: set the project's 6-digit code, or remove it with an empty string. */
+  async setAccessCode(workspaceSlug: string, projectId: string, code: string): Promise<{ has_access_code: boolean }> {
+    return this.put(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/access-code/`, { code })
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
   async updateProfile(workspaceSlug: string, projectId: string, data: TE9ProfilePayload): Promise<TE9Project> {
     return this.patch(`/api/workspaces/${workspaceSlug}/e9/projects/${projectId}/`, data)
       .then((response) => response?.data)
