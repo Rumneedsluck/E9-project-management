@@ -466,8 +466,27 @@ a:hover .e9-link,
   font-display: swap;
   src: url("/fonts/fraunces-latin-wght-italic.woff2") format("woff2-variations");
 }
+/* Fraunces draws a capital J with a swung flag and a ball hook that crowds the next letter (JC, JMC, Jaipur).
+   Only the capital J is taken from a plain classic serif that every computer has; every other letter stays Fraunces. */
+@font-face {
+  font-family: "E9 Plain J";
+  font-style: normal;
+  font-weight: 100 550;
+  size-adjust: 106%;
+  src: local("Times New Roman"), local("TimesNewRomanPSMT"), local("Liberation Serif"), local("Times");
+  unicode-range: U+004A;
+}
+@font-face {
+  font-family: "E9 Plain J";
+  font-style: normal;
+  font-weight: 551 900;
+  size-adjust: 106%;
+  src:
+    local("Times New Roman Bold"), local("TimesNewRomanPS-BoldMT"), local("Liberation Serif Bold"), local("Times Bold");
+  unicode-range: U+004A;
+}
 :root {
-  --e9-font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --e9-font-display: "E9 Plain J", "Fraunces Variable", Georgia, "Times New Roman", serif;
   --e9-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .e9-display {
