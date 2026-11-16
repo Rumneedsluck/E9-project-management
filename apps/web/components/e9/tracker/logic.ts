@@ -238,6 +238,13 @@ export const itemMeasure = (item: TE9ScopeItem): number => (item.unit === "nos" 
 
 export const itemArea = (item: TE9ScopeItem): number => (item.unit === "sqft" ? toNumber(item.area_sqft) : 0);
 
+/** Excel's status bar for selected cells: sum, how many numbers, and their average (null when none). */
+export const numberStats = (values: number[]): { sum: number; count: number; average: number } | null => {
+  if (values.length === 0) return null;
+  const sum = values.reduce((total, value) => total + value, 0);
+  return { sum, count: values.length, average: sum / values.length };
+};
+
 /** Running length of an item in its own unit (rft or rmt); 0 for other units. */
 export const itemLength = (item: TE9ScopeItem): number => (isLengthUnit(item.unit) ? toNumber(item.length) : 0);
 

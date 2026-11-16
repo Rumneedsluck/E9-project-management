@@ -49,6 +49,7 @@ import {
   itemLength,
   itemMeasure,
   joinDcs,
+  numberStats,
   parsePastedDate,
   splitDcs,
   splitFloors,
@@ -323,6 +324,27 @@ export const patchFor = (
   if (spec.kind === "dcs") return splitDcs(value ?? "") as Partial<TE9ScopeItem>;
   return { [spec.field]: value } as Partial<TE9ScopeItem>;
 };
+
+/** The number a cell shows, for the Excel-style sum of selected cells (null for text and blank cells). */
+const cellNumber = (key: string, item: TE9ScopeItem, unit: TE9SizeUnit): number | null => {
+  const computed: Record<string, string | null | undefined> = {
+    area: item.unit === "sqft" ? item.area_sqft : isLengthUnit(item.unit) ? item.length : item.qty,
+    prodmeasure: item.production_measure,
+    wastage: item.wastage,
+    dispatched: item.dispatched,
+    balance: item.balance,
+    certmeasure: item.certified_measure,
+  };
+  let text: string | null | undefined;
+  if (key in computed) text = computed[key];
+  else if (PASTE[key]?.kind === "number") text = cellText(PASTE[key], item, unit);
+  else return null;
+  if (text === null || text === undefined || String(text).trim() === "") return null;
+  const value = Number(String(text).replace(/,/g, ""));
+  return Number.isFinite(value) ? value : null;
+};
+
+const show = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 type TCell = { row: number; col: number };
 type TSel = { anchor: TCell; focus: TCell };
@@ -1380,7 +1402,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
         { revalidate: false }
       );
       // a wall's totals include its parts, so a change to either one needs the sheet read again
-      if (updated.is_part || updated.parts_count > 0) await mutate();
+      // (turning a row into a part, or back, also renumbers the rows around it)
+      if (updated.is_part || updated.parts_count > 0 || "is_part" in patch) await mutate();
     } catch (err) {
       const message = err && typeof err === "object" ? Object.values(err).flat().join(" ") : "";
       // nothing was saved, so there is nothing to undo
@@ -2057,6 +2080,27 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const totalArea = itemRows.reduce((t, item) => t + itemArea(item), 0);
   const totalRft = itemRows.filter((item) => item.unit === "rft").reduce((t, item) => t + itemLength(item), 0);
   const totalRmt = itemRows.filter((item) => item.unit === "rmt").reduce((t, item) => t + itemLength(item), 0);
+  // like Excel's status bar: select a block of cells and their sum shows at the bottom
+  const statBlock = sel ? blockOf(sel) : null;
+  const selStats =
+    statBlock && isBlock(statBlock)
+      ? numberStats(
+          rows.slice(statBlock.r1, statBlock.r2 + 1).flatMap((item) =>
+            gridCols
+              .slice(statBlock.c1, statBlock.c2 + 1)
+              .map((column) => (item.is_part && column.key === "area" ? null : cellNumber(column.key, item, sizeUnit)))
+              .filter((value): value is number => value !== null)
+          )
+        )
+      : null;
+  const selUnits = statBlock
+    ? new Set(
+        gridCols.slice(statBlock.c1, statBlock.c2 + 1).every((column) => column.key === "area")
+          ? rows.slice(statBlock.r1, statBlock.r2 + 1).map((item) => item.unit)
+          : ["mixed"]
+      )
+    : new Set<string>();
+  const selUnit = selUnits.size === 1 ? [...selUnits][0] : "mixed";
   const bandOpenness = (band: string) =>
     band === ALWAYS_OPEN_BAND ? 1 : (tween.current.get(band) ?? (openBands.has(band) ? 1 : 0));
   const shownColumns = columns.filter((column) => bandOpenness(column.band) > 0);
@@ -2405,6 +2449,7 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
               onClose={() => setRowMenu(null)}
               onInsert={(side) => void insertRow(rowMenu.item, side)}
               onAddPart={() => void insertRow(rowMenu.item, "below", true)}
+              onTogglePart={() => void save(rowMenu.item, { is_part: !rowMenu.item.is_part })}
               onCut={() =>
                 cutRows(
                   selected.has(rowMenu.item.id)
@@ -2567,6 +2612,16 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
               {totalRmt > 0 ? ` · ${formatMeasure(Math.round(totalRmt * 100) / 100, "rmt")}` : ""}
               {canEdit ? " · saves by itself · Enter = next row · paste from Excel" : " · view only"}
             </span>
+            {selStats && (
+              <span
+                className="rounded-md bg-layer-1 px-2.5 py-1 text-body-2xs-medium text-secondary tabular-nums"
+                aria-live="polite"
+              >
+                Sum <b className="text-primary">{show(selStats.sum)}</b>
+                {selUnit !== "mixed" ? ` ${UNIT_SHORT[selUnit as TE9MeasureUnit]}` : ""} · Count {selStats.count} ·
+                Average {show(selStats.average)}
+              </span>
+            )}
             <Legend />
           </div>
         </>
@@ -3109,6 +3164,7 @@ function RowMenu({
   onClose,
   onInsert,
   onAddPart,
+  onTogglePart,
   onCut,
   onPaste,
   onDelete,
@@ -3118,6 +3174,8 @@ function RowMenu({
   onClose: () => void;
   onInsert: (side: "above" | "below") => void;
   onAddPart: () => void;
+  /** turn a row into a part of the row above (or a part back into its own item) */
+  onTogglePart: () => void;
   onCut: () => void;
   onPaste: () => void;
   onDelete: () => void;
@@ -3137,7 +3195,12 @@ function RowMenu({
   const entries: { label: string; run: () => void; danger?: boolean }[] = [
     { label: "Insert row above", run: () => onInsert("above") },
     { label: "Insert row below", run: () => onInsert("below") },
-    ...(menu.item.is_part ? [] : [{ label: "Add part below", run: onAddPart }]),
+    ...(menu.item.is_part
+      ? [{ label: "Make it its own item", run: onTogglePart }]
+      : [
+          { label: "Add part below", run: onAddPart },
+          { label: "Make it a part of the row above", run: onTogglePart },
+        ]),
     { label: "Cut row", run: onCut },
     ...(cutCount > 0 ? [{ label: `Paste ${cutCount} cut row(s) here`, run: onPaste }] : []),
     { label: "Delete row", run: onDelete, danger: true },

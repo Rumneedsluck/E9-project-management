@@ -12,6 +12,7 @@ import {
   isFilled,
   isStageOverdue,
   joinDcs,
+  numberStats,
   parsePastedDate,
   splitDcs,
   scopeProgress,
@@ -309,5 +310,17 @@ describe("floors that differ only by capitals", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].name).toBe("7th Floor");
     expect(rows[0].rows).toBe(2);
+  });
+});
+
+describe("sum of selected cells (like Excel's status bar)", () => {
+  it("adds up, counts and averages the numbers", () => {
+    const stats = numberStats([35.06, 69.38, 23.57]);
+    expect(stats?.sum).toBeCloseTo(128.01, 2);
+    expect(stats?.count).toBe(3);
+    expect(stats?.average).toBeCloseTo(42.67, 2);
+  });
+  it("is nothing when no number is selected", () => {
+    expect(numberStats([])).toBeNull();
   });
 });
