@@ -266,6 +266,12 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
             # the site measurement is taken once, on the main row: a part has only a production size
             for field in ("height_in", "width_in", "qty"):
                 attrs.pop(field, None)
+        elif self.instance and "qty" in attrs and "production_qty" not in attrs:
+            # the production qty that simply repeated the site qty moves with it (1 -> 3 makes production 3 too);
+            # one typed differently on purpose is left alone
+            old_qty, made = self.instance.qty, self.instance.production_qty
+            if old_qty is not None and made is not None and Decimal(made) == Decimal(old_qty):
+                attrs["production_qty"] = attrs["qty"]
         issue = attrs.get("site_issue")
         if scope and issue and issue not in tracker.site_issues_for(scope):
             raise serializers.ValidationError({"site_issue": f"'{issue}' is not a site issue for this scope."})

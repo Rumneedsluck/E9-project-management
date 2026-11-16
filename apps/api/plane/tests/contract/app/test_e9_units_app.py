@@ -177,3 +177,38 @@ class TestRunningLengthScopeAndBoq:
         assert line["unit"] == "rft"
         assert Decimal(line["on_tracker"]) == Decimal("30.00")
         assert line["status"] != "ok"  # 30 rft on the tracker against 25 rft allowed
+
+
+@pytest.mark.django_db
+class TestProductionFollowsTheSite:
+    def _item(self, client, workspace, project, **values):
+        made = client.post(url(workspace, project, "items/"), {"scope": "glass_film", "count": 1}, format="json")
+        return client.patch(
+            url(workspace, project, f"items/{made.data[0]['id']}/"), {"description": "Glass", **values}, format="json"
+        ).data
+
+    def test_a_production_qty_that_matched_the_site_qty_moves_with_it(self, session_client, workspace, project):
+        item = self._item(
+            session_client,
+            workspace,
+            project,
+            height_in="48",
+            width_in="78",
+            qty="1",
+            production_height_in="48",
+            production_width_in="78",
+            production_qty="1",
+            dc_nos="2684",
+            dispatch_status="Dispatched",
+        )
+        assert item["dispatched"] == "26.00"
+        item = session_client.patch(url(workspace, project, f"items/{item['id']}/"), {"qty": "3"}, format="json").data
+        assert Decimal(item["production_qty"]) == 3
+        assert item["area_sqft"] == "78.00" and item["dispatched"] == "78.00" and item["balance"] == "0.00"
+
+    def test_a_production_qty_typed_differently_is_left_alone(self, session_client, workspace, project):
+        item = self._item(
+            session_client, workspace, project, height_in="48", width_in="78", qty="2", production_qty="5"
+        )
+        item = session_client.patch(url(workspace, project, f"items/{item['id']}/"), {"qty": "3"}, format="json").data
+        assert Decimal(item["production_qty"]) == 5

@@ -909,6 +909,14 @@ def import_tracker(project, upload, user, choices=None, preview_only=False):
                     fields["is_part"] = True
                     report["parts"] += 1
                 else:
+                    # production that only repeats the site size and qty is left blank, so it keeps following the site
+                    # (a later change of the site Qty then flows into production, dispatch and balance)
+                    same_size = fields.get("production_height_in") == fields.get("height_in") and fields.get(
+                        "production_width_in"
+                    ) == fields.get("width_in")
+                    if same_size and fields.get("production_qty") in (None, fields.get("qty")):
+                        for field in ("production_height_in", "production_width_in", "production_qty"):
+                            fields.pop(field, None)
                     # keep the Excel's item code (W12 stays W12), else its row number
                     number = _code_number(values.get("_code"))
                     if number is None:

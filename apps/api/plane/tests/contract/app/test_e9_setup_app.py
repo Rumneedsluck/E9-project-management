@@ -568,6 +568,28 @@ class TestExcelImport:
         assert "Dinoc" not in response.data["items"]
         assert any("Dinoc" in warning for warning in response.data["warnings"])
 
+    def test_production_that_repeats_the_site_size_follows_the_site(self, session_client, workspace, project):
+        workbook = openpyxl.load_workbook(io.BytesIO(build_tracker_workbook()))
+        walls = workbook["Wall Graphics"]
+        column = walls.max_column + 1
+        for offset, header in enumerate(["Production Height (in)", "Production Width (in)", "Production Quantity"]):
+            walls.cell(6, column + offset, header)
+        # Wall 01 (114 x 116.5 x 1) is made at exactly the site size; Wall 02 with bleed
+        for offset, value in enumerate([114, 116.5, 1]):
+            walls.cell(7, column + offset, value)
+        for offset, value in enumerate([124, 450, 1]):
+            walls.cell(8, column + offset, value)
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        upload = SimpleUploadedFile("production.xlsx", buffer.getvalue())
+        assert (
+            session_client.post(url(workspace, project, "import/"), {"file": upload}, format="multipart").status_code
+            == 201
+        )
+        rows = {row.description: row for row in E9ScopeItem.objects.filter(project=project)}
+        assert rows["Wall 01"].production_qty is None and rows["Wall 01"].production_height_in is None
+        assert rows["Wall 02"].production_height_in == 124  # a real production size is kept
+
     def test_part_rows_come_in_as_parts_of_the_wall_above(self, session_client, workspace, project):
         workbook = openpyxl.load_workbook(io.BytesIO(build_tracker_workbook()))
         walls = workbook["Wall Graphics"]
