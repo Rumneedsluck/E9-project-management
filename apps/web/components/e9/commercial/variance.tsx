@@ -12,6 +12,7 @@
 import { cn } from "@plane/utils";
 import { E9Panel } from "../ui";
 import { fmt, unitText } from "./shared";
+import { totalsByUnit } from "./totals";
 import type { TE9BoqLine } from "./types";
 
 const n = (value: string | number | null | undefined) => Number(value ?? 0) || 0;
@@ -46,7 +47,6 @@ export function E9VariancePanel({ lines }: { lines: TE9BoqLine[] }) {
   for (const line of lines)
     if (line.wastage !== null && line.wastage !== undefined)
       wasteByUnit.set(line.unit, (wasteByUnit.get(line.unit) ?? 0) + n(line.wastage));
-  const wasteTotals = [...wasteByUnit];
   return (
     <E9Panel title="Variance · BOQ vs produced vs certified">
       <div className="overflow-x-auto">
@@ -108,12 +108,34 @@ export function E9VariancePanel({ lines }: { lines: TE9BoqLine[] }) {
             })}
           </tbody>
           <tfoot>
-            {wasteTotals.map(([unit, total]) => (
-              <tr key={unit} className="border-t border-subtle text-body-2xs-semibold text-secondary">
-                <td className="px-3 py-2" colSpan={12}>
-                  Total wastage in {unitText(unit as TE9BoqLine["unit"])}
+            {totalsByUnit(lines, {
+              allowed: (line) => line.allowed,
+              produced: (line) => line.on_tracker,
+              reprints: (line) => n(line.internal_reprints) + n(line.client_reprints) + n(line.extras),
+              installed: (line) => line.installed,
+              certified: (line) => line.certified_on_site,
+              clientChange: (line) => line.client_reprints,
+              wastage: (line) => line.wastage,
+            }).map(([unit, total]) => (
+              <tr key={unit} className="border-t border-subtle bg-layer-1 text-body-xs-semibold text-primary">
+                <td className="px-3 py-2" colSpan={3}>
+                  Total {unitText(unit as TE9BoqLine["unit"])}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmt(total)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmt(total.allowed)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmt(total.produced)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{total.reprints ? fmt(total.reprints) : "—"}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmt(total.installed)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{total.certified ? fmt(total.certified) : "—"}</td>
+                <td colSpan={2} />
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {total.clientChange ? fmt(total.clientChange) : "—"}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  {total.certified || total.clientChange ? fmt(total.certified + total.clientChange) : "—"}
+                </td>
+                <td className={cn("px-3 py-2 text-right tabular-nums", total.wastage > 0 && "text-warning-primary")}>
+                  {wasteByUnit.has(unit) ? fmt(total.wastage) : "—"}
+                </td>
               </tr>
             ))}
           </tfoot>

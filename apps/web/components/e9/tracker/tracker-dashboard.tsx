@@ -28,6 +28,7 @@ import {
   formatMeasure,
   isFilled,
   isOpenSiteIssue,
+  itemMeasure,
   scopeProgress,
   stageTargetRows,
   trackerKpis,
@@ -247,6 +248,9 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
       </div>
     );
 
+  // whole-project figures for the floor table's Total row (each item once)
+  const allRows = counted(items).filter(isFilled);
+  const allNos = allRows.filter((item) => item.unit === "nos").reduce((sum, item) => sum + itemMeasure(item), 0);
   const days = kpis.daysToDeadline;
   const lateStages = stages.filter((row) => row.status === "overdue").length;
   const usedScopes = progress.filter((row) => row.items > 0);
@@ -482,6 +486,26 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
                   );
                 })}
               </tbody>
+              <tfoot>
+                {/* the whole project, each item once (an item on two floors is listed under both floors above) */}
+                <tr className="border-t border-subtle bg-layer-1 font-semibold text-primary">
+                  <td className="px-4 py-2.5" colSpan={3}>
+                    Total (each item once)
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{allRows.length}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{totals.items}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{allNos || "—"}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    {totals.area ? (Math.round(totals.area * 100) / 100).toLocaleString("en-IN") : "—"}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{totals.delivered}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{totals.installed}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{totals.signedOff}</td>
+                  <td className="px-4 py-2.5">
+                    <Percent value={totals.items > 0 ? Math.round((totals.installed / totals.items) * 100) : null} />
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
           <p className="px-4 py-2.5 text-body-2xs-regular text-placeholder">

@@ -51,6 +51,8 @@ export type TE9ReportScope = {
   items: number;
   sqft: string;
   nos: string;
+  rft?: string;
+  rmt?: string;
   on_hold: number;
   production_done: number;
   material_received: number;
@@ -81,7 +83,15 @@ export type TE9Report = {
     pending: number;
     state: "Done" | "Overdue" | "On track";
   }[];
-  billing: { billable_items: number; of_which_on_hold: number; not_billable_yet: number; sqft: string; nos: string };
+  billing: {
+    billable_items: number;
+    of_which_on_hold: number;
+    not_billable_yet: number;
+    sqft: string;
+    nos: string;
+    rft?: string;
+    rmt?: string;
+  };
   held: TE9HoldRow[];
   cancelled: TE9HoldRow[];
 };

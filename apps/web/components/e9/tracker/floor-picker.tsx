@@ -88,10 +88,12 @@ export function E9FloorPickerModal({ open, onClose, item, floorNames, onApply }:
           {picks.map((pick, index) => {
             const typing = pick === NEW_FLOOR || (pick !== "" && !options.includes(pick));
             return (
+              // oxlint-disable-next-line react/no-array-index-key -- the rows are positions (Floor 1, Floor 2 ...)
               <div key={index} className="flex items-center gap-2">
                 <span className="w-14 shrink-0 text-body-xs-medium text-tertiary">Floor {index + 1}</span>
                 {typing ? (
                   <input
+                    // oxlint-disable-next-line jsx-a11y/no-autofocus -- the box appears because the person asked to type a new floor
                     autoFocus
                     aria-label={`Floor ${index + 1} name`}
                     className={selectClass}

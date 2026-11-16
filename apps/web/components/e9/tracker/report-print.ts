@@ -8,6 +8,7 @@
 
 import type { TE9Project } from "../types";
 import type { TE9Report } from "./hold-types";
+import { quantityText, reportTotals } from "./report-totals";
 
 const escape = (value: unknown) =>
   String(value ?? "")
@@ -58,6 +59,7 @@ ${table(
   [
     "Scope",
     "Items",
+    "Quantity",
     "On hold",
     "Production done",
     "Material received",
@@ -67,9 +69,10 @@ ${table(
     "Signed off",
     "% installed",
   ],
-  report.by_scope.map((row) => [
+  [...report.by_scope, { ...reportTotals(report.by_scope), label: "Total" }].map((row) => [
     row.label,
     row.items,
+    quantityText(row),
     row.on_hold || "",
     row.production_done,
     row.material_received,

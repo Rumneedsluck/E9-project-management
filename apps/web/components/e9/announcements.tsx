@@ -168,7 +168,7 @@ export function E9Announcements({
                   <SwipeRow
                     actions={[{ id: "delete", label: "Remove" }]}
                     actionColor="#DA1E26"
-                    drawerColor="#3f3f46"
+                    drawerColor="var(--e9-hover)"
                     rowColor="var(--background-color-surface-1)"
                     textColor="inherit"
                     height={row.body ? 92 : 66}

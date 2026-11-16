@@ -34,6 +34,7 @@ import {
   trackerHref,
   unitText,
 } from "./shared";
+import { totalsByUnit } from "./totals";
 import { E9VariancePanel } from "./variance";
 import type { TE9Amendment, TE9Boq, TE9BoqLine, TE9BoqUnit, TE9PO } from "./types";
 import { e9Confirm } from "../confirm";
@@ -387,7 +388,8 @@ function POCard(props: TPOCardProps) {
           >
             {po.kind === "original" ? "Original BOQ / PO" : "New PO"}
           </span>
-          {po.title}
+          {/* the title only when it says more than the tag beside it */}
+          {po.title.trim().toLowerCase() !== (po.kind === "original" ? "original boq / po" : "new po") && po.title}
           {po.number && <span className="text-body-xs-regular text-tertiary">PO no. {po.number}</span>}
           {po.po_date && (
             <span className="text-body-xs-regular text-tertiary">· {renderFormattedDate(po.po_date)}</span>
@@ -466,7 +468,7 @@ function POCard(props: TPOCardProps) {
                     <span className="ml-1 rounded bg-layer-2 px-1 text-body-2xs-medium text-tertiary">amendment</span>
                   )}
                 </td>
-                <td className="max-w-[300px] min-w-[220px] px-3 py-2.5">
+                <td className="max-w-[420px] min-w-[320px] px-3 py-2.5">
                   {canEdit ? (
                     <>
                       <TextCell
@@ -635,6 +637,32 @@ function POCard(props: TPOCardProps) {
               </tr>
             ))}
           </tbody>
+          {lines.length > 0 && (
+            <tfoot>
+              {totalsByUnit(lines, {
+                qty: (line) => line.qty,
+                allowed: (line) => line.allowed,
+                onTracker: (line) => line.on_tracker,
+                extra: (line) => line.extra,
+                installed: (line) => line.installed,
+              }).map(([unit, total]) => (
+                <tr key={unit} className="border-t border-subtle bg-layer-1 text-body-xs-semibold text-primary">
+                  <td className="px-3 py-2.5" colSpan={4}>
+                    Total {unitText(unit as TE9BoqUnit)}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{fmt(total.qty)}</td>
+                  <td colSpan={3} />
+                  <td className="px-3 py-2.5 text-right tabular-nums">{fmt(total.allowed)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{fmt(total.onTracker)}</td>
+                  <td className={cn("px-3 py-2.5 text-right tabular-nums", total.extra > 0 && "text-warning-primary")}>
+                    {total.extra > 0 ? `+${fmt(total.extra)}` : "—"}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{fmt(total.installed)}</td>
+                  <td colSpan={4} />
+                </tr>
+              ))}
+            </tfoot>
+          )}
         </table>
       </div>
 

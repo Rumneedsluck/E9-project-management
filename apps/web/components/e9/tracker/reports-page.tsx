@@ -15,6 +15,7 @@ import type { TE9Project } from "../types";
 import { E9Panel } from "../ui";
 import { formatDay, ReplacementNote } from "./hold-page";
 import { printClientReport } from "./report-print";
+import { quantityText, reportTotals } from "./report-totals";
 
 const STATE_STYLE = {
   Done: "text-success-primary",
@@ -44,6 +45,7 @@ export function E9ClientReport({ workspaceSlug, project }: { workspaceSlug: stri
   if (isLoading && !data) return <E9LoadingState />;
   if (!data) return error ? <E9ErrorState onRetry={() => mutate()} /> : <E9LoadingState />;
   const head = data.headline;
+  const total = reportTotals(data.by_scope);
   const th = "px-3 py-2.5";
   return (
     <div className="flex flex-col gap-5">
@@ -87,6 +89,7 @@ export function E9ClientReport({ workspaceSlug, project }: { workspaceSlug: stri
                 {[
                   "Scope",
                   "Items",
+                  "Quantity",
                   "On hold",
                   "Production done",
                   "Material received",
@@ -107,6 +110,7 @@ export function E9ClientReport({ workspaceSlug, project }: { workspaceSlug: stri
                 <tr key={row.scope}>
                   <td className="px-3 py-2 font-semibold">{row.label}</td>
                   <td className="px-3 py-2">{row.items}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{quantityText(row)}</td>
                   <td className="px-3 py-2">{row.on_hold || "—"}</td>
                   <td className="px-3 py-2">{row.production_done}</td>
                   <td className="px-3 py-2">{row.material_received}</td>
@@ -118,6 +122,21 @@ export function E9ClientReport({ workspaceSlug, project }: { workspaceSlug: stri
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t border-subtle bg-layer-1 font-semibold text-primary tabular-nums">
+                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2">{total.items}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{quantityText(total)}</td>
+                <td className="px-3 py-2">{total.on_hold || "—"}</td>
+                <td className="px-3 py-2">{total.production_done}</td>
+                <td className="px-3 py-2">{total.material_received}</td>
+                <td className="px-3 py-2">{total.qc_passed}</td>
+                <td className="px-3 py-2">{total.delivered}</td>
+                <td className="px-3 py-2">{total.installed}</td>
+                <td className="px-3 py-2">{total.signed_off}</td>
+                <td className="px-3 py-2">{total.percent}%</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </E9Panel>
@@ -155,6 +174,8 @@ export function E9ClientReport({ workspaceSlug, project }: { workspaceSlug: stri
               ["Not billable yet", data.billing.not_billable_yet],
               ["Billable sq ft", fmt(data.billing.sqft)],
               ["Billable Nos", fmt(data.billing.nos)],
+              ...(Number(data.billing.rft ?? 0) > 0 ? [["Billable rft", fmt(data.billing.rft)]] : []),
+              ...(Number(data.billing.rmt ?? 0) > 0 ? [["Billable rmt", fmt(data.billing.rmt)]] : []),
             ].map(([label, value]) => (
               <div key={label as string} className="flex flex-col">
                 <dt className="text-body-2xs-semibold text-tertiary">{label}</dt>
