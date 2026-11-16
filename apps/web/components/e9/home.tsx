@@ -5,9 +5,8 @@
  */
 
 /*
- * Home: a calm cover page: E9 Operations, the date, four doors (Projects, Dashboard,
- * Billing, New project) and the team announcements. Numbers and charts live on the Dashboard,
- * sites live on Projects – nothing is repeated here.
+ * Home: a calm cover page: E9 Operations, the date, today's four live numbers, four doors
+ * (Projects, Dashboard, Billing, New project) and the team announcements.
  */
 
 import { useEffect, useState } from "react";
@@ -24,6 +23,7 @@ import {
 import { renderFormattedDate } from "@plane/utils";
 import { E9Announcements } from "./announcements";
 import { E9_BRAND, E9Text } from "./brand";
+import { E9HomeStrip } from "./home-strip";
 import { useCanCreateE9Project } from "./hooks";
 import { Reveal } from "./motion";
 import { E9PageBody } from "./ui";
@@ -117,6 +117,8 @@ export const E9Home = observer(function E9Home({ workspaceSlug }: { workspaceSlu
           </p>
         </Reveal>
       </section>
+
+      <E9HomeStrip workspaceSlug={workspaceSlug} />
 
       <div className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
         {doors.map((door, index) => (

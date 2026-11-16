@@ -172,3 +172,16 @@ export const getInitials = (firstName?: string, lastName?: string, fallback?: st
   const initials = `${firstName?.[0] ?? ""}${lastName?.[0] ?? ""}`.trim();
   return (initials || fallback?.[0] || "?").toUpperCase();
 };
+
+const WEEK_DAYS = 7;
+
+/** How many open sites are due on each of the next 7 days (today first). */
+export const dueByDay = (projects: TE9Project[], today?: Date): number[] => {
+  const counts = Array.from({ length: WEEK_DAYS }, () => 0);
+  for (const project of projects) {
+    if (project.e9.status === "completed") continue;
+    const days = daysUntil(project.e9.deadline, today);
+    if (days !== null && days >= 0 && days < WEEK_DAYS) counts[days] += 1;
+  }
+  return counts;
+};
