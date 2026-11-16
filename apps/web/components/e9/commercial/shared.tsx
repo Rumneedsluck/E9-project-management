@@ -52,7 +52,8 @@ const toNumber = (value: string | number | null | undefined) => {
 export const fmt = (value: string | number | null | undefined) =>
   toNumber(value).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
-export const unitText = (unit: TE9BoqUnit) => (unit === "sqft" ? "sq ft" : "Nos");
+const UNIT_TEXT: Record<TE9BoqUnit, string> = { sqft: "sq ft", nos: "Nos", rft: "rft", rmt: "rmt" };
+export const unitText = (unit: TE9BoqUnit) => UNIT_TEXT[unit] ?? unit;
 
 export const money = (value: string | number | null | undefined) =>
   `₹${toNumber(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

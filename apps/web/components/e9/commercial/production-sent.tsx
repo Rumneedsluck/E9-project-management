@@ -54,7 +54,7 @@ export function E9ProductionSent({ slug, projectId, logs }: { slug: string; proj
         boqNo: "",
         jc: jc.number,
         vendor: jc.vendor,
-        qty: Number(item.unit === "sqft" ? item.area : item.qty) || 0,
+        qty: Number(item.unit === "nos" ? item.qty : item.area) || 0,
         wastage: item.wastage === null || item.wastage === undefined ? null : Number(item.wastage),
         wastagePct: item.wastage_pct ?? null,
         unit: item.unit,

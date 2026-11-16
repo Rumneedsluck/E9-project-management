@@ -152,6 +152,8 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
     area_sqft = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, allow_null=True)
     current_stage = serializers.CharField(read_only=True)
     production_measure = serializers.SerializerMethodField()
+    # running length (rft / rmt scopes): Width x Qty in the scope's unit; None for other units
+    length = serializers.SerializerMethodField()
     wastage = serializers.SerializerMethodField()
     wastage_pct = serializers.SerializerMethodField()
     part_of = serializers.SerializerMethodField()
@@ -171,6 +173,7 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
             "item_code",
             "unit",
             "area_sqft",
+            "length",
             "current_stage",
             "production_measure",
             "wastage",
@@ -219,6 +222,10 @@ class E9ScopeItemSerializer(serializers.ModelSerializer):
     @staticmethod
     def _text(value):
         return None if value is None else str(value.quantize(Decimal("0.01")))
+
+    def get_length(self, item):
+        unit = self.get_unit(item)
+        return self._text(tracker.measured(item, unit)) if unit in tracker.LENGTH_UNITS else None
 
     def get_production_measure(self, item):
         return self._text(tracker.production_measure(item, self.get_unit(item)))

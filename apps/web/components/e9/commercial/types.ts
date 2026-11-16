@@ -9,7 +9,7 @@ export type TE9Num = string;
 
 export type TE9BoqStatus = "ok" | "pending" | "excess";
 export type TE9AmendmentStatus = "requested" | "confirmed" | "rejected";
-export type TE9BoqUnit = "sqft" | "nos";
+export type TE9BoqUnit = "sqft" | "nos" | "rft" | "rmt";
 
 export type TE9BoqLine = {
   id: string;

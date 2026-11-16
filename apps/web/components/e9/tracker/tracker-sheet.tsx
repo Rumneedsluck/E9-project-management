@@ -38,12 +38,15 @@ import {
   SITE_ISSUES,
 } from "./constants";
 import type { TE9ScopeKey, TE9StageKey } from "./constants";
-import type { TE9Attachment, TE9ProjectScope, TE9ScopeItem } from "./logic";
+import type { TE9Attachment, TE9MeasureUnit, TE9ProjectScope, TE9ScopeItem } from "./logic";
 import {
   formatMeasure,
   isFilled,
   isStageOverdue,
+  UNIT_SHORT,
+  isLengthUnit,
   itemArea,
+  itemLength,
   itemMeasure,
   joinDcs,
   parsePastedDate,
@@ -157,7 +160,7 @@ function AutoCell({
   tone,
 }: {
   value: string | null | undefined;
-  unit: "sqft" | "nos";
+  unit: TE9MeasureUnit;
   hint?: string;
   tone?: "warn" | "ok";
 }) {
@@ -172,9 +175,7 @@ function AutoCell({
       >
         {number === null ? "—" : number.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
       </span>
-      {number !== null && (
-        <span className="text-body-2xs-regular text-tertiary">{unit === "sqft" ? "sq ft" : "Nos"}</span>
-      )}
+      {number !== null && <span className="text-body-2xs-regular text-tertiary">{UNIT_SHORT[unit]}</span>}
     </div>
   );
 }
@@ -520,7 +521,11 @@ const COLUMNS: TColumn[] = [
             ? item.area_sqft
               ? Number(item.area_sqft).toLocaleString("en-IN", { minimumFractionDigits: 2 })
               : "—"
-            : `${Number(item.qty || (empty ? 0 : 1))}`}
+            : isLengthUnit(item.unit)
+              ? item.length
+                ? Number(item.length).toLocaleString("en-IN", { minimumFractionDigits: 2 })
+                : "—"
+              : `${Number(item.qty || (empty ? 0 : 1))}`}
         </span>
         {scope?.unit_mode === "either" && !disabled ? (
           <select
@@ -534,8 +539,11 @@ const COLUMNS: TColumn[] = [
             <option value="nos">Nos</option>
           </select>
         ) : (
-          <span className="text-right text-body-2xs-regular text-tertiary">
-            {item.unit === "sqft" ? "sq ft" : "Nos"}
+          <span
+            className="text-right text-body-2xs-regular text-tertiary"
+            title={isLengthUnit(item.unit) ? "Running length = Width × Qty (height is not used)" : undefined}
+          >
+            {UNIT_SHORT[item.unit]}
             {item.unit === "nos" && item.area_sqft && Number(item.area_sqft) > 0
               ? ` · ${Number(item.area_sqft).toLocaleString("en-IN", { maximumFractionDigits: 1 })} sq ft`
               : ""}
@@ -664,7 +672,7 @@ const COLUMNS: TColumn[] = [
             {extra.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
           </span>
           <span className="text-body-2xs-regular text-tertiary">
-            {item.unit === "sqft" ? "sq ft" : "Nos"}
+            {UNIT_SHORT[item.unit]}
             {item.wastage_pct
               ? ` · ${Number(item.wastage_pct).toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`
               : ""}
@@ -2047,6 +2055,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
   const itemRows = filledRows.filter((item) => !item.is_part);
   const totalNos = itemRows.filter((item) => item.unit === "nos").reduce((t, item) => t + itemMeasure(item), 0);
   const totalArea = itemRows.reduce((t, item) => t + itemArea(item), 0);
+  const totalRft = itemRows.filter((item) => item.unit === "rft").reduce((t, item) => t + itemLength(item), 0);
+  const totalRmt = itemRows.filter((item) => item.unit === "rmt").reduce((t, item) => t + itemLength(item), 0);
   const bandOpenness = (band: string) =>
     band === ALWAYS_OPEN_BAND ? 1 : (tween.current.get(band) ?? (openBands.has(band) ? 1 : 0));
   const shownColumns = columns.filter((column) => bandOpenness(column.band) > 0);
@@ -2553,6 +2563,8 @@ export function E9TrackerSheet({ workspaceSlug, project }: Props) {
               {itemRows.length} item{itemRows.length === 1 ? "" : "s"}
               {totalArea > 0 ? ` · ${formatMeasure(Math.round(totalArea * 100) / 100, "sqft")}` : ""}
               {totalNos > 0 ? ` · ${formatMeasure(totalNos, "nos")}` : ""}
+              {totalRft > 0 ? ` · ${formatMeasure(Math.round(totalRft * 100) / 100, "rft")}` : ""}
+              {totalRmt > 0 ? ` · ${formatMeasure(Math.round(totalRmt * 100) / 100, "rmt")}` : ""}
               {canEdit ? " · saves by itself · Enter = next row · paste from Excel" : " · view only"}
             </span>
             <Legend />

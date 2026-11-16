@@ -26,6 +26,8 @@ const UNIT_OPTIONS: { value: TE9UnitMode; label: string }[] = [
   { value: "sqft", label: "Size: H × W → sq ft" },
   { value: "nos", label: "Numbers only (Nos)" },
   { value: "either", label: "Either: sq ft if a size is typed, else Nos" },
+  { value: "rft", label: "Running feet: Width × Qty" },
+  { value: "rmt", label: "Running metres: Width × Qty" },
 ];
 
 const errorText = (error: unknown) => {

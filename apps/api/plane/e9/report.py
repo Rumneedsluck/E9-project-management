@@ -192,16 +192,17 @@ def report_payload(project):
         if not scope.enabled and not rows:
             continue
         working = [item for item in rows if tracker.makes_progress(item)]
-        sqft = sum((_amount(item, scopes)[1] for item in rows if _unit(item, scopes) == "sqft"), ZERO)
-        nos = sum((_amount(item, scopes)[1] for item in rows if _unit(item, scopes) != "sqft"), ZERO)
+        amounts = {
+            unit: sum((_amount(item, scopes)[1] for item in rows if _unit(item, scopes) == unit), ZERO)
+            for unit in tracker.UNITS
+        }
         installed = [item for item in working if item.installation_status == "Installation Done"]
         by_scope.append(
             {
                 "scope": key,
                 "label": scope.label,
                 "items": len(rows),
-                "sqft": _text(sqft),
-                "nos": _text(nos),
+                **{unit: _text(value) for unit, value in amounts.items()},
                 "on_hold": sum(1 for item in rows if tracker.is_held(item)),
                 "production_done": sum(1 for item in working if item.production_status == "Production Done"),
                 "material_received": sum(1 for item in working if item.material_status == "Material Received"),
@@ -224,10 +225,10 @@ def report_payload(project):
     billable = [
         item for item in counted if boq.can_bill(item, scopes[item.scope].bill_when if item.scope in scopes else "")
     ]
-    billable_sqft = sum(
-        (boq.billable_measure(item, "sqft") for item in billable if _unit(item, scopes) == "sqft"), ZERO
-    )
-    billable_nos = sum((boq.billable_measure(item, "nos") for item in billable if _unit(item, scopes) != "sqft"), ZERO)
+    billable_by_unit = {
+        unit: sum((boq.billable_measure(item, unit) for item in billable if _unit(item, scopes) == unit), ZERO)
+        for unit in tracker.UNITS
+    }
 
     open_issues = sum(
         1 for item in counted if item.site_issue not in ("", "No issues") and item.issue_resolved != "Yes"
@@ -253,8 +254,7 @@ def report_payload(project):
             "billable_items": len(billable),
             "of_which_on_hold": sum(1 for item in billable if tracker.is_held(item)),
             "not_billable_yet": len(counted) - len(billable),
-            "sqft": _text(billable_sqft),
-            "nos": _text(billable_nos),
+            **{unit: _text(value) for unit, value in billable_by_unit.items()},
         },
         "held": holds["held"],
         "cancelled": holds["cancelled"],

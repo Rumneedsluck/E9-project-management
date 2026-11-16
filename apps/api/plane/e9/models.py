@@ -208,6 +208,8 @@ class E9UnitMode(models.TextChoices):
     SQFT = "sqft", "Size (H x W -> sq ft)"
     NOS = "nos", "Numbers only (Nos)"
     EITHER = "either", "Either (sq ft if a size is typed, else Nos)"
+    RFT = "rft", "Running feet (Width x Qty)"
+    RMT = "rmt", "Running metres (Width x Qty)"
 
 
 class E9ProjectScope(BaseModel):
@@ -437,6 +439,8 @@ class E9Amendment(BaseModel):
 class E9BoqUnit(models.TextChoices):
     SQFT = "sqft", "Sq Ft"
     NOS = "nos", "Nos"
+    RFT = "rft", "Rft"
+    RMT = "rmt", "Rmt"
 
 
 class E9BoqLine(BaseModel):

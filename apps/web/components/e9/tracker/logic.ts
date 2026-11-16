@@ -7,7 +7,12 @@
 import type { TE9StageKey } from "./constants";
 import { E9_TRACKER_STAGES } from "./constants";
 
-export type TE9UnitMode = "sqft" | "nos" | "either";
+export type TE9UnitMode = "sqft" | "nos" | "either" | "rft" | "rmt";
+/** How one item is counted: square feet, numbers, or running length in feet / metres (Width × Qty). */
+export type TE9MeasureUnit = "sqft" | "nos" | "rft" | "rmt";
+export const LENGTH_UNITS: readonly TE9MeasureUnit[] = ["rft", "rmt"];
+export const isLengthUnit = (unit: string): boolean => unit === "rft" || unit === "rmt";
+export const UNIT_SHORT: Record<TE9MeasureUnit, string> = { sqft: "sq ft", nos: "Nos", rft: "rft", rmt: "rmt" };
 
 /** A scope sheet on a project (standard or added by the team). */
 export type TE9ProjectScope = {
@@ -124,8 +129,10 @@ export type TE9ScopeItem = {
   scope: string;
   item_number: number;
   item_code: string;
-  unit: "sqft" | "nos";
+  unit: TE9MeasureUnit;
   area_sqft: string | null;
+  /** running length (rft / rmt scopes): Width × Qty in the scope's unit */
+  length?: string | null;
   current_stage: string;
   boq_item_no: string;
   floor_area: string;
@@ -231,6 +238,9 @@ export const itemMeasure = (item: TE9ScopeItem): number => (item.unit === "nos" 
 
 export const itemArea = (item: TE9ScopeItem): number => (item.unit === "sqft" ? toNumber(item.area_sqft) : 0);
 
+/** Running length of an item in its own unit (rft or rmt); 0 for other units. */
+export const itemLength = (item: TE9ScopeItem): number => (isLengthUnit(item.unit) ? toNumber(item.length) : 0);
+
 /** Whether an item has finished a given stage (same tests as the template dashboard). */
 export const isStageDone = (item: TE9ScopeItem, stage: TE9StageKey): boolean => {
   switch (stage) {
@@ -267,7 +277,7 @@ export const isStageOverdue = (
 export type TScopeProgress = {
   scope: string;
   label: string;
-  unit: "sqft" | "nos" | "mixed";
+  unit: TE9MeasureUnit | "mixed";
   items: number;
   area: number;
   productionDone: number;
@@ -433,8 +443,8 @@ export const stageTargetRows = (
 };
 
 /** sq ft or Nos label for a number in a scope's own unit. */
-export const formatMeasure = (value: number, unit: "sqft" | "nos" | "mixed") =>
-  `${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}${unit === "sqft" ? " sq ft" : unit === "nos" ? " Nos" : ""}`;
+export const formatMeasure = (value: number, unit: TE9MeasureUnit | "mixed") =>
+  `${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}${unit === "mixed" ? "" : ` ${UNIT_SHORT[unit]}`}`;
 
 /** Work done (installed). The sq ft / Nos totals are for the detail tables; the headline percent counts ITEMS. */
 export const workDone = (items: TE9ScopeItem[]) => {

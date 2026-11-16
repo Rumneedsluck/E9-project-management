@@ -32,7 +32,7 @@ const boqPath = (kind: TE9BoqKind) => (kind === "reprints" ? "reprints" : `boq/$
 /** Talks to the E9 endpoints added by the backend `plane.e9` app. */
 /** What an extra sheet of an imported Excel (Writing Film, Dinoc ...) becomes. */
 export type TE9ImportChoice =
-  | { action: "new"; label: string; unit_mode?: "sqft" | "nos" | "either"; from_company_list?: boolean }
+  | { action: "new"; label: string; unit_mode?: "sqft" | "nos" | "either" | "rft" | "rmt"; from_company_list?: boolean }
   | { action: "scope"; key: string; label?: string }
   | { action: "skip" };
 

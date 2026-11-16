@@ -15,6 +15,7 @@ from decimal import ROUND_HALF_UP, Decimal
 #   "sqft": counts in square feet from Height x Width (inches)
 #   "nos":  counts in numbers (Qty); Height / Width are notes only
 #   "either": square feet when a size is given, otherwise Nos (template rule for Non-Tender / Others)
+#   "rft" / "rmt": running length in feet / metres = Width x Qty (Height is shown on the sheet, not used)
 SCOPES = {
     "wall_graphics": ("Wall Graphics", "W", "sqft"),
     "glass_film": ("Glass Film", "GF", "sqft"),
@@ -32,6 +33,19 @@ SCOPE_CHOICES = [(key, value[0]) for key, value in SCOPES.items()]
 # What size columns can be typed in. Everything is stored in inches; sq ft always comes from inches / 144.
 SIZE_UNITS = {"in": Decimal(1), "ft": Decimal(12), "mm": Decimal(1) / Decimal("25.4")}
 SIZE_UNIT_CHOICES = [("in", "Inches"), ("ft", "Feet (decimal)"), ("mm", "Millimetres")]
+
+# running length: the run is the Width (stored in inches), times Qty
+LENGTH_UNITS = {"rft": Decimal(12), "rmt": Decimal("39.37007874015748031496062992")}  # inches per foot / metre
+UNITS = ("sqft", "nos", *LENGTH_UNITS)
+
+
+def running_length(width, qty, unit):
+    """Running length = Width x Qty (Qty defaults to 1), in running feet or metres. None without a width."""
+    if not width or unit not in LENGTH_UNITS:
+        return None
+    quantity = Decimal(qty) if qty else Decimal(1)
+    return (Decimal(width) * quantity / LENGTH_UNITS[unit]).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
 
 _COMMON_ISSUES_TAIL = ["Size differs from drawing", "Access / permission needed", "Other"]
 SITE_ISSUES = {
@@ -144,8 +158,8 @@ def makes_progress(item):
 
 
 def item_unit(unit_mode, height, width, unit_override=""):
-    """'sqft' or 'nos' for an item. unit_mode is the scope's setting: sqft, nos or either."""
-    rule = unit_mode if unit_mode in ("sqft", "nos", "either") else "either"
+    """'sqft', 'nos', 'rft' or 'rmt' for an item. unit_mode is the scope's setting (either = sq ft or Nos)."""
+    rule = unit_mode if unit_mode in (*UNITS, "either") else "either"
     if rule != "either":
         return rule
     if unit_override in ("sqft", "nos"):
@@ -283,6 +297,8 @@ def _own_measured(item, unit):
     """One row's own site-measured quantity (not counting parts)."""
     if unit == "sqft":
         return item_area_sqft(item.height_in, item.width_in, item.qty) or Decimal(0)
+    if unit in LENGTH_UNITS:
+        return running_length(item.width_in, item.qty, unit) or Decimal(0)
     return Decimal(item.qty) if item.qty else Decimal(1)
 
 
@@ -293,13 +309,24 @@ def measured(item, unit):
     return _own_measured(item, unit)
 
 
-def _own_production_area(item):
-    """One row's production area in sq ft, or None when no production size is typed."""
+def _production_qty(item):
     # a production size without its own quantity means the same number of pieces as measured
     production_qty = item.production_qty if item.production_qty is not None else item.qty
     if getattr(item, "is_part", False) and item.production_qty is None:
         production_qty = 1  # a part has no site qty: one piece unless its production qty says otherwise
-    return item_area_sqft(item.production_height_in, item.production_width_in, production_qty)
+    return production_qty
+
+
+def _own_production_area(item, unit="sqft"):
+    """One row's production quantity by its production size (sq ft, or running length), None when none is typed."""
+    if unit in LENGTH_UNITS:
+        return running_length(item.production_width_in, _production_qty(item), unit)
+    return item_area_sqft(item.production_height_in, item.production_width_in, _production_qty(item))
+
+
+def _sized(unit):
+    """Units worked out from a size (H x W, or the Width as a run) rather than from a count."""
+    return unit == "sqft" or unit in LENGTH_UNITS
 
 
 def _own_production(item, unit):
@@ -307,11 +334,11 @@ def _own_production(item, unit):
 
     A part sends only what its production size / quantity says (nothing until that is typed)."""
     if getattr(item, "is_part", False):
-        if unit == "sqft":
-            return _own_production_area(item) or Decimal(0)
+        if _sized(unit):
+            return _own_production_area(item, unit) or Decimal(0)
         return Decimal(item.production_qty) if item.production_qty is not None else Decimal(0)
-    if unit == "sqft":
-        area = _own_production_area(item)
+    if _sized(unit):
+        area = _own_production_area(item, unit)
         return area if area is not None else _own_measured(item, unit)
     if item.production_qty is not None:
         return Decimal(item.production_qty)
@@ -329,8 +356,8 @@ def wastage(item, unit):
     Nothing (None) until a production size / quantity is typed somewhere on the wall. A wall adds up its parts.
     """
     pieces = [item, *parts_of(item)]
-    if unit == "sqft":
-        typed = any(_own_production_area(piece) is not None for piece in pieces)
+    if _sized(unit):
+        typed = any(_own_production_area(piece, unit) is not None for piece in pieces)
     else:
         typed = any(piece.production_qty is not None for piece in pieces)
     if not typed:
@@ -385,6 +412,10 @@ def certified_measure(item, unit):
         if area is not None:
             return area
         return Decimal(item.certified_qty) if item.certified_qty is not None else None
+    if unit in LENGTH_UNITS:
+        length = running_length(item.certified_width_in, item.certified_qty, unit)
+        if length is not None:
+            return length
     return Decimal(item.certified_qty) if item.certified_qty is not None else None
 
 
@@ -395,6 +426,8 @@ def reprint_measure(unit, pieces, height, width):
         return (Decimal(height) * Decimal(width) / Decimal(144) * count).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
+    if unit in LENGTH_UNITS and width:
+        return running_length(width, count, unit)
     return count
 
 
@@ -432,6 +465,10 @@ def progress(items, unit_modes):
         "sqft_done": Decimal(0),
         "nos_total": Decimal(0),
         "nos_done": Decimal(0),
+        "rft_total": Decimal(0),
+        "rft_done": Decimal(0),
+        "rmt_total": Decimal(0),
+        "rmt_done": Decimal(0),
     }
     for item in fold_parts(items):  # parts are not items: the wall counts once, with its parts' sizes
         if not (item.floor_area.strip() or item.description.strip() or item.height_in or item.width_in or item.qty):
@@ -454,5 +491,9 @@ def progress(items, unit_modes):
         "sqft_done": str(totals["sqft_done"].quantize(Decimal("0.01"))),
         "nos_total": str(totals["nos_total"].quantize(Decimal("0.01"))),
         "nos_done": str(totals["nos_done"].quantize(Decimal("0.01"))),
+        "rft_total": str(totals["rft_total"].quantize(Decimal("0.01"))),
+        "rft_done": str(totals["rft_done"].quantize(Decimal("0.01"))),
+        "rmt_total": str(totals["rmt_total"].quantize(Decimal("0.01"))),
+        "rmt_done": str(totals["rmt_done"].quantize(Decimal("0.01"))),
         "percent": int(percent.quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
     }

@@ -483,6 +483,22 @@ BOQ_COLUMNS = {
 }
 
 
+def _boq_unit(text):
+    """'Sq Ft' -> sqft, 'Nos' -> nos, 'Rft' / 'running feet' -> rft, 'Rmt' / 'running metre' -> rmt."""
+    compact = text.replace(" ", "").replace(".", "")
+    if not compact:
+        return None
+    if compact.startswith("sq"):
+        return "sqft"
+    if compact in ("rft", "rf", "runningft", "runningfeet", "runningfoot", "runft"):
+        return "rft"
+    if compact in ("rmt", "rm", "runningm", "runningmetre", "runningmeter", "runningmetres", "runningmeters"):
+        return "rmt"
+    if compact.startswith("no") or compact in ("pcs", "pc", "each", "unit", "units"):
+        return "nos"
+    return None
+
+
 def _read_boq_sheet(workbook, warnings):
     sheet = next((ws for ws in workbook.worksheets if ws.title.strip().lower() == "boq"), None)
     if sheet is None:
@@ -505,9 +521,11 @@ def _read_boq_sheet(workbook, warnings):
         if not line_no or line_no.startswith("="):
             continue
         unit_text = _text(values.get("unit")).lower()
-        unit = "sqft" if "sq" in unit_text else "nos"
-        if unit_text and "sq" not in unit_text and not unit_text.startswith("no"):
-            warnings.append(f"BOQ {line_no}: unit '{values.get('unit')}' is counted as Nos.")
+        unit = _boq_unit(unit_text)
+        if unit is None:
+            unit = "nos"
+            if unit_text:
+                warnings.append(f"BOQ {line_no}: unit '{values.get('unit')}' is counted as Nos.")
         lines.append(
             {
                 "line_no": line_no,

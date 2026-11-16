@@ -35,7 +35,7 @@ import {
   unitText,
 } from "./shared";
 import { E9VariancePanel } from "./variance";
-import type { TE9Amendment, TE9Boq, TE9BoqLine, TE9PO } from "./types";
+import type { TE9Amendment, TE9Boq, TE9BoqLine, TE9BoqUnit, TE9PO } from "./types";
 import { e9Confirm } from "../confirm";
 
 type Props = { workspaceSlug: string; project: TE9Project };
@@ -517,6 +517,8 @@ function POCard(props: TPOCardProps) {
                     >
                       <option value="sqft">sq ft</option>
                       <option value="nos">Nos</option>
+                      <option value="rft">rft (running feet)</option>
+                      <option value="rmt">rmt (running metres)</option>
                     </select>
                   ) : (
                     unitText(line.unit)
@@ -893,7 +895,7 @@ function LineModal({
             onChange={(e) => {
               setScope(e.target.value);
               const chosen = scopes.find((entry) => entry.key === e.target.value);
-              if (chosen && chosen.unit !== "either") setUnit(chosen.unit as "sqft" | "nos");
+              if (chosen && chosen.unit !== "either") setUnit(chosen.unit as TE9BoqUnit);
             }}
           >
             <option value="">—</option>
@@ -910,9 +912,11 @@ function LineModal({
           </FormField>
         </div>
         <FormField label="Unit">
-          <select className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value as "sqft" | "nos")}>
+          <select className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value as TE9BoqUnit)}>
             <option value="sqft">Sq Ft</option>
             <option value="nos">Nos</option>
+            <option value="rft">Rft (running feet)</option>
+            <option value="rmt">Rmt (running metres)</option>
           </select>
         </FormField>
         <FormField label="BOQ quantity">

@@ -790,7 +790,12 @@ def logs_payload(project, user, slug):
     for item in items:
         scope = scopes.get(item.scope)
         unit = item_unit(scope.unit_mode if scope else "either", item.height_in, item.width_in, item.unit_override)
-        area = item.area_sqft if unit == "sqft" else None  # includes the wall's parts
+        # the site measure: sq ft area, or the running length for rft / rmt scopes (None for Nos)
+        area = (
+            item.area_sqft
+            if unit == "sqft"
+            else (tracker.measured(item, unit) if unit in tracker.LENGTH_UNITS else None)
+        )
         row = {
             "id": str(item.id),
             "code": item_code(item, scopes),
@@ -829,12 +834,10 @@ def logs_payload(project, user, slug):
             if not meta:
                 entry.update({k: v for k, v in DEFAULTS.get(meta_model, {}).items()})
             if totals:
-                entry["sqft"] = str(
-                    sum((Decimal(row["sent"]) for row in rows if row["unit"] == "sqft" and row["sent"]), Decimal("0"))
-                )
-                entry["nos"] = str(
-                    sum((Decimal(row["sent"]) for row in rows if row["unit"] == "nos" and row["sent"]), Decimal("0"))
-                )
+                for unit in tracker.UNITS:
+                    entry[unit] = str(
+                        sum((Decimal(row["sent"]) for row in rows if row["unit"] == unit and row["sent"]), Decimal("0"))
+                    )
                 entry["unknown_qty"] = sum(1 for row in rows if not row["sent"])
             out.append(entry)
         return out

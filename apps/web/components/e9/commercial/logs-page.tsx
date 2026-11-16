@@ -25,6 +25,7 @@ import {
   readMailSettings,
   saveMailSettings,
   showError,
+  unitText,
 } from "./shared";
 import { E9ProductionSent } from "./production-sent";
 import type { TE9Challan, TE9JobCard, TE9LogItem, TE9Logs } from "./types";
@@ -59,7 +60,7 @@ function Items({
                 item.sent ? "text-secondary" : "text-warning-primary"
               )}
             >
-              ({item.sent ? `${fmt(item.sent)}${item.unit === "sqft" ? " sq ft" : ""}` : "qty?"})
+              ({item.sent ? `${fmt(item.sent)}${item.unit === "nos" ? "" : ` ${unitText(item.unit)}`}` : "qty?"})
               {item.partial && <span className="ml-0.5 rounded bg-warning-subtle px-1 text-warning-primary">part</span>}
             </span>
           )}

@@ -223,6 +223,7 @@ export const E9ProjectForm = observer(function E9ProjectForm({ workspaceSlug, pr
         await e9ProjectService.saveScopes(
           workspaceSlug,
           created.id,
+          // oxlint-disable-next-line oxc/no-map-spread -- each scope is copied with its new on/off
           scopes.map((scope) => ({ ...scope, enabled: chosenScopes.includes(scope.key) }))
         );
         // 5. Add the floors (Ground Floor + 1st … Nth)
@@ -558,7 +559,7 @@ export const E9ProjectForm = observer(function E9ProjectForm({ workspaceSlug, pr
                         />
                         <span className="flex-1">{scope.label}</span>
                         <span className="text-body-2xs-semibold text-tertiary">
-                          {scope.unit === "sqft" ? "sq ft" : scope.unit === "nos" ? "Nos" : "either"}
+                          {{ sqft: "sq ft", nos: "Nos", rft: "rft", rmt: "rmt" }[scope.unit as string] ?? "either"}
                         </span>
                       </label>
                     );
