@@ -91,6 +91,13 @@ class TestRunningLength:
         assert tracker.measured(main, "rft") == Decimal("20.00")
         assert tracker.production_measure(main, "rft") == Decimal("10.00") + Decimal("10.50")
 
+    def test_a_part_row_shows_no_wastage_of_its_own(self):
+        main = row(width_in=Decimal(240), qty=Decimal(1), production_width_in=Decimal(120), production_qty=Decimal(1))
+        piece = row(sort_order=2000, item_number=2, is_part=True, production_width_in=Decimal(126))
+        tracker.fold_parts([main, piece])
+        assert tracker.wastage(piece, "rft") is None and tracker.wastage_percent(piece, "rft") is None
+        assert tracker.wastage(main, "rft") == Decimal("0.50")  # 20.5 made against 20 measured, counted on the wall
+
     def test_dispatched_with_no_dc_is_the_full_length(self):
         strip = row(width_in=Decimal(120), qty=Decimal(3), dispatch_status="Dispatched")
         assert tracker.dispatched(strip, "rft") == Decimal("30.00")

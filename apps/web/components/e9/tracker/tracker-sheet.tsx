@@ -680,14 +680,14 @@ const COLUMNS: TColumn[] = [
     auto: true,
     hideKey: "production_size",
     label: "Wastage",
-    width: 112,
+    width: 176,
     band: "Production size (what we send)",
     render: ({ item, empty }) => {
       if (empty || item.wastage === null || item.wastage === undefined) return null;
       const extra = Number(item.wastage);
       return (
         <div
-          className="flex h-9 items-baseline justify-end gap-1 px-2.5 pt-2"
+          className="flex h-9 items-baseline justify-end gap-1 overflow-hidden px-2.5 pt-2 whitespace-nowrap"
           title="Production quantity minus site-measured quantity (as % of the measured quantity)"
         >
           <span className={cn("e9-mono text-body-xs-semibold", extra > 0 ? "text-warning-primary" : "text-primary")}>

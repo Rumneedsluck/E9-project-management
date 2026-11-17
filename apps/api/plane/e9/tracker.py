@@ -355,6 +355,8 @@ def wastage(item, unit):
 
     Nothing (None) until a production size / quantity is typed somewhere on the wall. A wall adds up its parts.
     """
+    if getattr(item, "is_part", False) and getattr(item, "_parent", None) is not None:
+        return None  # a part's extra is already counted on its wall
     pieces = [item, *parts_of(item)]
     if _sized(unit):
         typed = any(_own_production_area(piece, unit) is not None for piece in pieces)
