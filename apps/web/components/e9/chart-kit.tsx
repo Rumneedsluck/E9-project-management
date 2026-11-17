@@ -294,7 +294,7 @@ export function E9MeterList({ rows, max, label, valueHead, className }: TMeterLi
                 {row.icon}
                 <span className="truncate text-body-xs-medium text-primary">{row.label}</span>
               </span>
-              <span className="text-right text-body-xs-semibold text-primary tabular-nums sm:order-3">
+              <span className="min-w-[3.5rem] text-right text-body-xs-semibold whitespace-nowrap text-primary tabular-nums sm:order-3">
                 {row.figure ?? row.value.toLocaleString("en-IN")}
               </span>
               {/* the track is a pale step of the bar's own colour, so the whole row reads as one thing */}
@@ -317,7 +317,7 @@ export function E9MeterList({ rows, max, label, valueHead, className }: TMeterLi
             </>
           );
           const rowClass =
-            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 px-5 py-2.5 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_3.5rem]";
+            "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 px-5 py-2.5 sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_auto]";
           return (
             <li key={row.key}>
               {row.href ? (

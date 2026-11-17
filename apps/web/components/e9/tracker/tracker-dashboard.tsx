@@ -37,21 +37,31 @@ import {
 import { E9_TRACKER_STAGES, scopeColor } from "./constants";
 import { floorStatusClass } from "./setup-panels";
 import { E9TargetDate } from "./target-date";
+import { E9StageProgressPanel } from "./stage-progress";
+import { heatStep } from "../chart-math";
+import { E9Glyph, E9ScopeTile } from "../icons";
+import type { TE9Glyph } from "../icons";
+import { E9Art } from "../illustrations";
 
 function Tile({
   label,
   value,
   hint,
   tone,
+  glyph,
 }: {
   label: string;
   value: string;
   hint?: string;
   tone?: "danger" | "success";
+  glyph: TE9Glyph;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-subtle bg-surface-1 p-4 shadow-raised-100">
-      <span className="text-body-2xs-semibold tracking-wide text-tertiary uppercase">{label}</span>
+    <div className="e9-lift flex flex-col gap-2 rounded-xl border border-subtle bg-surface-1 p-4 shadow-raised-100">
+      <span className="flex items-center justify-between gap-2 text-body-2xs-semibold tracking-wide text-tertiary uppercase">
+        {label}
+        <E9Glyph name={glyph} className="size-4 text-[var(--e9-brass)]" />
+      </span>
       <span
         className={cn(
           "text-h3-semibold leading-none text-primary tabular-nums",
@@ -233,7 +243,8 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
 
   if (kpis.totalItems === 0)
     return (
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-strong bg-surface-1 px-6 py-14 text-center">
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-strong bg-surface-1 px-6 py-10 text-center">
+        <E9Art name="blank-sheet" />
         <p className="text-body-md-semibold text-primary">No items on the tracker yet</p>
         <p className="max-w-md text-body-sm-regular text-tertiary">
           Add walls, glass, signages and frames on the Tracker sheet. This dashboard fills itself from those rows.
@@ -274,28 +285,34 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile
           label="Total items / qty"
+          glyph="layers"
           value={kpis.totalItems.toLocaleString("en-IN")}
           hint="Signages, frames & 3D by Nos"
         />
         <Tile
           label="Total area"
+          glyph="area"
           value={formatMeasure(kpis.totalArea, "sqft")}
           hint={`${formatMeasure(kpis.installedArea, "sqft")} installed`}
         />
         <Tile
           label="Days to deadline"
+          glyph="calendar"
           value={days === null ? "—" : days < 0 ? `${Math.abs(days)} late` : String(days)}
           hint={project.e9.deadline ? renderFormattedDate(project.e9.deadline) : "Set a handover deadline"}
           tone={days !== null && days < 0 ? "danger" : undefined}
         />
         <Tile
           label="Open site issues"
+          glyph="alert"
           value={String(kpis.openSiteIssues)}
           tone={kpis.openSiteIssues > 0 ? "danger" : "success"}
         />
       </div>
 
       <E9ActivityHeatmap workspaceSlug={workspaceSlug} projectId={project.id} />
+
+      <E9StageProgressPanel rows={stages} />
 
       <E9Panel
         tone="blue"
@@ -330,7 +347,19 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
             <tbody className="divide-y divide-subtle text-primary">
               {usedScopes.map((row) => (
                 <tr key={row.scope}>
-                  <td className="px-4 py-2.5 font-medium">{row.label}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    <span className="flex items-center gap-2.5">
+                      <E9ScopeTile
+                        scope={row.scope}
+                        color={scopeColor(
+                          row.scope,
+                          progress.findIndex((entry) => entry.scope === row.scope)
+                        )}
+                        size="sm"
+                      />
+                      {row.label}
+                    </span>
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     {row.items}
                     {row.unit === "nos" && <span className="text-tertiary"> Nos</span>}
@@ -350,10 +379,11 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
                   ).map(([key, value]) => (
                     <td
                       key={key}
+                      data-step={heatStep(value, row.items)}
                       className={cn(
-                        "px-4 py-2.5 text-right tabular-nums",
+                        "e9-heat px-4 py-2.5 text-right tabular-nums",
                         value === 0 && "text-placeholder",
-                        value > 0 && value === row.items && "text-success-primary"
+                        value > 0 && value === row.items && "font-semibold"
                       )}
                     >
                       {value}
@@ -400,7 +430,7 @@ export function E9TrackerDashboard({ workspaceSlug, project, onOpenSheet, onOpen
         </div>
         <p className="px-4 py-2.5 text-body-2xs-regular text-placeholder">
           Sq-ft scopes count each item; Nos scopes (signages, frames, 3D …) count their quantity. Rows left blank are
-          not counted.
+          not counted. The stronger a cell&apos;s tint, the more of that scope has finished that step.
         </p>
       </E9Panel>
 
