@@ -4,7 +4,7 @@
  * See the LICENSE file for details.
  */
 
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { observer } from "mobx-react";
 import { Avatar } from "@makeplane/propel/components/avatar";
 import { cn, getFileURL } from "@plane/utils";
@@ -15,6 +15,8 @@ import { E9Text } from "./brand";
 import { E9_STAGES, getPriorityMeta, getStageIndex, getStatusMeta } from "./constants";
 import { describeDeadline, getDeadlineState, getInitials } from "./helpers";
 import { E9ConfirmHost } from "./confirm";
+import { E9Glyph, E9StageTile } from "./icons";
+import type { TE9Glyph } from "./icons";
 import { E9Intro } from "./intro";
 import { RevealText, useInView } from "./motion";
 import type { TE9CertState, TE9Project, TE9ProjectPriority, TE9ProjectStatus } from "./types";
@@ -24,11 +26,12 @@ export function E9StatusBadge({ status, className }: { status: TE9ProjectStatus;
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-subtle bg-layer-1 px-2.5 py-0.5 text-body-xs-medium whitespace-nowrap text-secondary",
+        "inline-flex items-center gap-1.5 rounded-full border border-subtle bg-layer-1 py-0.5 pr-2.5 pl-0.5 text-body-xs-medium whitespace-nowrap text-secondary",
         className
       )}
     >
-      <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ backgroundColor: meta.color }} />
+      {/* the stage's own icon on its own colour: the name beside it says the same thing in words */}
+      <E9StageTile status={status} size="xs" className="!rounded-full" />
       {meta.label}
     </span>
   );
@@ -49,12 +52,19 @@ export function E9PriorityBadge({ priority, className }: { priority: TE9ProjectP
   );
 }
 
+const DEADLINE_GLYPH: Partial<Record<ReturnType<typeof getDeadlineState>, TE9Glyph>> = {
+  overdue: "alert",
+  due_soon: "clock",
+  done: "check",
+};
+
 export function E9DeadlineText({ project, className }: { project: TE9Project; className?: string }) {
   const state = getDeadlineState(project);
+  const glyph = DEADLINE_GLYPH[state];
   return (
     <span
       className={cn(
-        "text-body-xs-medium whitespace-nowrap",
+        "inline-flex items-center gap-1 text-body-xs-medium whitespace-nowrap",
         state === "overdue" && "text-danger-primary",
         state === "due_soon" && "text-warning-primary",
         (state === "on_track" || state === "none") && "text-tertiary",
@@ -62,6 +72,8 @@ export function E9DeadlineText({ project, className }: { project: TE9Project; cl
         className
       )}
     >
+      {/* late, soon and done each carry a sign as well as a colour */}
+      {glyph && <E9Glyph name={glyph} className="size-3.5" />}
       {describeDeadline(project)}
     </span>
   );
@@ -160,10 +172,35 @@ type TPageHeaderProps = {
   actions?: ReactNode;
 };
 
+/**
+ * The strip of colour patches a printer checks a proof against, with a registration mark in front.
+ * Ours is made of the eight stage colours in working order. Decoration only.
+ */
+export function E9ControlStrip({ className }: { className?: string }) {
+  return (
+    <span aria-hidden className={cn("items-center gap-[3px]", className)}>
+      <svg viewBox="0 0 16 16" fill="none" stroke="var(--e9-brass)" strokeWidth={1.2} className="mr-1.5 size-3.5">
+        <circle cx="8" cy="8" r="4.6" />
+        <path d="M8 0.8v14.4M0.8 8h14.4" />
+      </svg>
+      {E9_STAGES.map((stage, index) => (
+        <span
+          key={stage.key}
+          className="e9-pop-in size-2 rounded-[1px]"
+          style={{ backgroundColor: stage.color, "--i": index } as CSSProperties}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function E9PageHeader({ eyebrow, title, description, actions }: TPageHeaderProps) {
   return (
-    <div className="e9-double-rule flex flex-col gap-4 pt-5 sm:flex-row sm:items-end sm:justify-between">
-      <div className="flex min-w-0 flex-col gap-2">
+    <div className="e9-double-rule relative flex flex-col gap-4 pt-5 sm:flex-row sm:items-end sm:justify-between">
+      {/* print-shop details behind the title: a faint drawing grid, and the colour strip in the corner */}
+      <div aria-hidden className="e9-blueprint pointer-events-none absolute inset-x-0 top-1 -bottom-3" />
+      <E9ControlStrip className="absolute top-3.5 right-0 hidden sm:flex" />
+      <div className="relative flex min-w-0 flex-col gap-2">
         {eyebrow && (
           <span className="e9-eyebrow">
             <E9Text>{eyebrow}</E9Text>
@@ -174,7 +211,7 @@ export function E9PageHeader({ eyebrow, title, description, actions }: TPageHead
         </h1>
         {description && <p className="max-w-2xl text-body-sm-regular text-tertiary">{description}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="relative flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

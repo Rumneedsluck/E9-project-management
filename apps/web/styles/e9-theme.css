@@ -841,3 +841,282 @@ html {
     animation: none;
   }
 }
+
+/* ================================================================================================
+   Graphics pass: line drawings, chart marks that arrive once, page-header backdrop, door pictures.
+   Everything here moves ONCE when it first shows (never on a loop) and only with transform / opacity,
+   so it stays light on a laptop. The reduced-motion block at the end switches all of it off.
+   ================================================================================================ */
+
+/* a line that draws itself (empty-page drawings, the login blueprint) */
+@keyframes e9-draw {
+  from {
+    stroke-dashoffset: 1;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+.e9-draw {
+  stroke-dasharray: 1;
+  animation: e9-draw 0.9s var(--e9-ease) both;
+  animation-delay: calc(var(--i, 0) * 110ms + 120ms);
+}
+
+/* chart marks: blocks grow from the left, small tiles pop, rows slide up, in the order given by --i */
+@keyframes e9-seg-in {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.e9-seg-in {
+  transform-origin: left center;
+  animation: e9-seg-in 0.7s var(--e9-ease) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 150ms);
+}
+@keyframes e9-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.e9-pop-in {
+  animation: e9-pop-in 0.5s var(--e9-ease) both;
+  animation-delay: calc(var(--i, 0) * 60ms + 100ms);
+}
+@keyframes e9-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.e9-row-in {
+  animation: e9-row-in 0.5s var(--e9-ease) both;
+  animation-delay: calc(var(--i, 0) * 45ms + 80ms);
+}
+/* a growing bar that takes its turn from --i (the plain .e9-grow starts at once) */
+.e9-grow-i {
+  transform-origin: left center;
+  animation: e9-grow 1s var(--e9-ease) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 200ms);
+}
+@keyframes e9-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.e9-fade-in {
+  animation: e9-fade-in 0.6s ease both;
+  animation-delay: calc(var(--i, 0) * 60ms + 250ms);
+}
+
+/* marks inside a card wait until the card itself has scrolled into view, so the movement is not missed */
+.e9-reveal:not(.is-in)
+  :is(.e9-seg-in, .e9-pop-in, .e9-row-in, .e9-grow-i, .e9-fade-in, .e9-draw, .e9-grow, .e9-bar-rise) {
+  animation-play-state: paused;
+}
+
+/* the little readout that follows the pointer or the keyboard on a chart */
+@keyframes e9-tip-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.e9-tip {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  transform: translate(-50%, 0);
+  animation: e9-tip-in 0.14s ease-out both;
+}
+
+/* a mark you can point at or tab to: it brightens, the others step back */
+.e9-mark {
+  transition:
+    opacity 0.2s ease,
+    filter 0.2s ease;
+  outline: none;
+}
+.e9-mark:focus-visible {
+  outline: 2px solid var(--brand-default);
+  outline-offset: 2px;
+}
+[data-chart-active="true"] .e9-mark:not([data-on="true"]) {
+  opacity: 0.45;
+}
+.e9-mark[data-on="true"] {
+  filter: brightness(1.08);
+}
+
+/* ---- page-header backdrop: a faint blueprint grid fading in from the top-right corner ---- */
+.e9-blueprint {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--e9-ink) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--e9-ink) 7%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-position: right top;
+  -webkit-mask-image: radial-gradient(115% 150% at 100% 0%, #000 0%, transparent 68%);
+  mask-image: radial-gradient(115% 150% at 100% 0%, #000 0%, transparent 68%);
+}
+
+/* table cells tinted by how much is done (one hue, pale to strong); the hue comes from the card's own colour */
+.e9-heat {
+  --heat: 0;
+  background-color: color-mix(in oklab, var(--tone-edge, var(--e9-ink)) calc(var(--heat) * 1%), transparent);
+  transition: background-color 0.3s ease;
+}
+.e9-heat[data-step="1"] {
+  --heat: 9;
+}
+.e9-heat[data-step="2"] {
+  --heat: 16;
+}
+.e9-heat[data-step="3"] {
+  --heat: 24;
+}
+.e9-heat[data-step="4"] {
+  --heat: 33;
+}
+.e9-heat[data-step="5"] {
+  --heat: 44;
+}
+
+/* ---- the four pictures on Home's doors: they sit still and shift a little when the card is pointed at ---- */
+.e9-door-art .e9-fan,
+.e9-door-art .e9-bars > path,
+.e9-door-art .e9-stamp,
+.e9-door-art .e9-plus {
+  transform-box: fill-box;
+  transition: transform 0.5s var(--e9-ease);
+}
+.e9-door-art .e9-fan,
+.e9-door-art .e9-bars > path {
+  transform-origin: 50% 100%;
+}
+.e9-door-art .e9-fan-l {
+  transform: rotate(-9deg);
+}
+.e9-door-art .e9-fan-r {
+  transform: rotate(9deg);
+}
+a:hover .e9-door-art .e9-fan-l {
+  transform: rotate(-17deg) translateX(-2px);
+}
+a:hover .e9-door-art .e9-fan-r {
+  transform: rotate(17deg) translateX(2px);
+}
+a:hover .e9-door-art .e9-fan:not(.e9-fan-l, .e9-fan-r) {
+  transform: translateY(-3px);
+}
+a:hover .e9-door-art .e9-bars > path:nth-child(odd) {
+  transform: scaleY(1.22);
+}
+a:hover .e9-door-art .e9-bars > path:nth-child(even) {
+  transform: scaleY(0.86);
+}
+.e9-door-art .e9-spin-once {
+  transform-box: view-box;
+  transform-origin: 78px 18px;
+  transition: transform 0.7s var(--e9-ease);
+}
+a:hover .e9-door-art .e9-spin-once {
+  transform: rotate(200deg);
+}
+.e9-door-art .e9-stamp,
+.e9-door-art .e9-plus {
+  transform-origin: 50% 50%;
+}
+a:hover .e9-door-art .e9-stamp {
+  transform: rotate(-14deg) scale(1.08);
+}
+a:hover .e9-door-art .e9-plus {
+  transform: rotate(90deg) scale(1.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .e9-draw,
+  .e9-seg-in,
+  .e9-pop-in,
+  .e9-row-in,
+  .e9-grow-i,
+  .e9-fade-in,
+  .e9-tip {
+    animation: none;
+  }
+  .e9-draw {
+    stroke-dasharray: none;
+  }
+  .e9-mark,
+  .e9-heat,
+  .e9-door-art .e9-fan,
+  .e9-door-art .e9-bars > path,
+  .e9-door-art .e9-stamp,
+  .e9-door-art .e9-plus,
+  .e9-door-art .e9-spin-once {
+    transition: none;
+  }
+  a:hover .e9-door-art .e9-fan-l {
+    transform: rotate(-9deg);
+  }
+  a:hover .e9-door-art .e9-fan-r {
+    transform: rotate(9deg);
+  }
+  a:hover .e9-door-art .e9-fan:not(.e9-fan-l, .e9-fan-r),
+  a:hover .e9-door-art .e9-bars > path:nth-child(odd),
+  a:hover .e9-door-art .e9-bars > path:nth-child(even),
+  a:hover .e9-door-art .e9-spin-once,
+  a:hover .e9-door-art .e9-stamp,
+  a:hover .e9-door-art .e9-plus {
+    transform: none;
+  }
+}
+
+/* ---- an ordered ramp in brass, for steps that follow one another (work -> JMC -> certified).
+        Four steps, pale to strong, checked for even spacing and for standing clear of the surface;
+        the dark theme has its own steps. --e9-ord-ink-N is the text colour that reads on step N. ---- */
+:root {
+  --e9-ord-1: #cdab76;
+  --e9-ord-2: #ad8646;
+  --e9-ord-3: #856224;
+  --e9-ord-4: #594012;
+  --e9-ord-ink-1: #1b1512;
+  --e9-ord-ink-2: #1b1512;
+  --e9-ord-ink-3: #ffffff;
+  --e9-ord-ink-4: #ffffff;
+}
+:root[data-theme*="dark"] {
+  --e9-ord-1: #5f4925;
+  --e9-ord-2: #886935;
+  --e9-ord-3: #b58e4e;
+  --e9-ord-4: #deb77a;
+  --e9-ord-ink-1: #ffffff;
+  --e9-ord-ink-2: #ffffff;
+  --e9-ord-ink-3: #1b1512;
+  --e9-ord-ink-4: #1b1512;
+}

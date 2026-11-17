@@ -4,6 +4,7 @@
  * See the LICENSE file for details.
  */
 
+import { E9_HUES } from "./palette";
 import type { TE9ProjectPriority, TE9ProjectStatus } from "./types";
 
 type TStatusMeta = {
@@ -11,27 +12,27 @@ type TStatusMeta = {
   label: string;
   /** Short explanation shown in forms */
   hint: string;
-  /** Dot / bar colour (works on light and dark backgrounds) */
+  /** Dot / bar colour (works on light and dark backgrounds); the shades live in palette.ts */
   color: string;
 };
 
 /** Job stages in the order work happens. Keep in sync with E9ProjectStatus in apps/api/plane/e9/models.py. */
 export const E9_STAGES: TStatusMeta[] = [
-  { key: "awarded", label: "Awarded", hint: "Order confirmed, work not started", color: "#8B8D98" },
-  { key: "site_audit", label: "Site Audit", hint: "Measurements, photos and site issues", color: "#3E7BFA" },
-  { key: "pre_press", label: "Pre-Press", hint: "Elevations and print-ready files", color: "#7C5CFC" },
-  { key: "production", label: "Production", hint: "Printing, fabrication and material", color: "#E8A317" },
-  { key: "delivery", label: "Delivery", hint: "Quality check and dispatch to site", color: "#F06A25" },
-  { key: "installation", label: "Installation", hint: "Team on site installing", color: "#14A3A3" },
-  { key: "sign_off", label: "Client Sign-off", hint: "Handover and approval", color: "#2EA36B" },
-  { key: "completed", label: "Completed", hint: "Signed off and closed", color: "#1B7F4E" },
+  { key: "awarded", label: "Awarded", hint: "Order confirmed, work not started", color: E9_HUES.grey },
+  { key: "site_audit", label: "Site Audit", hint: "Measurements, photos and site issues", color: E9_HUES.blue },
+  { key: "pre_press", label: "Pre-Press", hint: "Elevations and print-ready files", color: E9_HUES.violet },
+  { key: "production", label: "Production", hint: "Printing, fabrication and material", color: E9_HUES.amber },
+  { key: "delivery", label: "Delivery", hint: "Quality check and dispatch to site", color: E9_HUES.orange },
+  { key: "installation", label: "Installation", hint: "Team on site installing", color: E9_HUES.teal },
+  { key: "sign_off", label: "Client Sign-off", hint: "Handover and approval", color: E9_HUES.green },
+  { key: "completed", label: "Completed", hint: "Signed off and closed", color: E9_HUES.deepGreen },
 ];
 
 export const E9_ON_HOLD: TStatusMeta = {
   key: "on_hold",
   label: "On Hold",
   hint: "Paused, waiting on client or site",
-  color: "#D7263D",
+  color: E9_HUES.red,
 };
 
 export const E9_STATUSES: TStatusMeta[] = [...E9_STAGES, E9_ON_HOLD];

@@ -17,11 +17,15 @@ import { E9Announcements } from "./announcements";
 import { E9_BRAND } from "./brand";
 import { E9Ring } from "./charts";
 import type { TRingSegment } from "./charts";
-import { E9_STATUSES, getStatusMeta } from "./constants";
+import { getStatusMeta } from "./constants";
 import { getAttentionProjects, getProgressPercent, sortProjects, summarizeProjects } from "./helpers";
 import { useCanCreateE9Project, useE9Projects, useE9Summary } from "./hooks";
 import { CountUp, Reveal } from "./motion";
 import { E9LookAhead } from "./look-ahead";
+import { certSteps, cityCounts, stageCounts } from "./chart-math";
+import { E9MeterList, E9SegmentBar } from "./chart-kit";
+import { E9Glyph, E9StageTile } from "./icons";
+import { E9ScheduleChart } from "./schedule-chart";
 import { E9ErrorState, E9LoadingState } from "./states";
 import type { TE9Project } from "./types";
 import { E9CodeTile, E9DeadlineText, E9MemberAvatar, E9PageBody, E9PageHeader, E9Panel, E9ProgressBar } from "./ui";
@@ -138,23 +142,6 @@ const rupees = (value: number) => {
   return `₹${Math.round(value).toLocaleString("en-IN")}`;
 };
 
-function StagesPanel({ projects }: { projects: TE9Project[] }) {
-  const segments: TRingSegment[] = E9_STATUSES.map((status) => ({
-    key: status.key,
-    label: status.label,
-    value: projects.filter((project) => project.e9.status === status.key).length,
-    // each stage keeps the colour it has everywhere else in the app
-    color: status.color,
-  }));
-  return (
-    <E9Panel title="Sites by stage">
-      <div className="px-5 py-5">
-        <E9Ring segments={segments} totalLabel={projects.length === 1 ? "site" : "sites"} emptyText="No sites yet" />
-      </div>
-    </E9Panel>
-  );
-}
-
 function BillingPanel({ workspaceSlug }: { workspaceSlug: string }) {
   const { data } = useE9Summary(workspaceSlug);
   const bills = (data?.projects ?? []).flatMap((project) => project.bills);
@@ -221,7 +208,7 @@ function ProjectsProgressPanel({ projects, workspaceSlug }: { projects: TE9Proje
                     </span>
                   </span>
                   <span className="hidden items-center gap-2 text-body-xs-medium text-secondary md:flex">
-                    <span className="size-2 rounded-full" style={{ backgroundColor: stage.color }} />
+                    <E9StageTile status={project.e9.status} size="xs" className="!rounded-full" />
                     {stage.label}
                   </span>
                   <span className="col-span-2 flex items-center gap-3 md:col-span-1">
@@ -246,6 +233,89 @@ function ProjectsProgressPanel({ projects, workspaceSlug }: { projects: TE9Proje
           })}
         </ul>
       )}
+    </E9Panel>
+  );
+}
+
+function SchedulePanel({ projects, workspaceSlug }: { projects: TE9Project[]; workspaceSlug: string }) {
+  return (
+    <E9Panel
+      tone="ink"
+      icon={() => <E9Glyph name="calendar" className="size-[18px]" />}
+      title="Schedule"
+      subtitle="Every open site from start to handover; the solid part is the work done"
+    >
+      <E9ScheduleChart projects={projects} workspaceSlug={workspaceSlug} />
+    </E9Panel>
+  );
+}
+
+const CERT_FILL = ["var(--e9-ord-1)", "var(--e9-ord-2)", "var(--e9-ord-3)", "var(--e9-ord-4)"];
+const CERT_INK = ["var(--e9-ord-ink-1)", "var(--e9-ord-ink-2)", "var(--e9-ord-ink-3)", "var(--e9-ord-ink-4)"];
+
+function MoneyPathPanel({ projects, workspaceSlug }: { projects: TE9Project[]; workspaceSlug: string }) {
+  const open = projects.filter((project) => project.e9.status !== "completed");
+  const steps = certSteps(open);
+  return (
+    <E9Panel
+      tone="amber"
+      icon={() => <E9Glyph name="rupee" className="size-[18px]" />}
+      title="From work to money"
+      subtitle="Where each open site is on the way to its bill"
+    >
+      <div className="px-5 py-5">
+        <E9SegmentBar
+          label="Open sites by certification step"
+          unit={["site", "sites"]}
+          segments={steps.map((step, index) => ({
+            key: step.key,
+            label: step.label,
+            hint: step.hint,
+            value: step.count,
+            color: CERT_FILL[index],
+            ink: CERT_INK[index],
+            href: `/${workspaceSlug}/e9/projects?cert=${step.key}&status=all`,
+          }))}
+        />
+      </div>
+    </E9Panel>
+  );
+}
+
+function CitiesPanel({ projects }: { projects: TE9Project[] }) {
+  const rows = cityCounts(projects);
+  return (
+    <E9Panel
+      tone="teal"
+      icon={() => <E9Glyph name="pin" className="size-[18px]" />}
+      title="Sites by city"
+      subtitle="Open sites in each city"
+    >
+      {rows.length === 0 ? (
+        <p className="px-5 py-8 text-center text-body-sm-regular text-tertiary">No open sites.</p>
+      ) : (
+        <E9MeterList
+          className="py-2"
+          label="Open sites by city"
+          valueHead="sites"
+          rows={rows.map((row) => ({ key: row.city, label: row.city, value: row.count, color: "var(--tone-edge)" }))}
+        />
+      )}
+    </E9Panel>
+  );
+}
+
+function StageBarPanel({ projects }: { projects: TE9Project[] }) {
+  const counts = stageCounts(projects).filter((row) => row.key !== "completed");
+  return (
+    <E9Panel title="Sites by stage">
+      <div className="px-5 py-5">
+        <E9SegmentBar
+          label="Open sites by stage"
+          unit={["site", "sites"]}
+          segments={counts.map((row) => ({ key: row.key, label: row.label, value: row.count, color: row.color }))}
+        />
+      </div>
     </E9Panel>
   );
 }
@@ -325,10 +395,17 @@ export const E9Dashboard = observer(function E9Dashboard({ workspaceSlug }: { wo
 
           <E9LookAhead projects={projects ?? []} workspaceSlug={workspaceSlug} />
 
+          <SchedulePanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
+
           <ProjectsProgressPanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <StagesPanel projects={projects ?? []} />
+            <MoneyPathPanel projects={projects ?? []} workspaceSlug={workspaceSlug} />
+            <CitiesPanel projects={projects ?? []} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <StageBarPanel projects={projects ?? []} />
             <BillingPanel workspaceSlug={workspaceSlug} />
           </div>
 

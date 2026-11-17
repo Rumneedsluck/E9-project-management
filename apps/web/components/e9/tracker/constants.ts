@@ -10,6 +10,8 @@
  * Keep in sync with apps/api/plane/e9/tracker.py.
  */
 
+import { E9_HUES } from "../palette";
+
 export type TE9ScopeKey =
   | "wall_graphics"
   | "glass_film"
@@ -39,15 +41,15 @@ export const getScope = (key: TE9ScopeKey) => E9_SCOPES.find((scope) => scope.ke
 
 /** One colour per scope, used by the scope ring on a project's Overview (custom scopes fall back to a palette). */
 export const SCOPE_COLORS: Record<string, string> = {
-  wall_graphics: "#DA1E26",
-  glass_film: "#3E7BFA",
-  internal_signages: "#E8A317",
-  external_signages: "#F06A25",
-  "3d_items": "#7C5CFC",
-  frames: "#14A3A3",
-  hand_paintings: "#2EA36B",
-  non_tender: "#C2569A",
-  others: "#8B8D98",
+  wall_graphics: E9_HUES.brandRed,
+  glass_film: E9_HUES.blue,
+  internal_signages: E9_HUES.amber,
+  external_signages: E9_HUES.orange,
+  "3d_items": E9_HUES.violet,
+  frames: E9_HUES.teal,
+  hand_paintings: E9_HUES.green,
+  non_tender: E9_HUES.magenta,
+  others: E9_HUES.grey,
 };
 const SCOPE_FALLBACK = ["#5B8DEF", "#D97757", "#4FB286", "#B58AF0", "#E0B341", "#4AA8C9"];
 export const scopeColor = (key: string, index: number) =>
@@ -203,10 +205,10 @@ export const E9_TRACKER_STAGES: {
   /** Band colour on the sheet header */
   color: string;
 }[] = [
-  { key: "site_audit", label: "1 · Site audit", targetField: "target_site_audit", color: "#3E7BFA" },
-  { key: "pre_press", label: "2 · Pre-press done", targetField: "target_pre_press", color: "#7C5CFC" },
-  { key: "material", label: "3 · Material received", targetField: "target_material", color: "#E8A317" },
-  { key: "delivered", label: "4 · Delivered to site", targetField: "target_delivered", color: "#F06A25" },
-  { key: "installation", label: "5 · Installation", targetField: "target_installation", color: "#14A3A3" },
-  { key: "sign_off", label: "6 · Client sign-off", targetField: "target_sign_off", color: "#2EA36B" },
+  { key: "site_audit", label: "1 · Site audit", targetField: "target_site_audit", color: E9_HUES.blue },
+  { key: "pre_press", label: "2 · Pre-press done", targetField: "target_pre_press", color: E9_HUES.violet },
+  { key: "material", label: "3 · Material received", targetField: "target_material", color: E9_HUES.amber },
+  { key: "delivered", label: "4 · Delivered to site", targetField: "target_delivered", color: E9_HUES.orange },
+  { key: "installation", label: "5 · Installation", targetField: "target_installation", color: E9_HUES.teal },
+  { key: "sign_off", label: "6 · Client sign-off", targetField: "target_sign_off", color: E9_HUES.green },
 ];
