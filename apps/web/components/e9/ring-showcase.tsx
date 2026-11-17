@@ -14,6 +14,7 @@ import { useMemo } from "react";
 import { useAppRouter } from "@/hooks/use-app-router";
 import { getStatusMeta } from "./constants";
 import { describeDeadline, getProgressPercent } from "./helpers";
+import { inkOn } from "./palette";
 import type { TE9Project } from "./types";
 import CircularCarousel from "./vendor/circular-carousel";
 import type { TCarouselItem } from "./vendor/circular-carousel";
@@ -55,7 +56,7 @@ const cardPicture = (project: TE9Project): string => {
 <rect width="${CARD_W}" height="16" fill="${stage.color}"/>
 <text x="470" y="470" font-family="Georgia,serif" font-size="360" font-weight="700" fill="#DA1E26" opacity="0.13">E9</text>
 <rect x="48" y="56" width="${stage.label.length * 15 + 40}" height="40" fill="${stage.color}"/>
-<text x="68" y="83" font-family="Arial,sans-serif" font-size="20" font-weight="700" letter-spacing="3" fill="#FFFFFF">${escapeXml(stage.label.toUpperCase())}</text>
+<text x="68" y="83" font-family="Arial,sans-serif" font-size="20" font-weight="700" letter-spacing="3" fill="${inkOn(stage.color)}">${escapeXml(stage.label.toUpperCase())}</text>
 <text x="48" y="${titleTop - 44}" font-family="Arial,sans-serif" font-size="20" font-weight="700" letter-spacing="3" fill="#1B1512" opacity="0.65">${escapeXml(place || project.identifier)}</text>
 ${title}
 <rect x="48" y="478" width="704" height="6" fill="#1B1512" opacity="0.15"/>

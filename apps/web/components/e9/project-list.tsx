@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -95,13 +96,14 @@ function ProjectTable({ projects, workspaceSlug }: { projects: TE9Project[]; wor
           </tr>
         </thead>
         <tbody className="divide-y divide-subtle">
-          {projects.map((project) => {
+          {projects.map((project, index) => {
             const href = `/${workspaceSlug}/e9/projects/${project.id}`;
             const progress = getProgressPercent(project);
             return (
               <tr
                 key={project.id}
-                className="cursor-pointer transition-colors hover:bg-layer-1-hover"
+                className="e9-row-in cursor-pointer transition-colors hover:bg-layer-1-hover"
+                style={{ "--i": Math.min(index, 12) } as CSSProperties}
                 onClick={() => router.push(href)}
               >
                 <td className="px-5 py-3.5">
@@ -389,6 +391,7 @@ export const E9ProjectList = observer(function E9ProjectList({ workspaceSlug }: 
         <E9ErrorState onRetry={() => mutate()} />
       ) : visible.length === 0 ? (
         <E9EmptyState
+          art={isFiltered ? "no-match" : "blank-sheet"}
           title={isFiltered ? "No projects match these filters" : "No projects yet"}
           description={
             isFiltered

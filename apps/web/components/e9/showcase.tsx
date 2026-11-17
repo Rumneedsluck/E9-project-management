@@ -17,6 +17,8 @@ import { getStatusMeta } from "./constants";
 import { describeDeadline, getProgressPercent } from "./helpers";
 import { E9Wordmark } from "./brand";
 import type { TE9Project } from "./types";
+import { E9StageIcon } from "./icons";
+import { inkOn } from "./palette";
 import { E9CertSteps, E9CodeTile } from "./ui";
 
 const reducedMotion = () =>
@@ -168,9 +170,10 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
                   <div className="flex flex-wrap items-center gap-3">
                     <E9CodeTile code={project.identifier} size="lg" inverse />
                     <span
-                      className="px-3 py-1 text-body-2xs-semibold tracking-[0.14em] text-white uppercase"
-                      style={{ background: stage.color }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 text-body-2xs-semibold tracking-[0.14em] uppercase"
+                      style={{ background: stage.color, color: inkOn(stage.color) }}
                     >
+                      <E9StageIcon stage={project.e9.status} className="size-3.5" />
                       {stage.label}
                     </span>
                   </div>
@@ -183,7 +186,7 @@ export function E9Showcase({ projects, workspaceSlug }: { projects: TE9Project[]
                     </span>
                     <span className="mt-3 h-[3px] w-full overflow-hidden bg-[#1B1512]/15">
                       <span
-                        className="block h-full bg-[var(--brand-default)]"
+                        className="e9-grow block h-full bg-[var(--brand-default)]"
                         style={{ width: `${getProgressPercent(project)}%` }}
                       />
                     </span>
