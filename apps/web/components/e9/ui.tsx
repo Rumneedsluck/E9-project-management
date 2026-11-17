@@ -217,7 +217,7 @@ export function E9PageHeader({ eyebrow, title, description, actions }: TPageHead
 }
 
 /** Colour identities for cards; each one is a hue defined in e9-theme.css (light and dark). */
-export type TE9Tone = "ink" | "blue" | "sky" | "teal" | "violet" | "red" | "amber" | "green";
+export type TE9Tone = "ink" | "blue" | "sky" | "teal" | "violet" | "red" | "amber" | "green" | "magenta";
 
 type TE9PanelProps = {
   title?: ReactNode;

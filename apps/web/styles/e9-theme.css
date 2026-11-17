@@ -706,6 +706,9 @@ html {
 .e9-panel[data-tone="amber"] {
   --tone-h: 78;
 }
+.e9-panel[data-tone="magenta"] {
+  --tone-h: 340;
+}
 /* the neutral card: the E9 ink itself (near-black on paper, paper-white in the dark theme) */
 :root .e9-panel[data-tone="ink"] {
   --tone-edge: color-mix(in oklab, var(--e9-ink) 72%, transparent);

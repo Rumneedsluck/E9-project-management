@@ -19,7 +19,7 @@ export function E9StageProgressPanel({ rows }: { rows: TStageTargetRow[] }) {
   const total = Math.max(1, ...rows.map((row) => row.done + row.pending));
   return (
     <E9Panel
-      tone="green"
+      tone="magenta"
       icon={() => <E9Glyph name="check" className="size-[18px]" />}
       title="How far the work has got"
       subtitle="Items that have finished each stage, in working order"
