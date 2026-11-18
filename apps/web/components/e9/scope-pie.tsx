@@ -7,14 +7,13 @@
 /*
  * The big pie on a project's Overview, drawn as a ring of thin ticks (the look of the Bklit pie chart,
  * built here by hand). Each scope of work gets a coloured sector sized by how much of it there is;
- * the middle counts up to the whole project's work done. Hover a sector, or a row of the list under it,
- * and the middle shows that scope's own % done instead.
+ * the middle counts up to the whole project's work done. Hover a sector and the middle shows that scope's
+ * name and its own % done instead (no list under the pie: the user wants the pie alone).
  */
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, PointerEvent } from "react";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
-import { cn } from "@plane/utils";
 import { RING_TICKS, ringTicks } from "./scope-ring";
 
 export type TScopeSlice = {
@@ -59,7 +58,6 @@ export function E9ScopeTickPie({ slices, percent, size = 300, label = "work done
   const outer = size * 0.47;
   const inner = size * 0.33;
   const stroke = Math.max(2, size * 0.009);
-  const total = slices.reduce((acc, slice) => acc + slice.value, 0);
   const current = active === null ? null : slices[active];
 
   // which scope the pointer is over, from its angle round the ring
@@ -139,34 +137,6 @@ export function E9ScopeTickPie({ slices, percent, size = 300, label = "work done
           </span>
         </div>
       </motion.div>
-
-      {slices.length > 0 && (
-        <ul className="flex flex-wrap justify-center gap-x-2 gap-y-1.5" aria-label="Scopes of work">
-          {slices.map((slice, index) => (
-            <li key={slice.key}>
-              <button
-                type="button"
-                onMouseEnter={() => setActive(index)}
-                onMouseLeave={() => setActive(null)}
-                onFocus={() => setActive(index)}
-                onBlur={() => setActive(null)}
-                className={cn(
-                  "flex items-center gap-2 rounded-full border border-subtle px-3 py-1 text-body-xs-regular transition-[background-color,opacity] outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-default)]",
-                  active === index && "bg-layer-1-hover",
-                  active !== null && active !== index && "opacity-50"
-                )}
-              >
-                <span aria-hidden className="size-2.5 rounded-full" style={{ backgroundColor: slice.color }} />
-                <span className="text-secondary">{slice.label}</span>
-                <span className="text-placeholder tabular-nums">
-                  {total > 0 ? `${Math.round((slice.value / total) * 100)}% of work` : ""}
-                </span>
-                <span className="font-semibold text-primary tabular-nums">{slice.percent}% done</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
