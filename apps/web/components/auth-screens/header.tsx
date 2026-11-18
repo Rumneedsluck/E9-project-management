@@ -8,8 +8,8 @@ import React from "react";
 import { observer } from "mobx-react";
 import Link from "next/link";
 import { useTranslation } from "@plane/i18n";
-import { PlaneLockup } from "@plane/blocks/icons";
 import { PageHead } from "@/components/core/page-title";
+import { E9_BRAND, E9Logo } from "@/components/e9/brand";
 import { EAuthModes } from "@/helpers/authentication.helper";
 import { useInstance } from "@/hooks/store/use-instance";
 
@@ -30,9 +30,11 @@ const authContentMap = {
 
 type AuthHeaderProps = {
   type: EAuthModes;
+  /** Hide the logo on large screens, where the E9 brand panel already shows it */
+  hideLogoOnDesktop?: boolean;
 };
 
-export const AuthHeader = observer(function AuthHeader({ type }: AuthHeaderProps) {
+export const AuthHeader = observer(function AuthHeader({ type, hideLogoOnDesktop = false }: AuthHeaderProps) {
   const { t } = useTranslation();
   // store
   const { config } = useInstance();
@@ -42,6 +44,7 @@ export const AuthHeader = observer(function AuthHeader({ type }: AuthHeaderProps
   return (
     <AuthHeaderBase
       pageTitle={t(authContentMap[type].pageTitle)}
+      hideLogoOnDesktop={hideLogoOnDesktop}
       additionalAction={
         enableSignUpConfig && (
           <div className="flex flex-col items-end text-center text-body-xs-medium text-tertiary sm:flex-row sm:items-center sm:gap-2">
@@ -62,16 +65,17 @@ export const AuthHeader = observer(function AuthHeader({ type }: AuthHeaderProps
 type TAuthHeaderBase = {
   pageTitle: string;
   additionalAction?: React.ReactNode;
+  hideLogoOnDesktop?: boolean;
 };
 
 export function AuthHeaderBase(props: TAuthHeaderBase) {
-  const { pageTitle, additionalAction } = props;
+  const { pageTitle, additionalAction, hideLogoOnDesktop = false } = props;
   return (
     <>
-      <PageHead title={pageTitle + " - Plane"} />
+      <PageHead title={`${pageTitle} - ${E9_BRAND.name}`} />
       <div className="sticky top-0 flex w-full flex-shrink-0 items-center justify-between gap-6">
-        <Link href="/">
-          <PlaneLockup height={20} width={95} className="text-primary" />
+        <Link href="/" className={hideLogoOnDesktop ? "lg:invisible" : undefined}>
+          <E9Logo />
         </Link>
         {additionalAction}
       </div>

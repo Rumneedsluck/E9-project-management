@@ -43,3 +43,7 @@ Prereq (once): `./setup.sh` — generates `apps/api/.env` from `.env.example`.
 - Teardown: `docker compose -f docker-compose-test.yml down -v`
 
 See `apps/api/tests/RUNNING_TESTS.md` for the full walkthrough and troubleshooting; see `apps/api/tests/TESTING_GUIDE.md` for test conventions and fixtures.
+
+## Browser tests (e2e)
+
+`e2e/` holds Playwright tests that click through login, the tracker (add row, Ctrl+Z, delete and restore) and the billing gate. It is a separate npm package (not part of the pnpm workspace); see `e2e/README.md`. Needs the site and API running plus `E9_E2E_EMAIL` / `E9_E2E_PASSWORD` (local admin login, never committed).

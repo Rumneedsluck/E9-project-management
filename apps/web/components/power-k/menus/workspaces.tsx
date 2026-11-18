@@ -6,7 +6,7 @@
 
 import React from "react";
 // plane imports
-import { WorkspaceAvatar } from "@makeplane/propel/components/workspace-avatar";
+import { WorkspaceAvatar } from "@/components/e9/workspace-avatar";
 import type { IWorkspace } from "@plane/types";
 import { getFileURL } from "@plane/utils";
 // local imports

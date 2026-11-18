@@ -1,0 +1,46 @@
+/* E9 additions around the React Bits LineSidebar: real links, a hint line, a visible keyboard focus. */
+.line-sidebar__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  outline: none;
+}
+
+.e9-line-nav--compact .line-sidebar__link {
+  padding: 6px 0;
+}
+
+.line-sidebar__link:focus-visible .line-sidebar__text {
+  outline: 2px solid var(--brand-default);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.line-sidebar__hint {
+  display: block;
+  margin-top: 0.35rem;
+  max-width: 28ch;
+  font-family: var(--font-sans, inherit);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--e9-ink-soft);
+  opacity: 0.8;
+  transform: translateX(calc(var(--effect, 0) * var(--max-shift)));
+}
+
+.e9-line-nav .line-sidebar__list {
+  padding: 0.25rem 0;
+}
+
+.e9-line-nav--big .line-sidebar__label {
+  font-family: var(--e9-font-display);
+  letter-spacing: -0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .e9-line-nav .line-sidebar__label,
+  .e9-line-nav .line-sidebar__hint,
+  .e9-line-nav .line-sidebar__marker {
+    transform: none;
+  }
+}
