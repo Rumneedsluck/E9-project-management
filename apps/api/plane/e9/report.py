@@ -160,16 +160,12 @@ def health_payload(project):
 # ---------------------------------------------------------------------------
 
 STAGE_DONE = [
-    ("Site audit", "target_site_audit", lambda item: item.site_audit_status == "Measured"),
-    ("Pre-press", "target_pre_press", lambda item: item.pre_press == "Sent for Production"),
-    (
-        "Production & material",
-        "target_material",
-        lambda item: item.production_status == "Production Done" and item.material_status == "Material Received",
-    ),
-    ("Delivered to site", "target_delivered", lambda item: item.dispatch_status == "Delivered at Site"),
-    ("Installation", "target_installation", lambda item: item.installation_status == "Installation Done"),
-    ("Client sign-off", "target_sign_off", lambda item: item.client_sign_off == "Signed Off"),
+    ("Site audit", "target_site_audit", lambda item: tracker.reached(item, "measured")),
+    ("Pre-press", "target_pre_press", lambda item: tracker.reached(item, "pre_press")),
+    ("Production & material", "target_material", lambda item: tracker.reached(item, "material")),
+    ("Delivered to site", "target_delivered", lambda item: tracker.reached(item, "delivered")),
+    ("Installation", "target_installation", lambda item: tracker.reached(item, "installed")),
+    ("Client sign-off", "target_sign_off", lambda item: tracker.reached(item, "signed_off")),
 ]
 
 
@@ -196,7 +192,7 @@ def report_payload(project):
             unit: sum((_amount(item, scopes)[1] for item in rows if _unit(item, scopes) == unit), ZERO)
             for unit in tracker.UNITS
         }
-        installed = [item for item in working if item.installation_status == "Installation Done"]
+        installed = [item for item in working if tracker.reached(item, "installed")]
         by_scope.append(
             {
                 "scope": key,
@@ -204,12 +200,12 @@ def report_payload(project):
                 "items": len(rows),
                 **{unit: _text(value) for unit, value in amounts.items()},
                 "on_hold": sum(1 for item in rows if tracker.is_held(item)),
-                "production_done": sum(1 for item in working if item.production_status == "Production Done"),
-                "material_received": sum(1 for item in working if item.material_status == "Material Received"),
-                "qc_passed": sum(1 for item in working if item.quality_check == "Passed"),
-                "delivered": sum(1 for item in working if item.dispatch_status == "Delivered at Site"),
+                "production_done": sum(1 for item in working if tracker.reached(item, "production")),
+                "material_received": sum(1 for item in working if tracker.reached(item, "material")),
+                "qc_passed": sum(1 for item in working if tracker.reached(item, "qc")),
+                "delivered": sum(1 for item in working if tracker.reached(item, "delivered")),
                 "installed": len(installed),
-                "signed_off": sum(1 for item in working if item.client_sign_off == "Signed Off"),
+                "signed_off": sum(1 for item in working if tracker.reached(item, "signed_off")),
                 "percent": round(len(installed) / len(rows) * 100) if rows else 0,
             }
         )

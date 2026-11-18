@@ -248,25 +248,54 @@ export const numberStats = (values: number[]): { sum: number; count: number; ave
 /** Running length of an item in its own unit (rft or rmt); 0 for other units. */
 export const itemLength = (item: TE9ScopeItem): number => (isLengthUnit(item.unit) ? toNumber(item.length) : 0);
 
-/** Whether an item has finished a given stage (same tests as the template dashboard). */
-export const isStageDone = (item: TE9ScopeItem, stage: TE9StageKey): boolean => {
-  switch (stage) {
-    case "site_audit":
-      return item.site_audit_status === "Measured";
-    case "pre_press":
-      return item.pre_press === "Sent for Production";
-    case "material":
-      return item.material_status === "Material Received";
-    case "delivered":
-      return item.dispatch_status === "Delivered at Site";
-    case "installation":
-      return item.installation_status === "Installation Done";
-    case "sign_off":
-      return item.client_sign_off === "Signed Off";
-    default:
-      return false;
-  }
+/*
+ * A later step means every step before it is done: an item marked "Installation Done" has also been made,
+ * received, checked and delivered, even if those dropdowns were never changed. Every count on the Overview
+ * uses this, so the numbers always add up. (The tracker cells keep what was typed.) Same rule as tracker.py.
+ */
+export const STEP_ORDER = [
+  "measured",
+  "pre_press",
+  "production",
+  "material",
+  "qc",
+  "delivered",
+  "installed",
+  "signed_off",
+] as const;
+export type TE9Step = (typeof STEP_ORDER)[number];
+
+const STEP_DONE: Record<TE9Step, (item: TE9ScopeItem) => boolean> = {
+  measured: (item) => item.site_audit_status === "Measured",
+  pre_press: (item) => item.pre_press === "Sent for Production",
+  production: (item) => item.production_status === "Production Done",
+  material: (item) => item.material_status === "Material Received",
+  qc: (item) => item.quality_check === "Passed",
+  delivered: (item) => item.dispatch_status === "Delivered at Site",
+  installed: (item) => item.installation_status === "Installation Done",
+  signed_off: (item) => item.client_sign_off === "Signed Off",
 };
+
+/** Index in STEP_ORDER of the latest step this item has finished; -1 when none. */
+export const furthestStep = (item: TE9ScopeItem): number => {
+  for (let index = STEP_ORDER.length - 1; index >= 0; index -= 1) if (STEP_DONE[STEP_ORDER[index]](item)) return index;
+  return -1;
+};
+
+/** True when the item has finished this step, or any later one. */
+export const reached = (item: TE9ScopeItem, step: TE9Step): boolean => furthestStep(item) >= STEP_ORDER.indexOf(step);
+
+const STAGE_STEP: Record<TE9StageKey, TE9Step> = {
+  site_audit: "measured",
+  pre_press: "pre_press",
+  material: "material",
+  delivered: "delivered",
+  installation: "installed",
+  sign_off: "signed_off",
+};
+
+/** Whether an item has finished a given stage (same tests as the template dashboard). */
+export const isStageDone = (item: TE9ScopeItem, stage: TE9StageKey): boolean => reached(item, STAGE_STEP[stage]);
 
 /** Red highlighting: the stage's target date has passed and this item has not finished that stage. */
 export const isStageOverdue = (
@@ -308,19 +337,19 @@ const groupTotals = (rows: TE9ScopeItem[]) => {
   const total = sum(() => true);
   const area = rows.reduce((totalArea, item) => totalArea + itemArea(item), 0);
   const installedArea = rows
-    .filter((item) => item.installation_status === "Installation Done")
+    .filter((item) => reached(item, "installed"))
     .reduce((totalArea, item) => totalArea + itemArea(item), 0);
-  const installed = sum((item) => item.installation_status === "Installation Done");
+  const installed = sum((item) => reached(item, "installed"));
   return {
     items: total,
     nos: rows.filter((item) => item.unit === "nos").reduce((t, item) => t + itemMeasure(item), 0),
     area: Math.round(area * 100) / 100,
-    productionDone: sum((item) => item.production_status === "Production Done"),
-    materialReceived: sum((item) => item.material_status === "Material Received"),
-    qcPassed: sum((item) => item.quality_check === "Passed"),
-    delivered: sum((item) => item.dispatch_status === "Delivered at Site"),
+    productionDone: sum((item) => reached(item, "production")),
+    materialReceived: sum((item) => reached(item, "material")),
+    qcPassed: sum((item) => reached(item, "qc")),
+    delivered: sum((item) => reached(item, "delivered")),
     installed,
-    signedOff: sum((item) => item.client_sign_off === "Signed Off"),
+    signedOff: sum((item) => reached(item, "signed_off")),
     percentItems: percent(installed, total),
     percentArea: area > 0 ? percent(installedArea, area) : null,
   };
@@ -396,11 +425,11 @@ export const trackerKpis = (
   const rows = counted(items).filter(isFilled);
   const totalItems = rows.reduce((total, item) => total + itemMeasure(item), 0);
   const installed = rows
-    .filter((item) => item.installation_status === "Installation Done")
+    .filter((item) => reached(item, "installed"))
     .reduce((total, item) => total + itemMeasure(item), 0);
   const totalArea = rows.reduce((total, item) => total + itemArea(item), 0);
   const installedArea = rows
-    .filter((item) => item.installation_status === "Installation Done")
+    .filter((item) => reached(item, "installed"))
     .reduce((total, item) => total + itemArea(item), 0);
   const deadlineDay = parseDay(deadline);
   return {
@@ -462,7 +491,7 @@ export const workDone = (items: TE9ScopeItem[]) => {
   let nosDone = 0;
   let itemsDone = 0;
   for (const item of rows) {
-    const done = item.installation_status === "Installation Done";
+    const done = reached(item, "installed");
     if (done) itemsDone += 1;
     if (item.unit === "sqft") {
       const area = toNumber(item.area_sqft);

@@ -207,8 +207,9 @@ describe("stage targets and overdue", () => {
   it("flags pending items once a target date has passed", () => {
     const rows = stageTargetRows(all, { target_site_audit: "2026-11-01", target_installation: "2026-11-01" }, TODAY);
     const audit = rows.find((row) => row.key === "site_audit")!;
-    expect(audit.done).toBe(6);
-    expect(audit.pending).toBe(10); // the frames were never "Measured"
+    // the 6 frames were never marked "Measured", but they are installed: a later step counts the earlier ones
+    expect(audit.done).toBe(12);
+    expect(audit.pending).toBe(4);
     expect(audit.status).toBe("overdue");
     const install = rows.find((row) => row.key === "installation")!;
     expect(install.done).toBe(8);

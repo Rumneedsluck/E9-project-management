@@ -160,14 +160,12 @@ def line_rows(project, cert=None):
         on_tracker = sum((tracker.production_measure(item, unit) for item in rows_for_line), ZERO)
         working = [item for item in rows_for_line if tracker.makes_progress(item)]
         produced = sum(
-            (tracker.production_measure(item, unit) for item in working if item.production_status == "Production Done"),
+            (tracker.production_measure(item, unit) for item in working if tracker.reached(item, "production")),
             ZERO,
         )
         certified_rows = [tracker.certified_measure(item, unit) for item in working]
         certified_on_site = sum((value for value in certified_rows if value is not None), ZERO)
-        installed = sum(
-            (measure(item, unit) for item in working if item.installation_status == "Installation Done"), ZERO
-        )
+        installed = sum((measure(item, unit) for item in working if tracker.reached(item, "installed")), ZERO)
         covered_rows = billing_by_no.get(norm(line.line_no), [])
         billable_rows = [item for item in covered_rows if can_bill(item, scope_rules.get(item.scope))]
         ready_to_bill = sum((billable_measure(item, unit) * share[item.id] for item in billable_rows), ZERO)

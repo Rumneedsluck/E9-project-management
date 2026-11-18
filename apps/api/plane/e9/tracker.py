@@ -215,6 +215,36 @@ def current_stage(item):
     return "Not Started"
 
 
+# A later step means every step before it is done: an item marked "Installation Done" has also been made,
+# received, checked and delivered, even if those dropdowns were never changed. The counts on the Overview,
+# the stage targets, the client report and the BOQ check all use this, so the numbers always add up.
+# (The tracker cells themselves keep what was typed.)
+STEP_ORDER = ("measured", "pre_press", "production", "material", "qc", "delivered", "installed", "signed_off")
+_STEP_DONE = {
+    "measured": lambda item: getattr(item, "site_audit_status", "") == "Measured",
+    "pre_press": lambda item: getattr(item, "pre_press", "") == "Sent for Production",
+    "production": lambda item: getattr(item, "production_status", "") == "Production Done",
+    "material": lambda item: getattr(item, "material_status", "") == "Material Received",
+    "qc": lambda item: getattr(item, "quality_check", "") == "Passed",
+    "delivered": lambda item: getattr(item, "dispatch_status", "") == "Delivered at Site",
+    "installed": lambda item: getattr(item, "installation_status", "") == "Installation Done",
+    "signed_off": lambda item: getattr(item, "client_sign_off", "") == "Signed Off",
+}
+
+
+def furthest_step(item):
+    """Index in STEP_ORDER of the latest step this item has finished; -1 when none."""
+    for index in range(len(STEP_ORDER) - 1, -1, -1):
+        if _STEP_DONE[STEP_ORDER[index]](item):
+            return index
+    return -1
+
+
+def reached(item, step):
+    """True when the item has finished this step, or any later one."""
+    return furthest_step(item) >= STEP_ORDER.index(step)
+
+
 # ---------------------------------------------------------------------------
 # Production size, dispatch and certified quantity (template columns P–T, AB–AG, AK–AN)
 # ---------------------------------------------------------------------------
@@ -480,7 +510,7 @@ def progress(items, unit_modes):
         mode = unit_modes.get(item.scope) or SCOPES.get(item.scope, ("", "", "either"))[2]
         unit = item_unit(mode, item.height_in, item.width_in, item.unit_override)
         amount = measured(item, unit)
-        done = item.installation_status == "Installation Done" and makes_progress(item)
+        done = reached(item, "installed") and makes_progress(item)
         totals["rows"] += 1
         totals[f"{unit}_total"] += amount
         if done:
